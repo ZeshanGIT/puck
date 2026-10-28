@@ -30,36 +30,18 @@ pnpm-debug.log*
 .convex/
 .env.local
 
-# Mobile app (app/): Dart toolchain
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.packages
-.pub-cache/
-.pub/
-**/doc/api/
-.metadata
-*.g.dart.tmp
-app/build/
-
-# Android
+# Android (Expo prebuild output)
+**/android/build/
+**/android/app/build/
 **/android/.gradle/
 **/android/captures/
 **/android/local.properties
 **/android/app/debug/
 **/android/app/profile/
 **/android/app/release/
-**/android/gradlew
-**/android/gradlew.bat
-**/android/gradle/wrapper/gradle-wrapper.jar
-**/android/**/GeneratedPluginRegistrant.java
 
 # iOS (later)
 **/ios/Pods/
-**/ios/.symlinks/
-**/ios/Flutter/Generated.xcconfig
-**/ios/Flutter/flutter_export_environment.sh
-**/ios/Runner/GeneratedPluginRegistrant.*
 xcuserdata/
 
 # Mobile app (app/): React Native / Expo

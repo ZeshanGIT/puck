@@ -4,6 +4,8 @@ Puck is a pager for AI agents: an agent sends an alert, your phone rings with a 
 
 ## Planned layout
 
-- `app/` - mobile app (Android first; framework TBD)
-- `backend/` - Convex backend (TypeScript): database and HTTP endpoints; Firebase Cloud Messaging is used only for push
+A TypeScript monorepo (workspace tooling chosen at scaffold time):
+
+- `app/` - mobile app in React Native with Expo (Android first)
+- `backend/` - Convex backend: database and HTTP endpoints; Firebase Cloud Messaging is used only for push
 - `cli/` - `puck` CLI in TypeScript (Commander, compiled to a single executable)
