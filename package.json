@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun test",
     "cli:build": "bun run --filter @puck/cli build"
   },
   "devDependencies": {
