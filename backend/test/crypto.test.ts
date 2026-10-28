@@ -34,7 +34,10 @@ describe("webhook header encryption", () => {
       expect(stored).not.toContain("routine-key");
       expect(await decryptHeader(stored)).toBe("Bearer routine-key");
       expect(await encryptHeader("Bearer routine-key")).not.toBe(stored);
-      const tampered = `${stored.slice(0, -1)}${stored.endsWith("a") ? "b" : "a"}`;
+      const parts = stored.split(".");
+      const cipher = parts[2] ?? "";
+      const flipped = `${cipher.startsWith("A") ? "B" : "A"}${cipher.slice(1)}`;
+      const tampered = `${parts[0]}.${parts[1]}.${flipped}`;
       await expect(decryptHeader(tampered)).rejects.toThrow(/decrypt/);
     } finally {
       if (previous === undefined) delete process.env[ENCRYPTION_ENV];
