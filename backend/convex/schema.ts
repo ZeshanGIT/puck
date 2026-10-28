@@ -1,44 +1,86 @@
+import {
+  ALERT_STATUSES,
+  ANSWER_SOURCES,
+  DELIVERY_STATUSES,
+  PAIRING_STATES,
+  PRIORITIES,
+  SELECTION_MODES,
+} from "@puck/shared";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { ALERT_STATUSES } from "@puck/shared";
 
-// Sketch of the v0 data model (see the Puck v0 spec in the vault).
-// Timestamps are Unix epoch milliseconds; Convex adds _id and _creationTime.
+// v0 tables. See the vault spec: bots, the alert, and the answer payload.
+// Timestamps are Unix epoch milliseconds. Convex also adds _id and _creationTime.
+// `bots.id` is the public id (sheldon-23648), not the document _id.
+// `bots.webhookHeader` is ciphertext. The secret is stored only as secretHash.
+// `routine` is the label sent as `routine` in the answer payload. The spec's
+// bots table has no separate column for it; the payload does.
 
-export const alertStatus = v.union(
-  ...ALERT_STATUSES.map((status) => v.literal(status)),
-);
+function literals<const T extends readonly string[]>(values: T) {
+  return values.map((value) => v.literal(value));
+}
 
-export const reply = v.union(
-  v.object({ kind: v.literal("option"), option: v.string(), repliedAt: v.number() }),
-  v.object({ kind: v.literal("text"), text: v.string(), repliedAt: v.number() }),
-);
+export const priority = v.union(...literals(PRIORITIES));
+export const selectionMode = v.union(...literals(SELECTION_MODES));
+export const alertStatus = v.union(...literals(ALERT_STATUSES));
+export const pairingState = v.union(...literals(PAIRING_STATES));
+export const answerSource = v.union(...literals(ANSWER_SOURCES));
+export const deliveryStatus = v.union(...literals(DELIVERY_STATUSES));
+
+export const option = v.object({
+  id: v.string(),
+  label: v.string(),
+  icon: v.optional(v.string()),
+});
+
+export const answerChoice = v.object({
+  id: v.string(),
+  label: v.string(),
+});
 
 export default defineSchema({
-  // One row per agent allowed to page Seshan. Only a hash of its key is stored.
-  agents: defineTable({
+  bots: defineTable({
+    id: v.string(),
     name: v.string(),
-    keyHash: v.string(),
-    revoked: v.boolean(),
+    secretHash: v.string(),
+    webhookUrl: v.string(),
+    webhookHeader: v.string(),
+    routine: v.string(),
+    pairingState,
+    pairingCodeHash: v.optional(v.string()),
+    pairingCodeExpiresAt: v.optional(v.number()),
     createdAt: v.number(),
-    revokedAt: v.optional(v.number()),
   })
-    .index("by_keyHash", ["keyHash"])
-    .index("by_name", ["name"]),
+    .index("by_publicId", ["id"])
+    .index("by_pairingCodeHash", ["pairingCodeHash"]),
 
   alerts: defineTable({
-    agentId: v.id("agents"),
-    message: v.string(),
-    options: v.array(v.string()), // at most MAX_OPTIONS (@puck/shared)
-    allowText: v.boolean(),
+    questionId: v.string(),
+    botId: v.id("bots"),
+    question: v.string(),
+    priority,
+    selectionMode,
+    options: v.array(option),
     status: alertStatus,
     scheduledFor: v.optional(v.number()),
-    webhookUrl: v.optional(v.string()),
-    reply: v.optional(reply),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_agent", ["agentId"])
-    .index("by_status", ["status"])
-    .index("by_status_scheduledFor", ["status", "scheduledFor"]),
+    .index("by_questionId", ["questionId"])
+    .index("by_bot", ["botId"])
+    .index("by_status", ["status"]),
+
+  answers: defineTable({
+    alertId: v.id("alerts"),
+    questionId: v.string(),
+    answers: v.array(answerChoice),
+    customReply: v.union(v.string(), v.null()),
+    source: answerSource,
+    answeredAt: v.number(),
+    deliveryStatus,
+    deliveryAttempts: v.number(),
+    lastError: v.optional(v.string()),
+  })
+    .index("by_alert", ["alertId"])
+    .index("by_questionId", ["questionId"]),
 });
