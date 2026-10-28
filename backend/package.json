@@ -1,0 +1,19 @@
+{
+  "name": "@puck/backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "codegen": "convex codegen",
+    "deploy": "convex deploy",
+    "typecheck": "tsc --noEmit -p convex"
+  },
+  "dependencies": {
+    "@puck/shared": "workspace:*",
+    "convex": "^1.48.0"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3"
+  }
+}
