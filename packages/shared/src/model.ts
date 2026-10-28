@@ -16,8 +16,11 @@ export const DEVICE_JWT_AUDIENCE = "puck";
 /** `kid` of the device signing key, published in the JWKS. */
 export const DEVICE_JWT_KID = "puck-device-1";
 
-/** How long a device token stays valid. Clearing the device row revokes it sooner. */
-export const DEVICE_TOKEN_TTL_SECONDS = 180 * 24 * 60 * 60;
+/**
+ * How long an exchanged device JWT stays valid.
+ * The device secret from claim is the long-lived credential; the app exchanges it again at `POST /device/token`.
+ */
+export const DEVICE_TOKEN_TTL_SECONDS = 60 * 60;
 
 /** True when another pending bot would pass the cap. */
 export function tooManyPendingBots(pendingCount: number): boolean {

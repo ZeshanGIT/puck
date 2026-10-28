@@ -50,6 +50,22 @@ async function expectFail(label: string, run: () => Promise<unknown>, pattern: R
   throw new Error(`${label} succeeded and should have failed`);
 }
 
+async function postDevice(
+  path: string,
+  body?: unknown,
+  headers?: Record<string, string>,
+): Promise<{ status: number; text: string }> {
+  const response = await fetch(`${site}${path}`, {
+    method: "POST",
+    headers: {
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+      ...headers,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  return { status: response.status, text: await response.text() };
+}
+
 function clearSmoke(): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -105,52 +121,65 @@ try {
     () => anon.mutation(api.bots.approvePairing, { pairingCode: "000000" }),
     /unauthorized/,
   );
-  await expectFail(
-    "createPairing with no token",
-    () => anon.mutation(api.bots.createPairing, pairing),
-    /unauthorized/,
-  );
-  await expectFail(
-    "claim with a wrong code",
-    () => anon.mutation(api.device.claim, { setupCode: "not-the-code" }),
-    /setup code is not valid/,
-  );
+  const opened = await anon.mutation(api.bots.createPairing, pairing);
+  remember(opened.secret);
+  remember(opened.pairingCode);
+  if (!opened.botId) throw new Error("createPairing without a token did not return a bot");
+  console.log("pass createPairing with no token creates a pending bot");
 
-  const claimed = await anon.mutation(api.device.claim, { setupCode });
-  remember(claimed.token);
-  if (!claimed.deviceId.startsWith("dev_") || claimed.token.split(".").length !== 3) {
-    throw new Error("claim did not return a device jwt");
+  const wrongClaim = await postDevice("/device/claim", { setupCode: "not-the-code" });
+  if (wrongClaim.status !== 401 || !wrongClaim.text.includes("setup code is not valid")) {
+    throw new Error(`claim with a wrong code: ${wrongClaim.status} ${safe(wrongClaim.text)}`);
   }
-  token = claimed.token;
+  console.log("pass claim with a wrong code");
+
+  const claimed = await postDevice("/device/claim", { setupCode });
+  const claimBody = JSON.parse(claimed.text) as { deviceId?: string; secret?: string };
+  if (claimed.status !== 200 || !claimBody.deviceId?.startsWith("dev_") || !claimBody.secret) {
+    throw new Error(`claim with the setup code: ${claimed.status}`);
+  }
+  remember(claimBody.secret);
   console.log("pass claim with the setup code");
 
-  await expectFail(
-    "second device claim",
-    () => anon.mutation(api.device.claim, { setupCode }),
-    /a device is already claimed/,
-  );
+  const second = await postDevice("/device/claim", { setupCode });
+  if (second.status !== 409 || !second.text.includes("a device is already claimed")) {
+    throw new Error(`second device claim: ${second.status} ${safe(second.text)}`);
+  }
+  console.log("pass second device claim");
+
+  const issued = await postDevice("/device/token", undefined, { authorization: `Bearer ${claimBody.secret}` });
+  const tokenBody = JSON.parse(issued.text) as { token?: string };
+  if (issued.status !== 200 || !tokenBody.token || tokenBody.token.split(".").length !== 3) {
+    throw new Error(`token exchange: ${issued.status}`);
+  }
+  remember(tokenBody.token);
+  token = tokenBody.token;
+  console.log("pass token exchange");
 
   const authed = new ConvexHttpClient(url);
   authed.setAuth(token);
+  const session = await authed.query(api.device.session, {});
+  if (session?.deviceId !== claimBody.deviceId) throw new Error("valid token did not authorize the session query");
+  const anonSession = await anon.query(api.device.session, {});
+  if (anonSession !== null) throw new Error("session query authorized a caller with no token");
+  console.log("pass valid token authorizes device.session");
+
   await expectFail(
     "valid token authorizes answers.record",
     () => authed.mutation(api.answers.record, { questionId: "q_smokenotfound01", optionIds: ["yes"] }),
     /alert not found/,
   );
 
-  const created = await authed.mutation(api.bots.createPairing, pairing);
-  remember(created.secret);
-  remember(created.pairingCode);
-  const approved = await authed.mutation(api.bots.approvePairing, { pairingCode: created.pairingCode });
-  if (approved.botId !== created.botId) throw new Error("approvePairing returned a different bot");
-  console.log("pass createPairing and approvePairing with the token");
+  const approved = await authed.mutation(api.bots.approvePairing, { pairingCode: opened.pairingCode });
+  if (approved.botId !== opened.botId) throw new Error("approvePairing returned a different bot");
+  console.log("pass approvePairing with the token");
 
   const posted = await fetch(`${site}/alerts`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-puck-bot-id": created.botId,
-      authorization: `Bearer ${created.secret}`,
+      "x-puck-bot-id": opened.botId,
+      authorization: `Bearer ${opened.secret}`,
     },
     body: JSON.stringify({
       question: "Smoke?",
@@ -174,7 +203,7 @@ try {
   console.log("pass record stores an answer for the paired bot");
 
   for (let i = 1; i <= PENDING_BOT_CAP; i++) {
-    const pending = await authed.mutation(api.bots.createPairing, {
+    const pending = await anon.mutation(api.bots.createPairing, {
       ...pairing,
       name: `smokedev${i}`,
     });
@@ -184,7 +213,7 @@ try {
   await expectFail(
     "pending bot cap",
     () =>
-      authed.mutation(api.bots.createPairing, {
+      anon.mutation(api.bots.createPairing, {
         ...pairing,
         name: "smokedevcap",
       }),

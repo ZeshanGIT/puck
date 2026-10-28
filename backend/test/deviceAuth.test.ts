@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DEVICE_JWT_AUDIENCE, DEVICE_JWT_KID, PENDING_BOT_CAP, tooManyPendingBots } from "@puck/shared";
+import { hashSecret } from "../convex/lib/crypto";
 import {
   DEVICE_ALREADY_CLAIMED,
   SETUP_CODE_ENV,
@@ -9,6 +10,7 @@ import {
   assertAuthorizedDevice,
   assertCanClaim,
   assertSetupCode,
+  assertSetupCodeHash,
   importSigningKey,
   publicJwk,
   signDeviceJwt,
@@ -55,6 +57,8 @@ describe("setup code", () => {
       await expect(assertSetupCode("wrong-horse")).rejects.toThrow(SETUP_CODE_INVALID);
       await expect(assertSetupCode("")).rejects.toThrow(SETUP_CODE_INVALID);
       await expect(assertSetupCode("correct-horse")).resolves.toBeUndefined();
+      await expect(assertSetupCodeHash(await hashSecret("correct-horse"))).resolves.toBeUndefined();
+      await expect(assertSetupCodeHash("ab".repeat(32))).rejects.toThrow(SETUP_CODE_INVALID);
     } finally {
       if (previous === undefined) delete process.env[SETUP_CODE_ENV];
       else process.env[SETUP_CODE_ENV] = previous;

@@ -44,11 +44,28 @@ export function assertCanClaim(alreadyClaimed: boolean): void {
 
 /** Compare a setup code with the env value. Wrong and missing codes share one error. */
 export async function assertSetupCode(provided: string): Promise<void> {
+  const candidate = provided.length > SETUP_CODE_MAX ? "" : provided.trim();
+  await assertSetupCodeHash(await hashSecret(candidate));
+}
+
+/**
+ * Compare a SHA-256 hex digest of a setup code with the env value.
+ * The HTTP claim route hashes the code before the mutation, so the code
+ * itself is never a mutation argument and does not land in Convex logs.
+ */
+export async function assertSetupCodeHash(providedHash: string): Promise<void> {
   const expected = readEnv(SETUP_CODE_ENV);
   if (!expected) throw new DeviceAuthError(`${SETUP_CODE_ENV} is not set`);
-  const candidate = provided.length > SETUP_CODE_MAX ? "" : provided.trim();
-  const [left, right] = await Promise.all([hashSecret(candidate), hashSecret(expected)]);
+  const right = await hashSecret(expected);
+  const left = /^[0-9a-f]{64}$/u.test(providedHash) ? providedHash : "0".repeat(64);
   if (!timingSafeEqual(left, right)) throw new DeviceAuthError(SETUP_CODE_INVALID);
+}
+
+/** URL-safe random token. For HTTP actions only: mutations must not call `getRandomValues`. */
+export function randomToken(prefix: string, byteLength = 32): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return `${prefix}${encodeBase64Url(bytes)}`;
 }
 
 export type DeviceRecord = {

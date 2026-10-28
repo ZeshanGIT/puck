@@ -55,12 +55,13 @@ export default defineSchema({
     .index("by_pairingCodeHash", ["pairingCodeHash"])
     .index("by_pairingState", ["pairingState"]),
 
-  // One phone. claim inserts the only row; a second claim is rejected.
+  // One phone. The secret is stored only as a hash. A second claim is rejected.
   device: defineTable({
     id: v.string(),
+    secretHash: v.string(),
     tokenId: v.string(),
     claimedAt: v.number(),
-  }),
+  }).index("by_secretHash", ["secretHash"]),
 
   alerts: defineTable({
     questionId: v.string(),

@@ -26,7 +26,8 @@ function validationMessage(error: unknown): never {
 
 /**
  * `puck add`. Returns the secret once; only secretHash is stored.
- * The claimed device must call it. Pending bots stop at PENDING_BOT_CAP.
+ * The CLI calls this with no device login. It only creates a pending bot,
+ * and pending bots stop at PENDING_BOT_CAP. The device approves before the bot can send.
  */
 export const createPairing = mutationGeneric({
   args: {
@@ -41,7 +42,6 @@ export const createPairing = mutationGeneric({
     pairingCode: v.string(),
   }),
   handler: async (ctx, args) => {
-    await requireDevice(ctx);
     const pending = await ctx.db
       .query("bots")
       .withIndex("by_pairingState", (q) => q.eq("pairingState", "pending"))
