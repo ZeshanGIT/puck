@@ -1,7 +1,7 @@
 import { AlertValidationError, validateAnswer } from "@puck/shared";
 import { mutationGeneric } from "convex/server";
 import { v } from "convex/values";
-import { deliverAnswer } from "./refs";
+import { internal } from "./_generated/api";
 
 /**
  * Records Seshan's reply and schedules the webhook POST.
@@ -49,7 +49,7 @@ export const record = mutationGeneric({
       deliveryAttempts: 0,
     });
     await ctx.db.patch(alert._id, { status: "answered", updatedAt: answeredAt });
-    await ctx.scheduler.runAfter(0, deliverAnswer, { answerId });
+    await ctx.scheduler.runAfter(0, internal.delivery.deliver, { answerId });
     return { questionId: alert.questionId };
   },
 });

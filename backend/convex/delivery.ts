@@ -1,8 +1,8 @@
 import { DELIVERY_MAX_ATTEMPTS, buildAnswerPayload, deliveryBackoffMs } from "@puck/shared";
 import { internalActionGeneric, internalMutationGeneric } from "convex/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { CryptoError, decryptHeader } from "./lib/crypto";
-import { beginDelivery, completeDelivery, deliverAnswer, failDelivery } from "./refs";
 
 /** Claim one delivery attempt and return the webhook call, or report that nothing should be sent. */
 export const begin = internalMutationGeneric({
@@ -92,7 +92,7 @@ export const fail = internalMutationGeneric({
       return null;
     }
     await ctx.db.patch(answer._id, { lastError });
-    await ctx.scheduler.runAfter(delay, deliverAnswer, { answerId: answer._id });
+    await ctx.scheduler.runAfter(delay, internal.delivery.deliver, { answerId: answer._id });
     return null;
   },
 });
@@ -102,7 +102,7 @@ export const deliver = internalActionGeneric({
   args: { answerId: v.id("answers") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const job = await ctx.runMutation(beginDelivery, { answerId: args.answerId });
+    const job = await ctx.runMutation(internal.delivery.begin, { answerId: args.answerId });
     if (!job.proceed) return null;
     try {
       const authorization = await decryptHeader(job.webhookHeader);
@@ -117,18 +117,18 @@ export const deliver = internalActionGeneric({
         body: job.body,
       });
       if (!response.ok) {
-        await ctx.runMutation(failDelivery, {
+        await ctx.runMutation(internal.delivery.fail, {
           answerId: args.answerId,
           error: `webhook responded HTTP ${response.status}`,
           retry: true,
         });
         return null;
       }
-      await ctx.runMutation(completeDelivery, { answerId: args.answerId });
+      await ctx.runMutation(internal.delivery.complete, { answerId: args.answerId });
       return null;
     } catch (error) {
       const decryptFailed = error instanceof CryptoError;
-      await ctx.runMutation(failDelivery, {
+      await ctx.runMutation(internal.delivery.fail, {
         answerId: args.answerId,
         error: decryptFailed ? "could not decrypt the webhook header" : "webhook request failed",
         retry: !decryptFailed,

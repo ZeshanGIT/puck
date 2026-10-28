@@ -38,7 +38,7 @@ Add native-compatible packages with `bunx expo install <package>` so versions ma
 
 ## Backend (`backend/`)
 
-The Convex project stores bots, alerts and answers (`convex/schema.ts`) and serves `GET /health`, `POST /alerts` and `GET /alerts/<questionId>`. It is not connected to a deployment yet, so `convex/_generated/` does not exist. HTTP actions use `httpActionGeneric`, and cross-function calls use `makeFunctionReference` until the first `bun run dev`.
+The Convex project stores bots, alerts and answers (`convex/schema.ts`) and serves `GET /health`, `POST /alerts` and `GET /alerts/<questionId>`. The dev deployment is `usable-mule-44` (team `sthx-sthx`, project `puck`): the client URL is `https://usable-mule-44.convex.cloud` and HTTP actions are at `https://usable-mule-44.convex.site`. `convex/http.ts` uses the generated `httpAction`, and internal calls use `internal` from `convex/_generated/api`.
 
 `POST /alerts` and `GET /alerts/<questionId>` authenticate with the headers `X-Puck-Bot-Id` (the public id, such as `sheldon-23648`) and `Authorization: Bearer <secret>`. The secret is hashed and compared with `bots.secretHash`. A paired bot's `POST /alerts` returns `{ "questionId": "q_..." }` immediately. The body is a question, `priority` (`normal` or `urgent`), `selectionMode` (`single` or `multi`) and `options` (`id`, `label`, optional `icon`).
 
@@ -46,26 +46,19 @@ Recording a reply is the public mutation `answers.record`. It stores the answer 
 
 Pairing is stubbed as the mutations `bots.createPairing` and `bots.approvePairing`. `createPairing` returns the bot id, the secret (once) and a six-digit code. It stores a hash of the secret and an encrypted webhook header. The CLI and app do not call these yet.
 
-Set the encryption key in the Convex deployment environment before pairing or delivery. It must be 32 bytes, base64-encoded. Do not commit it.
+`PUCK_ENCRYPTION_KEY` is set on the dev deployment. It is 32 bytes of base64. Do not print it or commit it. `backend/.env.local` is git-ignored.
+
+Push function changes with:
 
 ```sh
 cd backend
-bunx convex env set PUCK_ENCRYPTION_KEY "$(openssl rand -base64 32)"
+bunx convex dev --once
 ```
-
-First-time connection (needs the Convex account that will own the project):
-
-```sh
-cd backend
-bun run dev          # convex dev: log in, create or pick the project, then watch and push
-```
-
-This writes `backend/.env.local` (git-ignored) and generates `backend/convex/_generated/`, which should be committed. After that, switch `convex/http.ts` from `httpActionGeneric` to the typed `httpAction` from `./_generated/server`, and switch `convex/refs.ts` from `makeFunctionReference` to `internal` from `./_generated/api`. Until a deployment exists, `convex codegen` cannot run, so the code only uses the generic helpers from `convex/server` and still typechecks. No generated files are committed in their place.
 
 Check the health route:
 
 ```sh
-curl https://<deployment>.convex.site/health
+curl https://usable-mule-44.convex.site/health
 ```
 
 ## CLI (`cli/`)
