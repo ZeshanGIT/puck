@@ -30,7 +30,7 @@ pnpm-debug.log*
 .convex/
 .env.local
 
-# Flutter / Dart (app/)
+# Mobile app (app/): Dart toolchain
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
@@ -62,5 +62,15 @@ app/build/
 **/ios/Runner/GeneratedPluginRegistrant.*
 xcuserdata/
 
-# Rust (possible CLI)
-target/
+# Mobile app (app/): React Native / Expo
+.expo/
+.expo-shared/
+web-build/
+expo-env.d.ts
+*.hprof
+.bundle/
+**/ios/build/
+
+# CLI (cli/): compiled executables
+cli/bin/
+*.exe
