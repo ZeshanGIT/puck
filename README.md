@@ -16,7 +16,7 @@ A TypeScript monorepo managed with [Bun workspaces](https://bun.sh/docs/install/
 
 - [Bun](https://bun.sh) 1.4 or newer: `curl -fsSL https://bun.sh/install | bash`
 - Node.js 22.13 or newer (LTS), needed by the Expo CLI
-- For the app on a phone: Android device or emulator; full-screen alerts will need a development build (not Expo Go)
+- For the app on Android: a development build (not Expo Go), the Android SDK, and JDK 17 for local Gradle builds
 
 ## Setup
 
@@ -28,11 +28,40 @@ bun test             # unit tests for hashing, validation and the answer payload
 
 ## App (`app/`)
 
+The app needs a **development build** (not Expo Go) because full-screen alerts will use native modules such as Notifee later. Phase 1 adds `expo-dev-client` and the Android application id `in.puckit.app`.
+
+### Requirements on your machine
+
+- Node.js 22.13 or newer (LTS)
+- Android SDK at `$HOME/Library/Android/sdk` (Android Studio)
+- JDK 17 for Gradle (the app `start` script exports `JAVA_HOME` from `/usr/libexec/java_home -v 17`; it does not change your system Java default)
+
+### Local Android build (no device required)
+
+From the repo root:
+
+```sh
+~/.bun/bin/bun install
+cd app
+~/.bun/bin/bunx expo prebuild --platform android --no-install
+export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+cd android
+./gradlew :app:assembleDebug
+```
+
+Prebuild writes `app/android/` locally (gitignored). A successful `assembleDebug` produces a debug APK under `app/android/app/build/outputs/apk/debug/`.
+
+### Run on a device or emulator (development build)
+
+When you have a connected device or a working emulator:
+
 ```sh
 cd app
-bun run start        # Expo dev server (scan the QR code with Expo Go for now)
-bun run android      # start and open on a connected Android device or emulator
+~/.bun/bin/bun run android
 ```
+
+The `start` and `android` scripts export `JAVA_HOME` and `ANDROID_HOME` before calling Expo. With the dev client installed, `~/.bun/bin/bun run start` runs Metro for JavaScript hot reload.
 
 Add native-compatible packages with `bunx expo install <package>` so versions match the Expo SDK. Metro resolves workspace packages such as `@puck/shared` automatically; no custom Metro config is needed.
 

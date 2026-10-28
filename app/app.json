@@ -2,14 +2,18 @@
   "expo": {
     "name": "Puck",
     "slug": "puck",
+    "scheme": "puck",
     "version": "1.0.0",
     "orientation": "portrait",
+    "plugins": ["expo-dev-client"],
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "in.puckit.app"
     },
     "android": {
+      "package": "in.puckit.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

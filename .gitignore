@@ -30,6 +30,10 @@ pnpm-debug.log*
 .convex/
 .env.local
 
+# Expo Continuous Native Generation (app/)
+app/android/
+app/ios/
+
 # Android (Expo prebuild output)
 **/android/build/
 **/android/app/build/

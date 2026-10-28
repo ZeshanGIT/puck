@@ -5,6 +5,7 @@
   "dependencies": {
     "@puck/shared": "workspace:*",
     "expo": "~58.0.20",
+    "expo-dev-client": "~58.0.17",
     "expo-status-bar": "~58.0.4",
     "react": "19.3.0",
     "react-native": "0.88.0"
@@ -14,9 +15,9 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "start": "export JAVA_HOME=\"$(/usr/libexec/java_home -v 17)\" ANDROID_HOME=\"$HOME/Library/Android/sdk\" && expo start",
+    "android": "export JAVA_HOME=\"$(/usr/libexec/java_home -v 17)\" ANDROID_HOME=\"$HOME/Library/Android/sdk\" && expo run:android",
+    "ios": "expo run:ios",
     "typecheck": "tsc --noEmit"
   },
   "private": true
