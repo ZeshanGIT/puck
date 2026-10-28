@@ -4,6 +4,29 @@
 /** An alert can offer at most this many options. */
 export const MAX_OPTIONS = 4;
 
+/**
+ * Unapproved bots. `createPairing` stops once this many are still pending,
+ * so a claimed device cannot fill the table.
+ */
+export const PENDING_BOT_CAP = 5;
+
+/** Audience (`aud`) of the one-device JWT. */
+export const DEVICE_JWT_AUDIENCE = "puck";
+
+/** `kid` of the device signing key, published in the JWKS. */
+export const DEVICE_JWT_KID = "puck-device-1";
+
+/** How long a device token stays valid. Clearing the device row revokes it sooner. */
+export const DEVICE_TOKEN_TTL_SECONDS = 180 * 24 * 60 * 60;
+
+/** True when another pending bot would pass the cap. */
+export function tooManyPendingBots(pendingCount: number): boolean {
+  if (!Number.isInteger(pendingCount) || pendingCount < 0) {
+    throw new Error("pending bot count must be a non-negative integer");
+  }
+  return pendingCount >= PENDING_BOT_CAP;
+}
+
 /** Lifecycle of an alert. Delivery of the answer is tracked separately. */
 export const ALERT_STATUSES = [
   "scheduled", // scheduledFor is still in the future

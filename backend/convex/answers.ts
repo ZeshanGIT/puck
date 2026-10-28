@@ -2,11 +2,11 @@ import { AlertValidationError, validateAnswer } from "@puck/shared";
 import { mutationGeneric } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { requireDevice } from "./device";
 
 /**
  * Records Seshan's reply and schedules the webhook POST.
- * Public so the app can call it. v0 has no user account yet; the app slice
- * still has to decide how the phone proves it is his.
+ * The caller must be the claimed device. There is still no user account.
  */
 export const record = mutationGeneric({
   args: {
@@ -16,6 +16,7 @@ export const record = mutationGeneric({
   },
   returns: v.object({ questionId: v.string() }),
   handler: async (ctx, args) => {
+    await requireDevice(ctx);
     const alert = await ctx.db
       .query("alerts")
       .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))

@@ -1,6 +1,15 @@
-import { AlertValidationError, botPublicId, formatPairingCode, validatePairingInput } from "@puck/shared";
+import {
+  AlertValidationError,
+  PENDING_BOT_CAP,
+  botPublicId,
+  formatPairingCode,
+  tooManyPendingBots,
+  validatePairingInput,
+} from "@puck/shared";
 import { internalQueryGeneric, mutationGeneric } from "convex/server";
 import { v } from "convex/values";
+import { requireDevice } from "./device";
+import { TOO_MANY_PENDING_BOTS } from "./lib/deviceAuth";
 import { encryptHeader, hashSecret, mutationRandomInt, newSecret, timingSafeEqual } from "./lib/crypto";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
@@ -16,8 +25,8 @@ function validationMessage(error: unknown): never {
 }
 
 /**
- * Stub for `puck add`. Returns the secret once; only secretHash is stored.
- * Not an HTTP route. The CLI slice will call this and write the secret to the key file.
+ * `puck add`. Returns the secret once; only secretHash is stored.
+ * The claimed device must call it. Pending bots stop at PENDING_BOT_CAP.
  */
 export const createPairing = mutationGeneric({
   args: {
@@ -32,6 +41,12 @@ export const createPairing = mutationGeneric({
     pairingCode: v.string(),
   }),
   handler: async (ctx, args) => {
+    await requireDevice(ctx);
+    const pending = await ctx.db
+      .query("bots")
+      .withIndex("by_pairingState", (q) => q.eq("pairingState", "pending"))
+      .take(PENDING_BOT_CAP);
+    if (tooManyPendingBots(pending.length)) throw new Error(TOO_MANY_PENDING_BOTS);
     let pairing;
     try {
       pairing = validatePairingInput(args);
@@ -91,11 +106,12 @@ export const createPairing = mutationGeneric({
   },
 });
 
-/** Stub for the app. Seshan enters the six-digit code; the bot becomes paired. */
+/** The app sends the six-digit code. The claimed device must call it. */
 export const approvePairing = mutationGeneric({
   args: { pairingCode: v.string() },
   returns: v.object({ botId: v.string() }),
   handler: async (ctx, args) => {
+    await requireDevice(ctx);
     if (!/^\d{6}$/u.test(args.pairingCode)) invalidCode();
     const pairingCodeHash = await hashSecret(args.pairingCode);
     const bot = await ctx.db

@@ -6,7 +6,9 @@ import {
   formatPairingCode,
   isBotId,
   isQuestionId,
+  PENDING_BOT_CAP,
   questionIdFromBytes,
+  tooManyPendingBots,
 } from "./model";
 
 describe("delivery backoff", () => {
@@ -43,5 +45,13 @@ describe("ids", () => {
   test("formats a six-digit pairing code", () => {
     expect(formatPairingCode(42)).toBe("000042");
     expect(formatPairingCode(236481)).toBe("236481");
+  });
+});
+
+describe("pending bot cap", () => {
+  test("allows fewer than the cap and rejects the next pending bot", () => {
+    expect(tooManyPendingBots(PENDING_BOT_CAP - 1)).toBe(false);
+    expect(tooManyPendingBots(PENDING_BOT_CAP)).toBe(true);
+    expect(() => tooManyPendingBots(-1)).toThrow(/non-negative/);
   });
 });

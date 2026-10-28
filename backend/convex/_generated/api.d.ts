@@ -12,8 +12,10 @@ import type * as alerts from "../alerts.js";
 import type * as answers from "../answers.js";
 import type * as bots from "../bots.js";
 import type * as delivery from "../delivery.js";
+import type * as device from "../device.js";
 import type * as http from "../http.js";
 import type * as lib_crypto from "../lib/crypto.js";
+import type * as lib_deviceAuth from "../lib/deviceAuth.js";
 
 import type {
   ApiFromModules,
@@ -26,8 +28,10 @@ declare const fullApi: ApiFromModules<{
   answers: typeof answers;
   bots: typeof bots;
   delivery: typeof delivery;
+  device: typeof device;
   http: typeof http;
   "lib/crypto": typeof lib_crypto;
+  "lib/deviceAuth": typeof lib_deviceAuth;
 }>;
 
 /**

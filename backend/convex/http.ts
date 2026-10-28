@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { hashSecret } from "./lib/crypto";
+import { DeviceAuthError, publicJwks } from "./lib/deviceAuth";
 
 // HTTP endpoints, served at https://<deployment>.convex.site.
 //
@@ -24,6 +25,20 @@ http.route({
   path: "/health",
   method: "GET",
   handler: httpAction(async () => json({ ok: true, service: "puck" }, 200)),
+});
+
+// Public key for the device JWT. Private key material never leaves the signing helper.
+http.route({
+  path: "/.well-known/jwks.json",
+  method: "GET",
+  handler: httpAction(async () => {
+    try {
+      return json(await publicJwks(), 200);
+    } catch (error) {
+      if (error instanceof DeviceAuthError) return json({ error: "jwks unavailable" }, 500);
+      throw error;
+    }
+  }),
 });
 
 http.route({

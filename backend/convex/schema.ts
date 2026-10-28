@@ -52,7 +52,15 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_publicId", ["id"])
-    .index("by_pairingCodeHash", ["pairingCodeHash"]),
+    .index("by_pairingCodeHash", ["pairingCodeHash"])
+    .index("by_pairingState", ["pairingState"]),
+
+  // One phone. claim inserts the only row; a second claim is rejected.
+  device: defineTable({
+    id: v.string(),
+    tokenId: v.string(),
+    claimedAt: v.number(),
+  }),
 
   alerts: defineTable({
     questionId: v.string(),
