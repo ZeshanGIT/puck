@@ -5,7 +5,19 @@
     "scheme": "puck",
     "version": "1.0.0",
     "orientation": "portrait",
-    "plugins": ["expo-dev-client"],
+    "plugins": [
+      "expo-dev-client",
+      "expo-secure-store",
+      "@clerk/expo-google-signin",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "puck-alerts",
+          "color": "#3c241c"
+        }
+      ],
+      "./plugins/withFullScreen"
+    ],
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
@@ -14,6 +26,7 @@
     },
     "android": {
       "package": "in.puckit.app",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

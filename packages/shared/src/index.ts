@@ -10,10 +10,15 @@ export {
   MAX_OPTIONS,
   PAIRING_CODE_PATTERN,
   PENDING_BOT_CAP,
+  FULL_SCREEN_KIND,
   PAIRING_STATES,
+  PUSH_CHANNEL_ID,
+  PUSH_URGENT_CHANNEL_ID,
+  PRESENTATIONS,
   PRIORITIES,
   QUESTION_ID_PATTERN,
   SELECTION_MODES,
+  SWIPE_OPTION_COUNT,
   botPublicId,
   deliveryBackoffMs,
   formatPairingCode,
@@ -33,9 +38,28 @@ export type {
   DeliveryStatus,
   PairingInput,
   PairingState,
+  Presentation,
   Priority,
   RecordedAnswer,
   SelectionMode,
 } from "./model";
+export { cancelStep, releaseStep } from "./schedule";
+export type { CancelStep, ReleaseStep } from "./schedule";
 export { buildAnswerPayload } from "./payload";
 export { AlertValidationError, validateAnswer, validateCreateAlert, validatePairingInput } from "./validate";
+export {
+  ClerkSignInError,
+  DEV_CLERK_FRONTEND_API,
+  beginGoogleSignIn,
+  callbackProblem,
+  clerkCallbackQuery,
+  clerkFrontendApi,
+  clerkPublishableKey,
+  hasClerkReturn,
+  endClerkSession,
+  finishGoogleSignIn,
+  nonceFromCallback,
+  readClerkAccount,
+  signInWithGoogleOneTap,
+} from "./clerk";
+export type { ClerkAccount, ClerkSignInCode, GoogleSignInAttempt } from "./clerk";

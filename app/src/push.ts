@@ -1,0 +1,99 @@
+import { anyApi } from "convex/server";
+import { useConvex } from "convex/react";
+import { useEffect, useState } from "react";
+import { questionIdFromNotificationData } from "./pushOpen";
+import { readableError } from "./session";
+import { loadNotificationsModule, registerPushTokenWithConvex } from "./onboarding/notificationSetup";
+
+/** Registers this phone for heads-up alerts once the device JWT is in place. */
+export function usePushRegistration(enabled: boolean): boolean | null {
+  const client = useConvex();
+  const [granted, setGranted] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    let remove = () => {};
+
+    async function run() {
+      const Notifications = await loadNotificationsModule();
+      if (!Notifications || cancelled) return;
+      const ok = await registerPushTokenWithConvex(Notifications, async (token) => {
+        await client.mutation(anyApi.device.registerPushToken, { token });
+      });
+      if (cancelled) return;
+      setGranted(ok);
+      const subscription = Notifications.addPushTokenListener((next) => {
+        if (typeof next.data !== "string") return;
+        void client.mutation(anyApi.device.registerPushToken, { token: next.data }).catch((error: unknown) => {
+          console.error(readableError(error));
+        });
+      });
+      remove = () => subscription.remove();
+    }
+
+    run().catch((error: unknown) => {
+      console.error(readableError(error));
+    });
+    return () => {
+      cancelled = true;
+      remove();
+    };
+  }, [client, enabled]);
+
+  return granted;
+}
+
+/** Question opened from a notification tap, including a cold start. */
+export function useOpenedQuestionId(): string | null {
+  const [opened, setOpened] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let remove = () => {};
+    loadNotificationsModule()
+      .then((Notifications) => {
+        if (!Notifications || cancelled) return null;
+        const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+          setOpened(questionIdFromNotificationData(response.notification.request.content.data));
+        });
+        remove = () => subscription.remove();
+        return Notifications.getLastNotificationResponseAsync();
+      })
+      .then((response) => {
+        if (!response || cancelled) return;
+        setOpened(questionIdFromNotificationData(response.notification.request.content.data));
+      })
+      .catch((error: unknown) => {
+        console.error(readableError(error));
+      });
+    return () => {
+      cancelled = true;
+      remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let remove = () => {};
+    import("@notifee/react-native")
+      .then(async (mod) => {
+        if (cancelled) return;
+        const initial = await mod.default.getInitialNotification();
+        const initialId = questionIdFromNotificationData(initial?.notification.data ?? null);
+        if (initialId) setOpened(initialId);
+        remove = mod.default.onForegroundEvent(({ type, detail }) => {
+          if (type !== mod.EventType.PRESS) return;
+          const openedId = questionIdFromNotificationData(detail.notification?.data ?? null);
+          if (openedId) setOpened(openedId);
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      remove();
+    };
+  }, []);
+
+  return opened;
+}
