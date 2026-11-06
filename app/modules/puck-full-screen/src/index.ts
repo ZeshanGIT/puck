@@ -3,6 +3,7 @@ import { requireNativeModule } from "expo";
 type FullScreenNative = {
   canUse: () => boolean;
   leaveIfLocked?: () => boolean;
+  hasDndAccess?: () => boolean;
 };
 
 function nativeModule(): FullScreenNative | null {
@@ -31,5 +32,19 @@ export function leaveIfLocked(): boolean {
     return nativeModule()?.leaveIfLocked?.() === true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * True when Do Not Disturb access is allowed for Puck. Null when this build predates the native
+ * function, so the caller can fall back to "asked".
+ */
+export function hasDndAccess(): boolean | null {
+  try {
+    const native = nativeModule();
+    if (!native?.hasDndAccess) return null;
+    return native.hasDndAccess() === true;
+  } catch {
+    return null;
   }
 }

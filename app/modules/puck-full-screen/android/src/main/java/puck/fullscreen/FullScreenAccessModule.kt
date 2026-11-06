@@ -7,7 +7,10 @@ import android.os.Build
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
-/** Reads NotificationManager.canUseFullScreenIntent. Notifee does not expose it. */
+/**
+ * Reads NotificationManager.canUseFullScreenIntent and isNotificationPolicyAccessGranted
+ * (Do Not Disturb access). Notifee exposes neither.
+ */
 class FullScreenAccessModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("PuckFullScreenAccess")
@@ -17,6 +20,13 @@ class FullScreenAccessModule : Module() {
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return@Function true
       val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
       manager.canUseFullScreenIntent()
+    }
+
+    // True when the person has allowed Puck in the Do Not Disturb access settings.
+    Function("hasDndAccess") {
+      val context = appContext.reactContext ?: return@Function false
+      val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      manager.isNotificationPolicyAccessGranted
     }
 
     // The activity is showing over the lock screen. Step back so the lock screen is visible again.

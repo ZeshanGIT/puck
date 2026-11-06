@@ -10,7 +10,7 @@ import { anyApi } from "convex/server";
 import { useConvex } from "convex/react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Linking, Pressable, StyleSheet, Text, View } from "react-native";
-import { canUseFullScreenIntent } from "puck-full-screen";
+import { canUseFullScreenIntent, hasDndAccess } from "puck-full-screen";
 import { syncClientFullScreen, syncClientPushToken } from "../clientAuth";
 import { openDndAccessSettings } from "../onboarding/dndAccess";
 import { openFullScreenSettings } from "../onboarding/fullScreenSetup";
@@ -34,20 +34,32 @@ export function O2Permissions({ clientId, onContinue }: { clientId: string; onCo
   const [notification, setNotification] = useState<NotificationState>({ granted: false, canAskAgain: true });
   const [fullScreen, setFullScreen] = useState<boolean>(() => canUseFullScreenIntent());
   const [dndAsked, setDndAsked] = useState(false);
+  // Real Do Not Disturb access, or null on a build without the native function.
+  const [dnd, setDnd] = useState<boolean | null>(() => hasDndAccess());
   const dndLaunched = useRef(false);
-  const previous = useRef<{ notification: boolean; fullScreen: boolean } | null>(null);
+  const previous = useRef<{ notification: boolean; fullScreen: boolean; dnd: boolean | null } | null>(null);
 
   const refresh = useCallback(async () => {
     const [nextNotification, nextFullScreen] = [await readNotificationRowState(), canUseFullScreenIntent()];
+    const nextDnd = hasDndAccess();
     setNotification(nextNotification);
     setFullScreen(nextFullScreen);
+    setDnd(nextDnd);
     const before = previous.current;
-    previous.current = { notification: nextNotification.granted, fullScreen: nextFullScreen };
+    previous.current = { notification: nextNotification.granted, fullScreen: nextFullScreen, dnd: nextDnd };
+    const syncDnd = () => {
+      if (nextDnd === null) return;
+      client
+        .mutation(anyApi.clients.setFlags, { clientId, dndAccess: nextDnd })
+        .catch((error: unknown) => console.error(readableError(error)));
+    };
     if (!before) {
       // First look: record the current state on the client row so an urgent alert can ring.
       syncClientFullScreen(client, clientId).catch((error: unknown) => console.error(readableError(error)));
+      syncDnd();
       return;
     }
+    if (nextDnd !== before.dnd) syncDnd();
     if (nextNotification.granted && !before.notification) {
       toast.show("Notifications on");
       syncClientPushToken(client, clientId).catch((error: unknown) => console.error(readableError(error)));
@@ -67,7 +79,7 @@ export function O2Permissions({ clientId, onContinue }: { clientId: string; onCo
       if (dndLaunched.current) {
         dndLaunched.current = false;
         setDndAsked(true);
-        toast.show("Do Not Disturb access allowed");
+        if (hasDndAccess() !== false) toast.show("Do Not Disturb access allowed");
       }
       void refresh();
     });
@@ -129,7 +141,7 @@ export function O2Permissions({ clientId, onContinue }: { clientId: string; onCo
         icon={<MoonIcon colour={t.ink} />}
         title="Get through Do Not Disturb"
         body="Bots can ask to ring through DND and silent mode. At first only urgent alerts may."
-        on={dndAsked}
+        on={dnd ?? dndAsked}
         action="Allow"
         onPress={() => void allowDnd()}
       />
