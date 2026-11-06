@@ -99,12 +99,13 @@ export function hideAlert(questionId: string): void {
  * Picks the alert to show: the one a notification opened, else the oldest. Alerts he closed an A9
  * card for, and ones waiting in the offline queue, are left out. An alert already on screen that
  * leaves the list (he answered it, the bot cancelled it, it was answered elsewhere) is held, with
- * `stale` true, until `release` is called, so the receipt or the A9 card can show.
+ * `stale` true, until `release` is called, so the receipt or the A9 card can show. `live` is every
+ * alert that could be shown (what `waiting` counts), for the inbox's choice of the stack.
  */
 export function useAlertDeck(
   pending: PendingAlert[] | undefined,
   openedId: string | null,
-): { alert: PendingAlert | null; waiting: number; stale: boolean; release: () => void } {
+): { alert: PendingAlert | null; waiting: number; stale: boolean; release: () => void; live: PendingAlert[] } {
   const [version, setVersion] = useState(0);
   const live = useMemo(
     () => (pending ?? []).filter((item) => !hidden.has(item.questionId) && !isQueuedLocally(item.questionId)),
@@ -123,7 +124,76 @@ export function useAlertDeck(
     setHeld(null);
     setVersion((value) => value + 1);
   }, []);
-  return { alert: heldGone ? held : next, waiting: live.length, stale: heldGone, release };
+  return { alert: heldGone ? held : next, waiting: live.length, stale: heldGone, release, live };
+}
+
+/* ------------------------------------------------------- sending an answer (shared) */
+
+/**
+ * The body of an answer: `replyPayload` trims the reply and refuses an empty answer. A reply that is
+ * only attachments is allowed. Shared by this host and the stack (`StackHost`).
+ */
+export function answerPayloadFor(
+  optionIds: string[],
+  customReply: string | undefined,
+  attachments: UploadedAttachment[] | undefined,
+): { optionIds: string[]; customReply?: string } {
+  const hasFiles = (attachments?.length ?? 0) > 0;
+  return hasFiles
+    ? { optionIds, customReply: (customReply ?? "").trim() }
+    : replyPayload({
+        mode: "multi",
+        state: { armedId: null, selectedIds: optionIds },
+        confirmId: null,
+        customReply: customReply ?? "",
+      });
+}
+
+/** `answers.record` as `deliverAnswer` calls it (`useMutation(anyApi.answers.record)` fits). */
+export type RecordAnswer = (args: {
+  questionId: string;
+  clientId?: string;
+  optionIds: string[];
+  customReply?: string;
+  attachments?: UploadedAttachment[];
+}) => Promise<unknown>;
+
+/**
+ * Sends one answer, or keeps it on the phone when the connection is down. Offline, a signed-in phone
+ * (`clientId` given) keeps the answer and sends it later; the legacy device path (`clientId` null)
+ * just sends (Convex holds the call until the connection is back). A send that fails while online
+ * throws. Shared by this host and the stack (`StackHost`).
+ */
+export async function deliverAnswer(input: {
+  alert: PendingAlert;
+  payload: { optionIds: string[]; customReply?: string };
+  attachments: UploadedAttachment[] | undefined;
+  clientId: string | null;
+  online: boolean;
+  record: RecordAnswer;
+}): Promise<"sent" | "queued"> {
+  const { alert, payload, attachments, clientId, online, record } = input;
+  const hasFiles = (attachments?.length ?? 0) > 0;
+  const item: QueuedAnswer = {
+    questionId: alert.questionId,
+    optionIds: payload.optionIds,
+    ...(payload.customReply ? { customReply: payload.customReply } : {}),
+    ...(hasFiles && attachments ? { attachments } : {}),
+    queuedAt: Date.now(),
+    ...(alert.expiresAt === undefined ? {} : { expiresAt: alert.expiresAt }),
+  };
+  const send = async (entry: QueuedAnswer) => {
+    await record({
+      questionId: alert.questionId,
+      ...(clientId ? { clientId } : {}),
+      optionIds: entry.optionIds,
+      ...(entry.customReply ? { customReply: entry.customReply } : {}),
+      ...(entry.attachments ? { attachments: entry.attachments } : {}),
+    });
+  };
+  if (clientId) return submitOrQueue({ online, item, send });
+  await send(item);
+  return "sent";
 }
 
 /* ------------------------------------------------------------------ the host */
@@ -160,7 +230,7 @@ function answeredView(
 const MAX_TIMER_MS = 2_147_483_647;
 
 /** True once `expiresAt` has passed (it flips by itself at that moment). */
-function useExpired(expiresAt: number | undefined): boolean {
+export function useExpired(expiresAt: number | undefined): boolean {
   const [expired, setExpired] = useState(() => expiresAt !== undefined && Date.now() >= expiresAt);
   useEffect(() => {
     if (expiresAt === undefined) return;
@@ -247,41 +317,18 @@ function ConnectedAlertHost({
       // On the lock screen a destructive option, or a `requiresUnlock` alert, asks to unlock first.
       // A throw here reaches the screen as a Toast and keeps the alert up (Q9, Q10).
       await ensureUnlockedFor(alert, optionIds);
-      // `replyPayload` trims the reply and refuses an empty answer. A reply that is only
-      // attachments is allowed.
-      const hasFiles = (attachments?.length ?? 0) > 0;
-      const payload = hasFiles
-        ? { optionIds, customReply: (customReply ?? "").trim() }
-        : replyPayload({
-            mode: "multi",
-            state: { armedId: null, selectedIds: optionIds },
-            confirmId: null,
-            customReply: customReply ?? "",
-          });
+      const payload = answerPayloadFor(optionIds, customReply, attachments);
       setAnswered(answeredView(alert, payload.optionIds, payload.customReply || undefined, attachments));
       const id = await readClientId();
-      const item: QueuedAnswer = {
-        questionId,
-        optionIds: payload.optionIds,
-        ...(payload.customReply ? { customReply: payload.customReply } : {}),
-        ...(hasFiles && attachments ? { attachments } : {}),
-        queuedAt: Date.now(),
-        ...(alert.expiresAt === undefined ? {} : { expiresAt: alert.expiresAt }),
-      };
-      const send = (entry: QueuedAnswer) =>
-        record({
-          questionId,
-          ...(id ? { clientId: id } : {}),
-          optionIds: entry.optionIds,
-          ...(entry.customReply ? { customReply: entry.customReply } : {}),
-          ...(entry.attachments ? { attachments: entry.attachments } : {}),
-        });
       try {
-        // Offline, a signed-in phone keeps the answer and sends it later; the legacy device path
-        // just sends (Convex holds the call until the connection is back).
-        let outcome: "sent" | "queued" = "sent";
-        if (id) outcome = await submitOrQueue({ online: onlineRef.current, item, send });
-        else await send(item);
+        const outcome = await deliverAnswer({
+          alert,
+          payload,
+          attachments,
+          clientId: id,
+          online: onlineRef.current,
+          record,
+        });
         setAnswered((view) => (view ? { ...view, queued: outcome === "queued", sentLocally: outcome === "sent" } : view));
       } catch (error) {
         setAnswered(null);

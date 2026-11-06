@@ -1,7 +1,7 @@
 import type { ClerkAccount } from "@puck/shared";
 import { ConvexProvider, useConvex } from "convex/react";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Linking, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { appGate, nextStep, type OnboardingStatus, type OnboardingStep } from "./src/accountGate";
@@ -17,14 +17,16 @@ import { usePushRegistration } from "./src/push";
 import { recordQueuedAnswer, useAnswerQueueFlush } from "./src/screens/A10Offline";
 import { useWakeSnoozed } from "./src/screens/A11Snooze";
 import { AlertHost } from "./src/screens/AlertHost";
-import { AStack } from "./src/screens/AStack";
+import { AStack, type StackAnswer, type StackGone } from "./src/screens/AStack";
 import { DevGallery } from "./src/screens/DevGallery";
 import { freshGroup, freshSample, ALERT_SAMPLE_GROUPS, ALERT_SAMPLES } from "./src/screens/gallery/samples";
+import { StackSummary } from "./src/screens/StackSummary";
 import { O0Opening } from "./src/screens/O0Opening";
 import { O1Welcome } from "./src/screens/O1Welcome";
 import { O2Permissions } from "./src/screens/O2Permissions";
 import { O3TestPage } from "./src/screens/O3TestPage";
 import { O4FirstBot } from "./src/screens/O4FirstBot";
+import { goneCopy } from "./src/receiptCopy";
 import { readableError } from "./src/session";
 import { Toast, useToast } from "./src/ui/Toast";
 import { useAppFonts } from "./src/ui/useAppFonts";
@@ -86,17 +88,61 @@ function DevAlertSample({ name }: { name: string }) {
   const [round, setRound] = useState(() => Date.now());
   const alert = useMemo(() => freshSample(name, round), [name, round]);
   const group = useMemo(() => (alert ? null : freshGroup(name, round)), [alert, name, round]);
+  // The stack's fake delivery: each answered card goes sending, then sent, then delivered, so the
+  // statuses and the summary can be seen with no backend. `three-with-cancel` also has the bot cancel
+  // its last card after a few seconds, to see a card that is no longer needed.
+  const [fakeAnswers, setFakeAnswers] = useState<Record<string, StackAnswer>>({});
+  const [fakeGone, setFakeGone] = useState<Record<string, StackGone>>({});
+  const fakeTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => {
+    const timers = fakeTimers.current;
+    return () => timers.forEach(clearTimeout);
+  }, []);
+  useEffect(() => {
+    if (!group || name !== "three-with-cancel") return;
+    const target = group[group.length - 1];
+    if (!target) return;
+    const id = setTimeout(() => {
+      const copy = goneCopy({ reason: "cancelled", botName: target.botName });
+      setFakeGone((all) => ({ ...all, [target.questionId]: { title: copy.title, sub: copy.sub } }));
+    }, 6000);
+    return () => clearTimeout(id);
+  }, [group, name]);
   if (group) {
     // The stack keeps its own answered cards and moves on by itself, so nothing here starts it over.
-    const onGroupAnswer = async (target: { botName: string }, optionIds: string[], customReply?: string) => {
+    const onGroupAnswer = async (
+      target: { questionId: string; botName: string },
+      optionIds: string[],
+      customReply?: string,
+    ) => {
       toast.show(
         `Would send: ${target.botName}: ${optionIds.join(", ")}${customReply ? ` + "${customReply}"` : ""}`,
       );
-      await new Promise((resolve) => setTimeout(resolve, 700));
+      const id = target.questionId;
+      const answer = { optionIds, ...(customReply ? { customReply } : {}) };
+      const move = (status: StackAnswer["status"]) =>
+        setFakeAnswers((all) => ({ ...all, [id]: { ...answer, status } }));
+      move("sending");
+      fakeTimers.current.push(setTimeout(() => move("sent"), 700), setTimeout(() => move("delivered"), 2000));
     };
     return (
       <View style={styles.root}>
-        <AStack key={round} alerts={group} onAnswer={onGroupAnswer} />
+        <AStack
+          key={round}
+          alerts={group}
+          onAnswer={onGroupAnswer}
+          answers={fakeAnswers}
+          gone={fakeGone}
+          renderSummary={({ alerts, answers, gone, jumpTo }) => (
+            <StackSummary
+              alerts={alerts}
+              answers={answers}
+              gone={gone}
+              jumpTo={jumpTo}
+              onDone={() => toast.show("Would close the stack")}
+            />
+          )}
+        />
         <Toast message={toast.message} visible={toast.visible} />
       </View>
     );

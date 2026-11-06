@@ -69,6 +69,8 @@ export interface StackItem {
   urgent?: boolean;
   /** Anything but `waiting` puts a status dot on the blob. */
   status?: StackStatus;
+  /** Said after the name by the blob's button, such as "no longer needed". */
+  note?: string;
   /** The card's content: it fills the card (a wash, the middle, the bottom). */
   render: () => ReactNode;
 }
@@ -297,6 +299,7 @@ function headLabel(item: StackItem): string {
   if (item.urgent && (!item.status || item.status === "waiting")) parts.push("urgent");
   const word = statusWord(item.status);
   if (word) parts.push(word);
+  if (item.note) parts.push(item.note);
   return parts.join(", ");
 }
 

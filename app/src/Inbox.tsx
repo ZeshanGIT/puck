@@ -1,7 +1,7 @@
 import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
-import { Component, type ReactNode, useEffect, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, ScrollView, StyleSheet, View } from "react-native";
 import type { PendingAlert } from "./ChoiceScreen";
 import { readClientId } from "./clientStore";
 import { openFullScreenSettings, useFullScreenAccess } from "./fullScreenAccess";
@@ -13,6 +13,7 @@ import { PuckBody, PuckButton, PuckKicker, PuckTextLink, PuckTitle } from "./com
 import { PuckScreen } from "./components/PuckScreen";
 import { OfflineBanner } from "./screens/A10Offline";
 import { AlertHost, useAlertDeck } from "./screens/AlertHost";
+import { StackHost } from "./screens/StackHost";
 
 export function Inbox({
   notifications,
@@ -65,8 +66,45 @@ function InboxBody({
     clientId === undefined ? "skip" : clientId ? { clientId } : {},
   ) as PendingAlert[] | undefined;
   const openedId = useOpenedQuestionId();
+  // Alerts he left in a stack ("Leave the rest for later") stay off the screen until he is back in
+  // the app after being away, so the stack he just closed does not open again at once.
+  const [left, setLeft] = useState<ReadonlySet<string>>(() => new Set());
+  const leftRef = useRef(left);
+  leftRef.current = left;
+  const away = useRef(false);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") {
+        if (leftRef.current.size > 0) away.current = true;
+      } else if (away.current) {
+        away.current = false;
+        setLeft(new Set());
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+  const visible = useMemo(
+    () => (pending === undefined || left.size === 0 ? pending : pending.filter((item) => !left.has(item.questionId))),
+    [pending, left],
+  );
   // The alert on screen stays while its receipt or its A9 card is up, after it has left `pending`.
-  const deck = useAlertDeck(pending, openedId);
+  const deck = useAlertDeck(visible, openedId);
+  // Two or more waiting (not expired) alerts are the A8 stack, which stays a stack until its
+  // summary's Done even as answered alerts leave `pending`. While the last alert's receipt is
+  // still up (`stale`) the stack waits for it to close.
+  const open = useMemo(() => {
+    const now = Date.now();
+    return deck.live.filter((item) => item.expiresAt === undefined || item.expiresAt > now);
+  }, [deck.live]);
+  const wantsStack = open.length >= 2 && !deck.stale;
+  const [stacking, setStacking] = useState(false);
+  useEffect(() => {
+    if (wantsStack) setStacking(true);
+  }, [wantsStack]);
+  const closeStack = useCallback((heldIds: string[]) => {
+    setLeft((before) => new Set([...before, ...heldIds]));
+    setStacking(false);
+  }, []);
   const fullScreen = useFullScreenAccess();
   const [pairing, setPairing] = useState(false);
 
@@ -87,6 +125,17 @@ function InboxBody({
       <PuckScreen center>
         <PuckBody>Looking for alerts…</PuckBody>
       </PuckScreen>
+    );
+  }
+  if (stacking || wantsStack) {
+    return (
+      <View style={styles.stack}>
+        <StackHost
+          alerts={open}
+          launchedByAlert={openedId !== null && open.some((item) => item.questionId === openedId)}
+          onClose={closeStack}
+        />
+      </View>
     );
   }
   const alert = deck.alert;
@@ -171,6 +220,9 @@ const styles = StyleSheet.create({
   linkBar: {
     paddingHorizontal: 26,
     paddingTop: 48,
+  },
+  stack: {
+    flex: 1,
   },
   filled: {
     flex: 1,

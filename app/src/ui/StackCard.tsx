@@ -85,6 +85,17 @@ export interface StackCardProps {
   onSnooze?: () => void;
   /** A short message for the screen to show as a Toast. */
   notify?: (message: string) => void;
+  /**
+   * The alert is no longer needed (the bot cancelled it, it expired, or it was answered elsewhere):
+   * the card is greyed, takes no touches, and its bottom says what happened instead of the controls.
+   */
+  gone?: StackGone;
+}
+
+/** The words of a gone card (`goneCopy` in `receiptCopy.ts`). */
+export interface StackGone {
+  title: string;
+  sub: string | null;
 }
 
 const MAX_FONT_SCALE = 1.3;
@@ -114,13 +125,13 @@ const ICON_PATHS: Record<string, string> = {
 let answeredOnce = false;
 
 export function StackCard(props: StackCardProps) {
-  const { alert, status = "waiting", answer } = props;
+  const { alert, status = "waiting", answer, gone } = props;
   const bot = useMemo(() => botLook({ botId: alert.botId, botName: alert.botName }), [alert.botId, alert.botName]);
   const bt = useBotTheme(bot);
   const blob = useRef<BlobHandle>(null);
   const [look, setLook] = useState<Offset | null>(null);
   const answered = status !== "waiting";
-  const urgent = alert.priority === "urgent";
+  const urgent = alert.priority === "urgent" && !gone;
 
   const expiry = useExpiry(alert.expiresAt, alert.createdAt);
   const [now, setNow] = useState(() => Date.now());
@@ -139,19 +150,27 @@ export function StackCard(props: StackCardProps) {
   return (
     <View style={styles.fill}>
       <StackWash colour={bt.botWash} />
-      <MiddleColumn
-        alert={alert}
-        bot={bot}
-        status={status}
-        urgent={urgent}
-        now={now}
-        expiry={expiry}
-        blobRef={blob}
-        look={look}
-        notify={props.notify}
-      />
+      <View
+        style={[styles.fill, gone ? styles.dim : null]}
+        pointerEvents={gone ? "none" : "auto"}
+        importantForAccessibility={gone ? "no-hide-descendants" : "auto"}
+      >
+        <MiddleColumn
+          alert={alert}
+          bot={bot}
+          status={status}
+          urgent={urgent}
+          now={now}
+          expiry={gone ? null : expiry}
+          blobRef={blob}
+          look={look}
+          notify={props.notify}
+        />
+      </View>
       <View style={styles.abottom}>
-        {answered ? (
+        {gone ? (
+          <GoneBlock gone={gone} />
+        ) : answered ? (
           <AnsweredBlock alert={alert} bot={bot} status={status} answer={answer} />
         ) : (
           <Controls {...props} bot={bot} blob={blob} onLook={setLook} expired={expiry?.expired === true} />
@@ -617,6 +636,30 @@ function SelectAll({
   );
 }
 
+/* ------------------------------------------------------------------ gone block */
+
+/** What happened to a card that is no longer needed; `.gone b` and `.gone p` of the prototype, in the card. */
+function GoneBlock({ gone }: { gone: StackGone }) {
+  const t = useTheme().tokens;
+  return (
+    <View
+      accessible
+      accessibilityLiveRegion="polite"
+      accessibilityLabel={gone.sub ? `${gone.title}. ${gone.sub}` : gone.title}
+      style={styles.goneBlock}
+    >
+      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.goneTitle, { color: t.ink }]}>
+        {gone.title}
+      </Text>
+      {gone.sub ? (
+        <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.goneSub, { color: t.ink2 }]}>
+          {gone.sub}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 /* ------------------------------------------------------------ answered block */
 
 /** `.answered`: "You answered", the options with the picks marked, the reply, and the live status. */
@@ -809,6 +852,11 @@ function ExpiryPill({ expiry }: { expiry: ExpiryView }) {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  /** `.dim`: opacity .35 and a little grey (A9). */
+  dim: { opacity: 0.35, filter: [{ grayscale: 0.4 }] },
+  goneBlock: { alignItems: "center", paddingTop: 16, paddingHorizontal: 4, paddingBottom: 4, marginBottom: 10 },
+  goneTitle: { fontFamily: fontFamily.black, fontSize: 18, fontWeight: "900", textAlign: "center" },
+  goneSub: { fontFamily: fontFamily.semiBold, fontSize: 15, fontWeight: "600", textAlign: "center", marginTop: 6 },
   /** `.acard .amid{padding:4px 22px 0}`; `.amid{flex:1; min-height:0}` */
   amid: { flex: 1, minHeight: 0 },
   amidContent: { flexGrow: 1, alignItems: "center", paddingTop: 4, paddingHorizontal: 22 },
