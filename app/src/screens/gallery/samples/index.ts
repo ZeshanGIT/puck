@@ -6,10 +6,12 @@
 import type { PendingAlert } from "../../../ChoiceScreen";
 import { A1_SAMPLES } from "./a1";
 import { A2_SAMPLES } from "./a2";
+import { A3_SAMPLES } from "./a3";
 
 export const ALERT_SAMPLES: Record<string, PendingAlert> = {
   ...A1_SAMPLES,
   ...A2_SAMPLES,
+  ...A3_SAMPLES,
 };
 
 /**

@@ -18,10 +18,10 @@ import { useCallback } from "react";
 import { type PendingAlert, ChoiceScreen } from "../ChoiceScreen";
 import { replyPayload } from "../choice";
 import { readClientId } from "../clientStore";
-import { SwipeScreen } from "../SwipeScreen";
 import { clearDisplayedAlert } from "../urgentDisplay";
 import { A1ChoiceSingle } from "./A1ChoiceSingle";
 import { A2ChoiceMulti } from "./A2ChoiceMulti";
+import { A3Swipe } from "./A3Swipe";
 
 export type AnswerHandler = (optionIds: string[], customReply?: string) => Promise<void>;
 
@@ -76,11 +76,10 @@ function AlertScreen({ alert, waiting, onAnswer }: AlertHostProps & { onAnswer: 
   if (alert.selectionMode === "multi" && alert.presentation === "choice") {
     return <A2ChoiceMulti key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} />;
   }
-  // TODO(A3): replace the POC swipe screen with the new swipe screen.
-  // The POC screens record the answer themselves and ignore `onAnswer`.
-  return alert.presentation === "swipe" ? (
-    <SwipeScreen alert={alert} waiting={waiting} />
-  ) : (
-    <ChoiceScreen alert={alert} waiting={waiting} />
-  );
+  if (alert.presentation === "swipe") {
+    return <A3Swipe key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} />;
+  }
+  // The POC screens record the answer themselves and ignore `onAnswer`. Nothing reaches them now
+  // that A1, A2 and A3 cover every alert; the old screens stay until the old Inbox is replaced.
+  return <ChoiceScreen alert={alert} waiting={waiting} />;
 }

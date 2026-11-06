@@ -22,3 +22,84 @@ export function swipeChoice(dx: number, options: readonly { id: string }[]): str
   if (dx >= SWIPE_COMMIT_PX) return right.id;
   return null;
 }
+
+/* ------------------------------------------------------------------------------------------
+ * The live A3 track (`SwipeTrack`). Numbers copied from `wireSwipe()` and `.track`/`.knob` in
+ * `vault/Projects/Puck/mockups/Puck prototype.html`. These are pure and marked as worklets so the
+ * pan gesture can call them on the UI thread; a worklet is an ordinary function in tests.
+ * ---------------------------------------------------------------------------------------- */
+
+export type SwipeSide = "left" | "right";
+
+/** `if(Date.now()-S.armedAt<400) return;`: the track ignores the knob for 400 ms after the screen opens. */
+export const SWIPE_ARM_DELAY_MS = 400;
+/** `Math.abs(dx)>max*.72`: a release past this share of the travel commits. */
+export const SWIPE_COMMIT_FRACTION = 0.72;
+/** `max = tr.clientWidth/2 - 40`: the knob travels from the middle to 40 dp short of each edge. */
+export const SWIPE_EDGE_GAP = 40;
+/** `setTimeout(()=>swipeCommit(id),160)`: the knob rests at the end for this long before the answer is sent. */
+export const SWIPE_COMMIT_DELAY_MS = 160;
+/** `Math.min(1,p*1.25)`: the knob reaches full red a fifth of the way before the end of the travel. */
+export const SWIPE_DANGER_RATE = 1.25;
+/** `rotate(${v/max*10}deg)`. */
+export const SWIPE_ROTATE_DEG = 10;
+/** The least movement that counts as a drag, in dp (the POC's `distance > 8`). */
+export const SWIPE_MIN_DRAG_PX = 8;
+
+/** The knob's travel for a track of this inner width (the width inside the border). */
+export function swipeMax(trackWidth: number): number {
+  "worklet";
+  return Math.max(0, trackWidth / 2 - SWIPE_EDGE_GAP);
+}
+
+/** Milliseconds still to wait before the track arms, given when the screen opened. 0 once it is armed. */
+export function swipeArmDelayLeft(openedAt: number, now: number): number {
+  return Math.max(0, SWIPE_ARM_DELAY_MS - (now - openedAt));
+}
+
+/** The knob offset kept inside the travel. */
+export function swipeClamp(dx: number, max: number): number {
+  "worklet";
+  return Math.max(-max, Math.min(max, dx));
+}
+
+/** `p = Math.min(1, Math.abs(v)/max)`: how far along the travel the knob is, 0 to 1. */
+export function swipeProgress(dx: number, max: number): number {
+  "worklet";
+  return max > 0 ? Math.min(1, Math.abs(dx) / max) : 0;
+}
+
+/** The side a release at `dx` commits to, or null when it is inside the mark and the knob springs back. */
+export function swipeSideAt(dx: number, max: number): SwipeSide | null {
+  "worklet";
+  if (max <= 0) return null;
+  if (dx > max * SWIPE_COMMIT_FRACTION) return "right";
+  if (dx < -max * SWIPE_COMMIT_FRACTION) return "left";
+  return null;
+}
+
+/** The knob's tilt in degrees at offset `dx`. */
+export function swipeRotation(dx: number, max: number): number {
+  "worklet";
+  return max > 0 ? (dx / max) * SWIPE_ROTATE_DEG : 0;
+}
+
+/** How far the knob has blended toward the danger red (0 to 1) when it is dragged toward a destructive side. */
+export function swipeDangerBlend(dx: number, max: number): number {
+  "worklet";
+  return Math.min(1, swipeProgress(dx, max) * SWIPE_DANGER_RATE);
+}
+
+/**
+ * The stale-touch guard for the live track. A real drag is first seen a little way inside the
+ * mark and more sideways than up or down. A touch whose first reading is already past the mark
+ * is the tail of the tap or swipe that opened the screen, and must not send an answer.
+ * (The same rule as `swipeCanBegin`, scaled to the track's travel instead of a fixed 68.)
+ */
+export function swipeDragMayBegin(dx: number, dy: number, max: number): boolean {
+  "worklet";
+  const distance = Math.abs(dx);
+  return (
+    max > 0 && distance >= SWIPE_MIN_DRAG_PX && distance < max * SWIPE_COMMIT_FRACTION && distance > Math.abs(dy)
+  );
+}
