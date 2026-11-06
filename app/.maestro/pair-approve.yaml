@@ -1,0 +1,33 @@
+appId: in.puckit.app
+---
+# Pairing approve. Needs `puck add NAME` running first (scripts/pair-cli.sh). Taps the PAIRING card on Home,
+# checks B4, taps Approve (first tap arms, second confirms), taps Done on B5, then checks the bot is in B1.
+- runFlow: launch-app.yaml
+- extendedWaitUntil:
+    visible: "${NAME}\\. Wants to page you.*"
+    timeout: 90000
+- tapOn: "${NAME}\\. Wants to page you.*"
+- assertVisible: "${NAME} wants to page you"
+# Approve arms on the first tap and confirms on the second. The armed label lasts too short a time for Maestro
+# to find it, and the looping blob delays single taps, so both taps are one doubleTapOn at the button.
+- doubleTapOn:
+    point: "50%,90%"
+- extendedWaitUntil:
+    visible: "Done"
+    timeout: 60000
+- tapOn: "Done"
+- extendedWaitUntil:
+    notVisible: "${NAME}\\. Wants to page you.*"
+    timeout: 30000
+- tapOn: "Bots"
+- extendedWaitUntil:
+    visible:
+      id: "pair-bot"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "bot-row-${NAME}"
+    direction: DOWN
+    timeout: 30000
+- back
+- assertVisible: "Puck"

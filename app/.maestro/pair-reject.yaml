@@ -1,0 +1,15 @@
+appId: in.puckit.app
+---
+# Pairing reject. Needs `puck add NAME` running first. Taps the PAIRING card, checks B4, taps Reject once,
+# and waits for the "Rejected" message on Home. The CLI should then exit non-zero.
+- runFlow: launch-app.yaml
+- extendedWaitUntil:
+    visible: "${NAME}\\. Wants to page you.*"
+    timeout: 90000
+- tapOn: "${NAME}\\. Wants to page you.*"
+- assertVisible: "${NAME} wants to page you"
+- tapOn: "Reject"
+- extendedWaitUntil:
+    visible: "Rejected. The terminal was told."
+    timeout: 30000
+- assertVisible: "Puck"

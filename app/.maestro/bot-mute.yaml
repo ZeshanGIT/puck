@@ -1,0 +1,38 @@
+appId: in.puckit.app
+---
+# B2 mute. Opens BOT (default cortana8: sheldon is not in this account's list), taps mute-${CHIP} (1h, tomorrow, week or off) and checks "Muted until".
+# UNMUTE=1 (default) then taps mute-off and checks it is gone. UNMUTE=0 leaves the bot muted.
+# CHIP=off unmutes without checks. Ends on Home.
+- runFlow: launch-app.yaml
+- tapOn: "Bots"
+- scrollUntilVisible:
+    element:
+      id: "bot-row-${BOT}"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "bot-row-${BOT}"
+- tapOn:
+    id: "mute-${CHIP}"
+- runFlow:
+    when:
+      true: ${CHIP != 'off'}
+    commands:
+      - extendedWaitUntil:
+          visible: "Muted until.*"
+          timeout: 15000
+- runFlow:
+    when:
+      true: ${UNMUTE == '1' && CHIP != 'off'}
+    commands:
+      - tapOn:
+          id: "mute-off"
+      - extendedWaitUntil:
+          notVisible: "Muted until.*"
+          timeout: 15000
+- tapOn:
+    id: "back"
+- assertVisible:
+    id: "pair-bot"
+- back
+- assertVisible: "Puck"

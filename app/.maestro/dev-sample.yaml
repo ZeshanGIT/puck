@@ -1,6 +1,4 @@
 appId: in.puckit.app
-env:
-  SAMPLE: home
 ---
 # Opens a dev sample screen (puck://dev-alert?sample=${SAMPLE}, dev builds only) and checks the app
 # did not crash. Ends with stopApp so the next run never inherits a sample screen.

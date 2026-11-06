@@ -1,0 +1,30 @@
+appId: in.puckit.app
+---
+# What the app shows for a pending alert from BOT. Needs BOT and MUTED (1 = muted, 0 = unmuted).
+# Unmuted: the alert screen takes over ("Tap twice to answer" is shown).
+# Muted: Home stays up, the alert is under "Needs you" and no alert screen takes over.
+# Does not use launch-app: an unmuted alert covers Home, so launch-app's "Puck" wait would fail there.
+- stopApp
+- openLink: "puck://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8082"
+- extendedWaitUntil:
+    visible: "${BOT}.*"
+    timeout: 60000
+- runFlow:
+    when:
+      true: ${MUTED == '1'}
+    commands:
+      - extendedWaitUntil:
+          visible: "Puck"
+          timeout: 30000
+      - assertVisible: "NEEDS YOU.*"
+      - scrollUntilVisible:
+          element: "${BOT}\\. .*"
+          direction: DOWN
+          timeout: 30000
+      - assertVisible: "${BOT}\\. .*"
+      - assertNotVisible: "Tap twice to answer"
+- runFlow:
+    when:
+      true: ${MUTED == '0'}
+    commands:
+      - assertVisible: "Tap twice to answer"

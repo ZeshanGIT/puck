@@ -1,0 +1,34 @@
+appId: in.puckit.app
+---
+# Remove a bot made by the QA runs (BOT must start with qa-). Remove is tap twice (remove-bot). Ends on Home.
+# Never run on sheldon-11019, puck-builtin or test-99014.
+- runFlow: launch-app.yaml
+- tapOn: "Bots"
+- scrollUntilVisible:
+    element:
+      id: "bot-row-${BOT}"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "bot-row-${BOT}"
+- scrollUntilVisible:
+    element:
+      id: "remove-bot"
+    direction: DOWN
+    timeout: 20000
+- assertVisible:
+    id: "remove-bot"
+# Remove arms on the first tap and removes on the second. The armed label is too brief for two tapOn calls,
+# so both taps are one doubleTapOn.
+- doubleTapOn:
+    id: "remove-bot"
+- extendedWaitUntil:
+    visible:
+      id: "pair-bot"
+    timeout: 20000
+- extendedWaitUntil:
+    notVisible:
+      id: "bot-row-${BOT}"
+    timeout: 20000
+- back
+- assertVisible: "Puck"

@@ -1,0 +1,18 @@
+appId: in.puckit.app
+---
+# Muted-bot check, run after the shell sent an alert from BOT (question QUESTION) while BOT was muted
+# (bot-mute CHIP=1h UNMUTE=0). Relaunches via launch-app, checks Home stays up with the alert under
+# "Needs you" and no alert screen takes over, taps the card and checks the alert screen shows QUESTION,
+# then backs out. Needs BOT and QUESTION.
+- runFlow: launch-app.yaml
+- assertVisible: "NEEDS YOU.*"
+- scrollUntilVisible:
+    element: "${BOT}\\. .*"
+    direction: DOWN
+    timeout: 60000
+- assertVisible: "${BOT}\\. .*"
+- assertNotVisible: "Tap twice to answer"
+- tapOn: "${BOT}\\. .*"
+- assertVisible: "${QUESTION}"
+- back
+- assertVisible: "Puck"

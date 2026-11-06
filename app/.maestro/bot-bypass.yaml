@@ -1,0 +1,27 @@
+appId: in.puckit.app
+---
+# B2 Do Not Disturb and silent mode overrides for one bot: taps dnd-${DND} and silent-${SILENT}
+# (default, off, urgent or all). Ends on Home.
+- runFlow: launch-app.yaml
+- tapOn: "Bots"
+- scrollUntilVisible:
+    element:
+      id: "bot-row-${BOT}"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "bot-row-${BOT}"
+- assertVisible:
+    id: "dnd-${DND}"
+- tapOn:
+    id: "dnd-${DND}"
+- assertVisible:
+    id: "silent-${SILENT}"
+- tapOn:
+    id: "silent-${SILENT}"
+- tapOn:
+    id: "back"
+- assertVisible:
+    id: "pair-bot"
+- back
+- assertVisible: "Puck"

@@ -1,0 +1,42 @@
+appId: in.puckit.app
+---
+# B2 colour. Needs BOT (a QA bot), ORIG (its colour now, read from Convex) and NEW (a different swatch name).
+# Taps swatch-${NEW}, checks the bot's screen is still there (remove-bot), then taps swatch-${ORIG} to restore.
+# The swatch selection is not exposed to accessibility, so the colour change is checked in Convex by the caller.
+# The swatches and Remove are below the fold on B2, so each is scrolled to first.
+- runFlow: launch-app.yaml
+- tapOn: "Bots"
+- scrollUntilVisible:
+    element:
+      id: "bot-row-${BOT}"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "bot-row-${BOT}"
+- scrollUntilVisible:
+    element:
+      id: "swatch-${NEW}"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "swatch-${NEW}"
+- scrollUntilVisible:
+    element:
+      id: "remove-bot"
+    direction: DOWN
+    timeout: 20000
+- assertVisible:
+    id: "remove-bot"
+- scrollUntilVisible:
+    element:
+      id: "swatch-${ORIG}"
+    direction: UP
+    timeout: 20000
+- tapOn:
+    id: "swatch-${ORIG}"
+- tapOn:
+    id: "back"
+- assertVisible:
+    id: "pair-bot"
+- back
+- assertVisible: "Puck"

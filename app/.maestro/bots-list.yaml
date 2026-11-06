@@ -1,0 +1,28 @@
+appId: in.puckit.app
+---
+# Home -> Bots (B1) lists this account's bots -> open cortana8 (B2) -> back to B1 (back id) -> Home (Android back).
+# sheldon-11019, puck-builtin and test-99014 have no owner, so B1 does not list them.
+- runFlow: launch-app.yaml
+- tapOn: "Bots"
+- assertVisible:
+    id: "pair-bot"
+- scrollUntilVisible:
+    element:
+      id: "bot-row-cortana8"
+    direction: DOWN
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "bot-row-cortana"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "bot-row-cortana8"
+- assertVisible:
+    id: "mute-off"
+- tapOn:
+    id: "back"
+- assertVisible:
+    id: "pair-bot"
+- back
+- assertVisible: "Puck"

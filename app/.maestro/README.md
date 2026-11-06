@@ -29,6 +29,9 @@ Maestro logs and per-run artifacts go under `.shots/maestro/` (gitignored with `
 - Home (H1) sets no testIDs of its own; use its text. Prefer testIDs on new list rows and buttons whose text can change.
 
 ## Quirks
+- Do not put defaults in a flow's `env:` header: the header wins over `-e KEY=VALUE`, so the value passed is ignored.
+- Armed buttons (Approve and Remove) need both taps in one `doubleTapOn`; separate `tapOn` calls miss the arm window.
+- B2 and B4 controls sit below the fold: `scrollUntilVisible` them before tapping.
 - The shell may export an older `JAVA_HOME` (here Java 11); Maestro 2 needs 17. `flow.sh` selects `java_home -v 17`.
 - `takeScreenshot` names are confined to the run's output folder, so `../` paths fail.
 - A dev sample shows the dev-client splash for a moment after the link; wait for a header before the screenshot.
