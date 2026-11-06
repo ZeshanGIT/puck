@@ -17,11 +17,13 @@ export function Inbox({
   email,
   onSignOut,
   onDevReplayOnboarding,
+  onDevDesignGallery,
 }: {
   notifications: boolean | null;
   email: string | null;
   onSignOut: () => void;
   onDevReplayOnboarding?: () => void;
+  onDevDesignGallery?: () => void;
 }) {
   return (
     <ScreenBoundary>
@@ -30,6 +32,7 @@ export function Inbox({
         email={email}
         onSignOut={onSignOut}
         onDevReplayOnboarding={onDevReplayOnboarding}
+        onDevDesignGallery={onDevDesignGallery}
       />
     </ScreenBoundary>
   );
@@ -40,11 +43,13 @@ function InboxBody({
   email,
   onSignOut,
   onDevReplayOnboarding,
+  onDevDesignGallery,
 }: {
   notifications: boolean | null;
   email: string | null;
   onSignOut: () => void;
   onDevReplayOnboarding?: () => void;
+  onDevDesignGallery?: () => void;
 }) {
   const pending = useQuery(anyApi.alerts.pending) as PendingAlert[] | undefined;
   const openedId = useOpenedQuestionId();
@@ -91,6 +96,9 @@ function InboxBody({
           <PuckButton label="Pair a bot" onPress={() => setPairing(true)} />
           {__DEV__ && onDevReplayOnboarding ? (
             <PuckTextLink label="Dev: replay onboarding" onPress={onDevReplayOnboarding} />
+          ) : null}
+          {__DEV__ && onDevDesignGallery ? (
+            <PuckTextLink label="Dev: design gallery" onPress={onDevDesignGallery} />
           ) : null}
           <PuckTextLink label="Sign out" onPress={onSignOut} />
         </ScrollView>

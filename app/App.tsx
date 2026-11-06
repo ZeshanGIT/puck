@@ -15,6 +15,7 @@ import { OnboardingFlow } from "./src/onboarding/OnboardingFlow";
 import { readOnboardingComplete } from "./src/onboarding/onboardingStore";
 import { readDevWalkthrough, startDevWalkthrough } from "./src/onboarding/devOnboarding";
 import { usePushRegistration } from "./src/push";
+import { DevGallery } from "./src/screens/DevGallery";
 import { deviceTokenFetcher, readableError } from "./src/session";
 import { useAppFonts } from "./src/ui/useAppFonts";
 
@@ -168,6 +169,7 @@ function SignedIn({
 }) {
   const client = useConvex();
   const [auth, setAuth] = useState<"pending" | "in" | "out">("pending");
+  const [designGallery, setDesignGallery] = useState(false);
   const notifications = usePushRegistration(auth === "in");
 
   useEffect(() => {
@@ -197,6 +199,15 @@ function SignedIn({
     );
   }
 
+  if (__DEV__ && designGallery) {
+    return (
+      <>
+        <DevGallery onBack={() => setDesignGallery(false)} />
+        <StatusBar style="dark" />
+      </>
+    );
+  }
+
   return (
     <>
       <Inbox
@@ -204,6 +215,7 @@ function SignedIn({
         email={email}
         onSignOut={onSignOut}
         onDevReplayOnboarding={onDevReplayOnboarding}
+        onDevDesignGallery={__DEV__ ? () => setDesignGallery(true) : undefined}
       />
       <StatusBar style="dark" />
     </>
