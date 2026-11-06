@@ -127,6 +127,7 @@ describe("login command", () => {
         throw new Error("prompted");
       },
       backend: {
+        pairingStatus: async () => "paired" as const,
         createPairing: async () => {
           throw new Error("backend");
         },

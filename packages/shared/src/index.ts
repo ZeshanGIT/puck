@@ -1,5 +1,6 @@
 export {
   ALERT_STATUSES,
+  BOT_COLOURS,
   ANSWER_EVENTS,
   ANSWER_SOURCES,
   ATTACHMENT_TYPES,
@@ -14,6 +15,7 @@ export {
   MAX_ATTACHMENT_BYTES,
   MAX_OPTIONS,
   OPTION_TONES,
+  PAIRING_KIND,
   PAIRING_CODE_PATTERN,
   PENDING_BOT_CAP,
   FULL_SCREEN_KIND,
@@ -41,6 +43,7 @@ export {
   snoozeReleaseStep,
 } from "./model";
 export type {
+  BotColour,
   AlertExtras,
   AlertLink,
   AlertOption,

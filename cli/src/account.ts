@@ -8,6 +8,7 @@ import {
   callbackProblem,
   clerkFrontendApi,
   endClerkSession,
+  fetchConvexToken,
   finishGoogleSignIn,
   hasClerkReturn,
   nonceFromCallback,
@@ -63,6 +64,20 @@ export async function login(
   const account = await runClerkLogin({ frontendApi, open, fetchImpl });
   await writeSession(configDir, account);
   return accountLines(account);
+}
+
+/**
+ * The Clerk Convex token for the stored session, or null when signed out or the token cannot be
+ * fetched (then the caller uses the typed-code flow).
+ */
+export async function signedInToken(configDir: string, env: NodeJS.ProcessEnv): Promise<string | null> {
+  const stored = await readSession(configDir);
+  if (!stored) return null;
+  try {
+    return await fetchConvexToken({ frontendApi: clerkHost(env), account: stored });
+  } catch {
+    return null;
+  }
 }
 
 export async function whoami(

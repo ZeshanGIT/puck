@@ -1,4 +1,4 @@
-import { DISMISS_KIND, FULL_SCREEN_KIND, PUSH_CHANNEL_ID } from "@puck/shared";
+import { DISMISS_KIND, FULL_SCREEN_KIND, PAIRING_KIND, PUSH_CHANNEL_ID } from "@puck/shared";
 import { selectPushTargets, type PushTargetClient, type PushTargetDevice } from "./pushTargets";
 
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
@@ -106,6 +106,36 @@ export function fcmFullScreenMessage(alert: PushAlert) {
   return {
     message: {
       token: alert.pushToken,
+      data,
+      android: {
+        priority: "HIGH" as const,
+      },
+    },
+  };
+}
+
+/**
+ * Data-only pairing request (N7). The phone draws its own notification and opens the approve
+ * screen from `botId`; the pairing code is not in the push, the phone reads it from the app's
+ * pending pairing requests.
+ */
+export function fcmPairingMessage(input: {
+  pushToken: string;
+  botId: string;
+  botName: string;
+  colour: string | null;
+  addedFrom: string | null;
+}) {
+  const data: Record<string, string> = {
+    kind: PAIRING_KIND,
+    botId: input.botId,
+    botName: input.botName,
+  };
+  if (input.colour !== null) data.colour = input.colour;
+  if (input.addedFrom !== null) data.addedFrom = input.addedFrom;
+  return {
+    message: {
+      token: input.pushToken,
       data,
       android: {
         priority: "HIGH" as const,

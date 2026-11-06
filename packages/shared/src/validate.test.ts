@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { BOT_COLOURS } from "./model";
 import {
   AlertValidationError,
   validateAlertTiming,
@@ -453,5 +455,52 @@ describe("resolveAnsweredAt", () => {
     for (const value of [undefined, null, "yesterday", NaN, Infinity, 1.5, {}]) {
       expect(resolveAnsweredAt(value, now)).toBe(now);
     }
+  });
+});
+
+describe("validatePairingInput colour and addedFrom", () => {
+  const base = { name: "cortana", webhookUrl: "https://example.com/hook", webhookHeader: "Bearer x" };
+
+  test("accepts a palette colour and a hostname", () => {
+    expect(validatePairingInput({ ...base, colour: "indigo", addedFrom: "Seshans-MacBook.local" })).toEqual({
+      name: "cortana",
+      webhookUrl: "https://example.com/hook",
+      webhookHeader: "Bearer x",
+      routine: null,
+      colour: "indigo",
+      addedFrom: "Seshans-MacBook.local",
+    });
+  });
+
+  test("leaves colour and addedFrom off the result when they are absent or blank", () => {
+    const pairing = validatePairingInput({ ...base, colour: "", addedFrom: null });
+    expect("colour" in pairing).toBe(false);
+    expect("addedFrom" in pairing).toBe(false);
+  });
+
+  test("rejects a colour outside the palette", () => {
+    expect(() => validatePairingInput({ ...base, colour: "Indigo" })).toThrow(/colour must be one of/);
+    expect(() => validatePairingInput({ ...base, colour: "purple" })).toThrow(/colour must be one of/);
+    expect(() => validatePairingInput({ ...base, colour: 3 })).toThrow(/colour must be a string/);
+  });
+
+  test("rejects an addedFrom that is not a hostname", () => {
+    expect(() => validatePairingInput({ ...base, addedFrom: "bad host!" })).toThrow(/addedFrom must be a hostname/);
+    expect(() => validatePairingInput({ ...base, addedFrom: "a".repeat(254) })).toThrow(/too long/);
+    expect(() => validatePairingInput({ ...base, addedFrom: "two\nlines" })).toThrow(/one line/);
+  });
+});
+
+describe("bot colours", () => {
+  test("has the fourteen palette names, black first", () => {
+    expect(BOT_COLOURS).toHaveLength(14);
+    expect(BOT_COLOURS[0]).toBe("black");
+  });
+
+  test("matches the PaletteName union in the app's botTheme", () => {
+    const source = readFileSync(`${import.meta.dir}/../../../app/src/ui/botTheme.ts`, "utf8");
+    const union = /export type PaletteName =([\s\S]*?);/u.exec(source)?.[1] ?? "";
+    const appNames = [...union.matchAll(/"([a-z]+)"/gu)].map((match) => match[1]);
+    expect(appNames).toEqual([...BOT_COLOURS]);
   });
 });

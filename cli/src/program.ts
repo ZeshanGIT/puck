@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
-import { login, logout, openBrowser, whoami } from "./account";
+import { login, logout, openBrowser, signedInToken, whoami } from "./account";
 import { liveBackend } from "./backend";
 import { addBot, cancelAlert, listAlerts, scheduleAlert, sendAlert, type Runtime } from "./commands";
 import { defaultConfigDir } from "./config";
@@ -18,6 +18,7 @@ export function defaultRuntime(): Runtime {
     },
     prompt: (label) => promptHidden(label),
     backend: liveBackend,
+    convexToken: () => signedInToken(defaultConfigDir(), process.env),
   };
 }
 
@@ -54,8 +55,10 @@ export function createProgram(runtime: Runtime = defaultRuntime()): Command {
     .command("add")
     .description("pair a bot and print its code and id")
     .argument("<name>", "bot name, such as sheldon")
-    .action(async (name: string) => {
-      runtime.stdout(await addBot(name, runtime));
+    .option("--colour <name>", "bot colour, such as indigo")
+    .option("--color <name>", "same as --colour")
+    .action(async (name: string, options: { colour?: string; color?: string }) => {
+      runtime.stdout(await addBot(name, runtime, options));
     });
 
   program

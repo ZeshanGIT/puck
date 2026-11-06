@@ -5,7 +5,14 @@ import { v } from "convex/values";
 import { importPKCS8, SignJWT } from "jose";
 import { internal } from "./_generated/api";
 import { pushSummary } from "./lib/pushTargets";
-import { fcmBody, fcmDismissMessage, fcmErrorStatus, pushAlertExtras, readServiceAccount } from "./lib/fcm";
+import {
+  fcmBody,
+  fcmDismissMessage,
+  fcmErrorStatus,
+  fcmPairingMessage,
+  pushAlertExtras,
+  readServiceAccount,
+} from "./lib/fcm";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
@@ -152,6 +159,65 @@ export const sendDismiss = internalActionGeneric({
       }
     }
     console.log(`dismiss ${pushSummary(sent, tokens.length)}`);
+    return null;
+  },
+});
+
+/**
+ * Sends the pairing request (N7) to the signed-in owner's clients: one data-only FCM message each.
+ * Same failure handling as `send`: logged without the service account or tokens, never retried.
+ */
+export const sendPairing = internalActionGeneric({
+  args: { botDocId: v.id("bots") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const target = await ctx.runQuery(internal.bots.loadPairingPush, { botDocId: args.botDocId });
+    if (!target.send) {
+      console.log(`pairing push skipped: ${target.reason}`);
+      return null;
+    }
+    const raw = readEnv("FIREBASE_SERVICE_ACCOUNT");
+    if (!raw) {
+      console.log("pairing push skipped: firebase is not configured");
+      return null;
+    }
+    let account;
+    let accessToken;
+    try {
+      account = readServiceAccount(raw);
+      accessToken = await googleAccessToken(account.clientEmail, account.privateKey);
+    } catch {
+      console.log("pairing push failed: request");
+      return null;
+    }
+    const url = `https://fcm.googleapis.com/v1/projects/${account.projectId}/messages:send`;
+    let sent = 0;
+    for (const entry of target.targets) {
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(
+            fcmPairingMessage({
+              pushToken: entry.pushToken,
+              botId: target.botId,
+              botName: target.botName,
+              colour: target.colour,
+              addedFrom: target.addedFrom,
+            }),
+          ),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (response.ok) sent += 1;
+        else console.log(`pairing push failed: ${fcmErrorStatus(await response.text())}`);
+      } catch {
+        console.log("pairing push failed: request");
+      }
+    }
+    console.log(pushSummary(sent, target.targets.length));
     return null;
   },
 });

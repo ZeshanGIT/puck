@@ -41,6 +41,32 @@ export const FULL_SCREEN_KIND = "fullscreen";
  */
 export const DISMISS_KIND = "dismiss";
 
+/** FCM data flag for a pairing request (N7): the phone opens the approve screen from it. */
+export const PAIRING_KIND = "pairing";
+
+/**
+ * Bot colours (palette names). Must match `PaletteName` in app/src/ui/botTheme.ts; a test in
+ * validate.test.ts checks that they do.
+ */
+export const BOT_COLOURS = [
+  "black",
+  "coral",
+  "tangerine",
+  "mustard",
+  "moss",
+  "green",
+  "teal",
+  "sky",
+  "indigo",
+  "violet",
+  "plum",
+  "rose",
+  "brown",
+  "slate",
+] as const;
+
+export type BotColour = (typeof BOT_COLOURS)[number];
+
 /** True when another pending bot would pass the cap. */
 export function tooManyPendingBots(pendingCount: number): boolean {
   if (!Number.isInteger(pendingCount) || pendingCount < 0) {
@@ -307,6 +333,10 @@ export interface PairingInput {
   webhookUrl: string;
   webhookHeader: string;
   routine: string | null;
+  /** Palette name, when the CLI gave one (`puck add --colour`). */
+  colour?: BotColour;
+  /** The machine the CLI runs on (its hostname), shown on the approve screen. */
+  addedFrom?: string;
 }
 
 /** Public bot id, for example `sheldon-23648`. The secret is a separate value. */

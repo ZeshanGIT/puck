@@ -89,6 +89,16 @@ export default defineSchema({
     pairingCodeExpiresAt: v.optional(v.number()),
     // True only for the built-in Puck bot (test pages). It has no webhook and cannot authenticate.
     builtIn: v.optional(v.boolean()),
+    // Pairing (Protocol changes section 3). `colour` is a palette name; `addedFrom` is the CLI's hostname.
+    // `userId` is the Clerk owner when the CLI was signed in: only that user's clients see the request.
+    colour: v.optional(v.string()),
+    addedFrom: v.optional(v.string()),
+    userId: v.optional(v.string()),
+    // Set by bots.rejectPairing. The pairing code is cleared with it.
+    rejectedAt: v.optional(v.number()),
+    // The pairing code, encrypted, for a signed-in pairing only, so the owner's phone can show it
+    // for comparing with the terminal. Cleared when the request is approved or rejected.
+    pairingCodeCipher: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_publicId", ["id"])

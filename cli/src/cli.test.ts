@@ -108,6 +108,9 @@ describe("puck add", () => {
       await writeConfig(dir);
       let seenHeader = "";
       const backend: Backend = {
+        async pairingStatus() {
+          return "paired" as const;
+        },
         async createPairing(_url, input) {
           seenHeader = input.webhookHeader;
           return { botId: "sheldon-23648", secret: SECRET, pairingCode: "042815" };
@@ -157,6 +160,9 @@ describe("puck send", () => {
       let body: AlertBody | undefined;
       let auth = "";
       const backend: Backend = {
+        async pairingStatus() {
+          return "paired" as const;
+        },
         async createPairing() {
           throw new Error("not used");
         },
@@ -190,6 +196,9 @@ describe("puck send", () => {
       await writeFile(join(dir, "sheldon-23648.key"), `${SECRET}\n`, { mode: 0o600 });
       let body: AlertBody | undefined;
       const backend: Backend = {
+        async pairingStatus() {
+          return "paired" as const;
+        },
         async createPairing() {
           throw new Error("not used");
         },
@@ -223,6 +232,9 @@ describe("puck send", () => {
       await writeFile(file, JSON.stringify({ ...ALERT, scheduledFor: 1_700_000_000_000 }));
       let body: AlertBody | undefined;
       const backend: Backend = {
+        async pairingStatus() {
+          return "paired" as const;
+        },
         async createPairing() {
           throw new Error("not used");
         },
@@ -264,6 +276,9 @@ describe("puck schedule", () => {
       ];
       let cancelled = "";
       const backend: Backend = {
+        async pairingStatus() {
+          return "paired" as const;
+        },
         async createPairing() {
           throw new Error("not used");
         },
@@ -303,6 +318,9 @@ describe("argument parsing", () => {
     const dir = await tempDir();
     try {
       const backend: Backend = {
+        async pairingStatus() {
+          return "paired" as const;
+        },
         async createPairing() {
           throw new Error("network");
         },

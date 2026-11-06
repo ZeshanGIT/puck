@@ -10,6 +10,9 @@ export interface PairingResult {
   pairingCode: string;
 }
 
+/** What the CLI sees while it waits for the phone (`bots.pairingStatus`). */
+export type PairingStatus = "pending" | "paired" | "rejected" | "expired" | "not_found";
+
 export interface AlertBody {
   question: string;
   priority: "normal" | "urgent";
@@ -29,7 +32,9 @@ export interface ListedAlert {
 }
 
 export interface Backend {
-  createPairing(deploymentUrl: string, input: PairingInput): Promise<PairingResult>;
+  /** `token` is the Clerk Convex token when the CLI is signed in, else null (typed-code flow). */
+  createPairing(deploymentUrl: string, input: PairingInput, token: string | null): Promise<PairingResult>;
+  pairingStatus(deploymentUrl: string, botId: string, secret: string): Promise<PairingStatus>;
   postAlert(siteUrl: string, botId: string, secret: string, body: AlertBody): Promise<{ questionId: string }>;
   listAlerts(siteUrl: string, botId: string, secret: string): Promise<ListedAlert[]>;
   cancelAlert(siteUrl: string, botId: string, secret: string, questionId: string): Promise<void>;
@@ -40,8 +45,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export const liveBackend: Backend = {
-  async createPairing(deploymentUrl, input) {
+  async createPairing(deploymentUrl, input, token) {
     const client = new ConvexHttpClient(deploymentUrl);
+    if (token) client.setAuth(token);
     const createPairing = anyApi.bots?.createPairing as FunctionReference<"mutation"> | undefined;
     if (!createPairing) throw new CliError("pairing client is unavailable");
     let result: unknown;
@@ -51,6 +57,8 @@ export const liveBackend: Backend = {
         webhookUrl: input.webhookUrl,
         webhookHeader: input.webhookHeader,
         ...(input.routine ? { routine: input.routine } : {}),
+        ...(input.colour ? { colour: input.colour } : {}),
+        ...(input.addedFrom ? { addedFrom: input.addedFrom } : {}),
       });
     } catch (error) {
       throw new CliError(redact(publicError(error), [input.webhookHeader, input.webhookUrl]));
@@ -64,6 +72,29 @@ export const liveBackend: Backend = {
       throw new CliError("pairing did not return a bot id and code");
     }
     return { botId: result.botId, secret: result.secret, pairingCode: result.pairingCode };
+  },
+
+  async pairingStatus(deploymentUrl, botId, secret) {
+    const client = new ConvexHttpClient(deploymentUrl);
+    const pairingStatus = anyApi.bots?.pairingStatus as FunctionReference<"query"> | undefined;
+    if (!pairingStatus) throw new CliError("pairing client is unavailable");
+    let result: unknown;
+    try {
+      result = await client.query(pairingStatus, { botId, secret });
+    } catch (error) {
+      throw new CliError(redact(publicError(error), [secret]));
+    }
+    const status = isRecord(result) ? result.status : undefined;
+    if (
+      status !== "pending" &&
+      status !== "paired" &&
+      status !== "rejected" &&
+      status !== "expired" &&
+      status !== "not_found"
+    ) {
+      throw new CliError("pairing status was not returned");
+    }
+    return status;
   },
 
   async postAlert(siteUrl, botId, secret, body) {

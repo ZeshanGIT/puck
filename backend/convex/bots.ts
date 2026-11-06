@@ -6,17 +6,22 @@ import {
   tooManyPendingBots,
   validatePairingInput,
 } from "@puck/shared";
-import { internalMutationGeneric, internalQueryGeneric, mutationGeneric } from "convex/server";
+import { internalMutationGeneric, internalQueryGeneric, mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { requireClient } from "./lib/clientAuth";
+import { clerkIssuer, requireClient } from "./lib/clientAuth";
+import { clerkSubject } from "./lib/clientRules";
 import { requireDevice } from "./device";
+import { internal } from "./_generated/api";
 import { BUILT_IN_BOT_ID, BUILT_IN_BOT_NAME, botMayAuthenticate } from "./lib/builtInBot";
 import { TOO_MANY_PENDING_BOTS } from "./lib/deviceAuth";
-import { encryptHeader, hashSecret, mutationRandomInt, newSecret, timingSafeEqual } from "./lib/crypto";
+import { decryptHeader, encryptHeader, hashSecret, mutationRandomInt, newSecret, timingSafeEqual } from "./lib/crypto";
+import { countsTowardPendingCap, isOpenRequestFor, pairingStatusOf } from "./lib/pairingRules";
+import { selectPushTargets } from "./lib/pushTargets";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
+const MAX_OWNER_CLIENTS = 50;
 const DUMMY_HASH = "0".repeat(64);
 
 function invalidCode(): never {
@@ -33,12 +38,23 @@ function validationMessage(error: unknown): never {
  * The CLI calls this with no device login. It only creates a pending bot,
  * and pending bots stop at PENDING_BOT_CAP. The device approves before the bot can send.
  */
+/** The Clerk user id when the caller is signed in, else null (the typed-code flow). */
+async function signedInUserId(ctx: MutationCtx): Promise<string | null> {
+  try {
+    return clerkSubject(await ctx.auth.getUserIdentity(), clerkIssuer());
+  } catch {
+    return null;
+  }
+}
+
 export const createPairing = mutationGeneric({
   args: {
     name: v.string(),
     webhookUrl: v.string(),
     webhookHeader: v.string(),
     routine: v.optional(v.string()),
+    colour: v.optional(v.string()),
+    addedFrom: v.optional(v.string()),
   },
   returns: v.object({
     botId: v.string(),
@@ -50,7 +66,7 @@ export const createPairing = mutationGeneric({
       .query("bots")
       .withIndex("by_pairingState", (q) => q.eq("pairingState", "pending"))
       .take(PENDING_BOT_CAP);
-    if (tooManyPendingBots(pending.length)) throw new Error(TOO_MANY_PENDING_BOTS);
+    if (tooManyPendingBots(pending.filter(countsTowardPendingCap).length)) throw new Error(TOO_MANY_PENDING_BOTS);
     let pairing;
     try {
       pairing = validatePairingInput(args);
@@ -93,7 +109,10 @@ export const createPairing = mutationGeneric({
     }
     if (!pairingCode) throw new Error("could not allocate a pairing code");
 
-    await ctx.db.insert("bots", {
+    // Signed in: the request belongs to this user, and their phone gets the pairing push. The code
+    // is kept encrypted so their phone can show it for comparing with the terminal.
+    const userId = await signedInUserId(ctx);
+    const botDocId = await ctx.db.insert("bots", {
       id: botId,
       name: pairing.name,
       secretHash,
@@ -103,8 +122,14 @@ export const createPairing = mutationGeneric({
       pairingState: "pending",
       pairingCodeHash,
       pairingCodeExpiresAt: now + PAIRING_TTL_MS,
+      ...(pairing.colour === undefined ? {} : { colour: pairing.colour }),
+      ...(pairing.addedFrom === undefined ? {} : { addedFrom: pairing.addedFrom }),
+      ...(userId === null
+        ? {}
+        : { userId, pairingCodeCipher: await encryptHeader(pairingCode) }),
       createdAt: now,
     });
+    if (userId !== null) await ctx.scheduler.runAfter(0, internal.push.sendPairing, { botDocId });
 
     return { botId, secret, pairingCode };
   },
@@ -118,8 +143,8 @@ export const approvePairing = mutationGeneric({
   args: { pairingCode: v.string(), clientId: v.optional(v.string()) },
   returns: v.object({ botId: v.string() }),
   handler: async (ctx, args) => {
-    if (args.clientId === undefined) await requireDevice(ctx);
-    else await requireClient(ctx, args.clientId);
+    const client = args.clientId === undefined ? null : await requireClient(ctx, args.clientId);
+    if (client === null) await requireDevice(ctx);
     if (!/^\d{6}$/u.test(args.pairingCode)) invalidCode();
     const pairingCodeHash = await hashSecret(args.pairingCode);
     const bot = await ctx.db
@@ -127,8 +152,10 @@ export const approvePairing = mutationGeneric({
       .withIndex("by_pairingCodeHash", (q) => q.eq("pairingCodeHash", pairingCodeHash))
       .unique();
     if (!bot || bot.pairingState !== "pending") invalidCode();
+    // A request tied to a signed-in owner can only be approved by that owner's clients.
+    if (client !== null && bot.userId !== undefined && bot.userId !== client.userId) invalidCode();
     if (bot.pairingCodeExpiresAt === undefined || bot.pairingCodeExpiresAt < Date.now()) invalidCode();
-    await ctx.db.patch(bot._id, { pairingState: "paired" });
+    await ctx.db.patch(bot._id, { pairingState: "paired", pairingCodeCipher: undefined });
     return { botId: bot.id };
   },
 });
@@ -184,4 +211,146 @@ export const ensureBuiltIn = internalMutationGeneric({
   args: {},
   returns: v.id("bots"),
   handler: async (ctx) => getOrCreateBuiltInBot(ctx),
+});
+
+/**
+ * The owner rejects a pairing request from their phone. The bot row stays, marked `rejectedAt`
+ * with its code cleared, so the CLI learns of it through `pairingStatus` and the code cannot be
+ * approved afterwards. Only the signed-in owner can reject.
+ */
+export const rejectPairing = mutationGeneric({
+  args: { clientId: v.string(), botId: v.string() },
+  returns: v.object({ botId: v.string(), status: v.literal("rejected") }),
+  handler: async (ctx, args) => {
+    const client = await requireClient(ctx, args.clientId);
+    const bot = await ctx.db
+      .query("bots")
+      .withIndex("by_publicId", (q) => q.eq("id", args.botId))
+      .unique();
+    if (!bot || bot.userId !== client.userId) throw new Error("pairing request not found");
+    if (!isOpenRequestFor(bot, client.userId, Date.now())) throw new Error("pairing request is no longer open");
+    await ctx.db.patch(bot._id, {
+      rejectedAt: Date.now(),
+      pairingCodeHash: undefined,
+      pairingCodeCipher: undefined,
+      pairingCodeExpiresAt: undefined,
+    });
+    return { botId: bot.id, status: "rejected" as const };
+  },
+});
+
+const pairingRequestView = v.object({
+  botId: v.string(),
+  name: v.string(),
+  colour: v.union(v.string(), v.null()),
+  addedFrom: v.union(v.string(), v.null()),
+  pairingCode: v.string(),
+  expiresAt: v.number(),
+});
+
+/**
+ * The signed-in user's open pairing requests (B3, B4, Home): bot id, name, colour, the machine it
+ * came from, and the six-digit code to compare with the terminal. Requests whose code cannot be
+ * read back are left out.
+ */
+export const pairingRequests = queryGeneric({
+  args: { clientId: v.string() },
+  returns: v.array(pairingRequestView),
+  handler: async (ctx, args) => {
+    const client = await requireClient(ctx, args.clientId);
+    const now = Date.now();
+    const rows = await ctx.db
+      .query("bots")
+      .withIndex("by_pairingState", (q) => q.eq("pairingState", "pending"))
+      .take(PENDING_BOT_CAP * 10);
+    const views = [];
+    for (const bot of rows) {
+      if (!isOpenRequestFor(bot, client.userId, now) || bot.pairingCodeCipher === undefined) continue;
+      let pairingCode: string;
+      try {
+        pairingCode = await decryptHeader(bot.pairingCodeCipher);
+      } catch {
+        continue;
+      }
+      views.push({
+        botId: bot.id,
+        name: bot.name,
+        colour: bot.colour ?? null,
+        addedFrom: bot.addedFrom ?? null,
+        pairingCode,
+        expiresAt: bot.pairingCodeExpiresAt ?? now,
+      });
+    }
+    return views;
+  },
+});
+
+/**
+ * What the CLI polls while it waits for approval. Authenticated by the bot's secret from
+ * `createPairing`: a wrong secret or an unknown bot is `not_found`.
+ */
+export const pairingStatus = queryGeneric({
+  args: { botId: v.string(), secret: v.string() },
+  returns: v.object({
+    status: v.union(
+      v.literal("pending"),
+      v.literal("paired"),
+      v.literal("rejected"),
+      v.literal("expired"),
+      v.literal("not_found"),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    const bot = await ctx.db
+      .query("bots")
+      .withIndex("by_publicId", (q) => q.eq("id", args.botId))
+      .unique();
+    if (!bot) return { status: "not_found" as const };
+    const matches = timingSafeEqual(await hashSecret(args.secret), bot.secretHash);
+    if (!matches) return { status: "not_found" as const };
+    return { status: pairingStatusOf(bot, Date.now()) };
+  },
+});
+
+/** What the pairing push needs. Tokens stay out of logs in the action that calls this. */
+export const loadPairingPush = internalQueryGeneric({
+  args: { botDocId: v.id("bots") },
+  returns: v.union(
+    v.object({ send: v.literal(false), reason: v.string() }),
+    v.object({
+      send: v.literal(true),
+      botId: v.string(),
+      botName: v.string(),
+      colour: v.union(v.string(), v.null()),
+      addedFrom: v.union(v.string(), v.null()),
+      targets: v.array(v.object({ pushToken: v.string() })),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const bot = await ctx.db.get(args.botDocId);
+    if (!bot || bot.userId === undefined || !isOpenRequestFor(bot, bot.userId, Date.now())) {
+      return { send: false as const, reason: "not an open request" };
+    }
+    const clients = await ctx.db
+      .query("clients")
+      .withIndex("by_userId", (q) => q.eq("userId", bot.userId!))
+      .take(MAX_OWNER_CLIENTS);
+    const targets = selectPushTargets({
+      clients: clients.map((row) => ({
+        id: row._id as string,
+        pushToken: row.pushToken,
+        fullScreenAllowed: row.fullScreenAllowed,
+      })),
+      device: null,
+    });
+    if (targets.length === 0) return { send: false as const, reason: "no device token" };
+    return {
+      send: true as const,
+      botId: bot.id,
+      botName: bot.name,
+      colour: bot.colour ?? null,
+      addedFrom: bot.addedFrom ?? null,
+      targets: targets.map((target) => ({ pushToken: target.pushToken })),
+    };
+  },
 });

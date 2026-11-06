@@ -1,5 +1,7 @@
 import {
   ATTACHMENT_TYPES,
+  BOT_COLOURS,
+  type BotColour,
   MAX_ATTACHMENTS,
   MAX_ATTACHMENT_BYTES,
   MAX_OPTIONS,
@@ -38,6 +40,9 @@ const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
 const MULTILINE_CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
 const HTTP_URL_PREFIX = /^https?:\/\//i;
 const WHITESPACE = /\s/;
+const HOSTNAME_MAX = 253;
+/** A machine name: letters, digits, dots, hyphens and underscores. */
+const HOSTNAME_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 const MESSAGE_MAX = 1_000;
 const DETAILS_MAX = 4_000;
@@ -341,7 +346,22 @@ export function validatePairingInput(body: unknown): PairingInput {
   if (body.routine !== undefined && body.routine !== null && body.routine !== "") {
     routine = oneLine(requiredString(body.routine, "routine"), "routine", 80);
   }
-  return { name, webhookUrl, webhookHeader, routine };
+  const pairing: PairingInput = { name, webhookUrl, webhookHeader, routine };
+  if (body.colour !== undefined && body.colour !== null && body.colour !== "") {
+    const colour = requiredString(body.colour, "colour");
+    if (!isBotColour(colour)) fail(`colour must be one of: ${BOT_COLOURS.join(", ")}`);
+    pairing.colour = colour;
+  }
+  if (body.addedFrom !== undefined && body.addedFrom !== null && body.addedFrom !== "") {
+    const addedFrom = oneLine(requiredString(body.addedFrom, "addedFrom"), "addedFrom", HOSTNAME_MAX);
+    if (!HOSTNAME_PATTERN.test(addedFrom)) fail("addedFrom must be a hostname");
+    pairing.addedFrom = addedFrom;
+  }
+  return pairing;
+}
+
+function isBotColour(value: string): value is BotColour {
+  return (BOT_COLOURS as readonly string[]).includes(value);
 }
 
 /**
