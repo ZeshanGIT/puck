@@ -13,7 +13,7 @@ import {
   paginationOptsValidator,
   queryGeneric,
 } from "convex/server";
-import { v } from "convex/values";
+import { v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -581,18 +581,13 @@ const timelineKind = v.union(
   v.literal("missed"),
 );
 
+// Every field `alerts.pending` returns (so the alert screens open either list the same way),
+// plus the waiting-only fields.
 const waitingAlert = v.object({
-  questionId: v.string(),
-  question: v.string(),
-  botId: v.string(),
-  botName: v.string(),
-  priority,
+  ...pendingAlert.fields,
   status: v.union(v.literal("pending"), v.literal("snoozed")),
-  presentation,
-  selectionMode,
   snoozedUntil: v.union(v.number(), v.null()),
   expiresAt: v.union(v.number(), v.null()),
-  createdAt: v.number(),
 });
 
 const MAX_WAITING = 50;
@@ -629,6 +624,8 @@ export const waiting = queryGeneric({
           status,
           presentation: alert.presentation ?? "choice",
           selectionMode: alert.selectionMode,
+          options: alert.options,
+          ...pickAlertExtras(alert),
           snoozedUntil: alert.snoozedUntil ?? null,
           expiresAt: alert.expiresAt ?? null,
           createdAt: alert.createdAt,
@@ -641,23 +638,12 @@ export const waiting = queryGeneric({
   },
 });
 
-type WaitingView = {
-  questionId: string;
-  question: string;
-  botId: string;
-  botName: string;
-  priority: string;
-  status: "pending" | "snoozed";
-  presentation: string;
-  selectionMode: string;
-  snoozedUntil: number | null;
-  expiresAt: number | null;
-  createdAt: number;
-};
+type WaitingView = Infer<typeof waitingAlert>;
 
 const historyItem = v.object({
   questionId: v.string(),
   question: v.string(),
+  botId: v.string(),
   botName: v.string(),
   outcome: v.union(v.literal("answered"), v.literal("cancelled"), v.literal("missed")),
   picks: v.array(v.string()),
@@ -698,6 +684,7 @@ export const history = queryGeneric({
       page.push({
         questionId: alert.questionId,
         question: alert.question,
+        botId: bot?.id ?? "",
         botName: bot?.name ?? "the bot",
         outcome,
         picks: answer ? answer.answers.map((choice) => choice.label) : [],
