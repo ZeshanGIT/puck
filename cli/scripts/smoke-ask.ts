@@ -4,7 +4,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi, type FunctionReference } from "convex/server";
@@ -165,11 +165,24 @@ try {
   if (approved.botId !== botId) throw new Error("approvePairing returned a different bot");
   console.log("pass approvePairing");
 
-  const asked = await puck(["ask", "Up yet?", "--options", "Yes,No", "--priority", "normal", "--bot", botId]);
+  const alertFile = join(tmpdir(), `puck-${botName}.json`);
+  await writeFile(
+    alertFile,
+    JSON.stringify({
+      question: "Up yet?",
+      priority: "normal",
+      selectionMode: "single",
+      options: [
+        { id: "yes", label: "Yes" },
+        { id: "no", label: "No" },
+      ],
+    }),
+  );
+  const asked = await puck(["send", "--file", alertFile, "--bot", botId]);
   const questionId = asked.stdout.trim();
-  if (asked.code !== 0 || !isQuestionId(questionId)) throw new Error(`puck ask failed (${asked.code}) ${safe(asked.stderr)}`);
-  if (`${asked.stdout}\n${asked.stderr}`.includes(secret)) throw new Error("puck ask printed the bot secret");
-  console.log("pass puck ask returned a question id");
+  if (asked.code !== 0 || !isQuestionId(questionId)) throw new Error(`puck send failed (${asked.code}) ${safe(asked.stderr)}`);
+  if (`${asked.stdout}\n${asked.stderr}`.includes(secret)) throw new Error("puck send printed the bot secret");
+  console.log("pass puck send returned a question id");
 
   await authed.mutation(mutation("record"), { questionId, optionIds: ["yes"] });
   let delivered = false;

@@ -1,13 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import type { AlertBody, Backend } from "./backend";
 
-import { askQuestion, sendQuestion, addBot, type Runtime } from "./commands";
+import { addBot, cancelAlert, listAlerts, scheduleAlert, sendAlert, type Runtime } from "./commands";
 import { loadConfig, siteUrlFromDeployment } from "./config";
-import { PHASE_8 } from "./errors";
 import { optionIdFromLabel, optionsFromLabels } from "./ids";
 import { readBotKey } from "./keyfile";
 import { createProgram } from "./program";
@@ -116,6 +115,12 @@ describe("puck add", () => {
         async postAlert() {
           throw new Error("not used");
         },
+        async listAlerts() {
+          throw new Error("not used");
+        },
+        async cancelAlert() {
+          throw new Error("not used");
+        },
       };
       const text = await addBot("Sheldon", runtime(dir, backend, { PUCK_WEBHOOK_URL: "https://httpbin.org/post", PUCK_WEBHOOK_HEADER: HEADER }));
       expect(text).toBe("code: 042815\nbot: sheldon-23648\n");
@@ -131,12 +136,24 @@ describe("puck add", () => {
   });
 });
 
-describe("puck ask and send", () => {
-  test("ask posts stable ids and prints only the question id", async () => {
+const ALERT = {
+  question: "Up yet?",
+  priority: "urgent" as const,
+  selectionMode: "single" as const,
+  options: [
+    { id: "yes", label: "Yes" },
+    { id: "snooze-10m", label: "Snooze 10m" },
+  ],
+};
+
+describe("puck send", () => {
+  test("a file posts the JSON and prints only the question id", async () => {
     const dir = await tempDir();
     try {
       await writeConfig(dir);
       await writeFile(join(dir, "sheldon-23648.key"), `${SECRET}\n`, { mode: 0o600 });
+      const file = join(dir, "alert.json");
+      await writeFile(file, JSON.stringify(ALERT));
       let body: AlertBody | undefined;
       let auth = "";
       const backend: Backend = {
@@ -148,29 +165,25 @@ describe("puck ask and send", () => {
           body = posted;
           return { questionId: "q_01HV7K3M2ZABCDEF" };
         },
+        async listAlerts() {
+          throw new Error("not used");
+        },
+        async cancelAlert() {
+          throw new Error("not used");
+        },
       };
-      const text = await askQuestion(
-        { question: "Up yet?", labels: ["Yes", "Snooze 10m"], multi: false, priority: "urgent", bot: "sheldon-23648" },
-        runtime(dir, backend),
-      );
+      const text = await sendAlert({ file, bot: "sheldon-23648" }, runtime(dir, backend));
       expect(text).toBe("q_01HV7K3M2ZABCDEF\n");
       expect(text).not.toContain(SECRET);
       expect(auth).toBe(SECRET);
-      expect(body).toEqual({
-        question: "Up yet?",
-        priority: "urgent",
-        selectionMode: "single",
-        options: [
-          { id: "yes", label: "Yes" },
-          { id: "snooze-10m", label: "Snooze 10m" },
-        ],
-      });
+      expect(body).toEqual({ ...ALERT, presentation: "choice" });
+      expect(await readFile(file, "utf8")).toBe(JSON.stringify(ALERT));
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  test("send is an ask with one OK option", async () => {
+  test("stdin posts the same JSON", async () => {
     const dir = await tempDir();
     try {
       await writeConfig(dir);
@@ -184,11 +197,101 @@ describe("puck ask and send", () => {
           body = posted;
           return { questionId: "q_01HV7K3M2ZABCDEF" };
         },
+        async listAlerts() {
+          throw new Error("not used");
+        },
+        async cancelAlert() {
+          throw new Error("not used");
+        },
       };
-      const text = await sendQuestion({ message: "Gym time", priority: "normal", bot: "sheldon-23648" }, runtime(dir, backend));
-      expect(text).toBe("q_01HV7K3M2ZABCDEF\n");
-      expect(body?.selectionMode).toBe("single");
+      const stdin = new PassThrough();
+      const pending = sendAlert({ bot: "sheldon-23648", stdin }, runtime(dir, backend));
+      stdin.end(JSON.stringify(ALERT));
+      expect(await pending).toBe("q_01HV7K3M2ZABCDEF\n");
+      expect(body).toEqual({ ...ALERT, presentation: "choice" });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a scheduled alert posts its time", async () => {
+    const dir = await tempDir();
+    try {
+      await writeConfig(dir);
+      await writeFile(join(dir, "sheldon-23648.key"), `${SECRET}\n`, { mode: 0o600 });
+      const file = join(dir, "alert.json");
+      await writeFile(file, JSON.stringify({ ...ALERT, scheduledFor: 1_700_000_000_000 }));
+      let body: AlertBody | undefined;
+      const backend: Backend = {
+        async createPairing() {
+          throw new Error("not used");
+        },
+        async postAlert(_site, _bot, _secret, posted) {
+          body = posted;
+          return { questionId: "q_01HV7K3M2ZABCDEF" };
+        },
+        async listAlerts() {
+          throw new Error("not used");
+        },
+        async cancelAlert() {
+          throw new Error("not used");
+        },
+      };
+      expect(await sendAlert({ file, bot: "sheldon-23648" }, runtime(dir, backend))).toBe("q_01HV7K3M2ZABCDEF\n");
+      expect(body?.scheduledFor).toBe(1_700_000_000_000);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("puck schedule", () => {
+  test("posts an OK alert for the next clock time and can list and cancel it", async () => {
+    const dir = await tempDir();
+    try {
+      await writeConfig(dir);
+      await writeFile(join(dir, "sheldon-23648.key"), `${SECRET}\n`, { mode: 0o600 });
+      let body: AlertBody | undefined;
+      const listed = [
+        {
+          questionId: "q_01HV7K3M2ZABCDEF",
+          question: "Wake up",
+          status: "scheduled" as const,
+          priority: "normal" as const,
+          scheduledFor: new Date(2026, 9, 30, 6, 0, 0, 0).getTime(),
+          createdAt: 1,
+        },
+      ];
+      let cancelled = "";
+      const backend: Backend = {
+        async createPairing() {
+          throw new Error("not used");
+        },
+        async postAlert(_site, _bot, _secret, posted) {
+          body = posted;
+          return { questionId: "q_01HV7K3M2ZABCDEF" };
+        },
+        async listAlerts() {
+          return listed;
+        },
+        async cancelAlert(_site, _bot, _secret, questionId) {
+          cancelled = questionId;
+        },
+      };
+      const runtimeFor = runtime(dir, backend);
+      expect(await scheduleAlert({ message: "Wake up", at: "06:00", bot: "sheldon-23648" }, runtimeFor)).toBe(
+        "q_01HV7K3M2ZABCDEF\n",
+      );
+      expect(body?.question).toBe("Wake up");
       expect(body?.options).toEqual([{ id: "ok", label: "OK" }]);
+      expect(typeof body?.scheduledFor).toBe("number");
+      expect(await listAlerts("sheldon-23648", runtimeFor)).toContain("q_01HV7K3M2ZABCDEF  scheduled");
+      expect(await listAlerts("sheldon-23648", runtimeFor)).toContain("Wake up");
+      expect(await cancelAlert("q_01HV7K3M2ZABCDEF", "sheldon-23648", runtimeFor)).toBe(
+        "cancelled q_01HV7K3M2ZABCDEF\n",
+      );
+      expect(cancelled).toBe("q_01HV7K3M2ZABCDEF");
+      await expect(cancelAlert("nope", "sheldon-23648", runtimeFor)).rejects.toThrow(/not valid/);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -196,7 +299,7 @@ describe("puck ask and send", () => {
 });
 
 describe("argument parsing", () => {
-  test("drops webhook and timeout, and rejects a schedule", async () => {
+  test("drops webhook and timeout", async () => {
     const dir = await tempDir();
     try {
       const backend: Backend = {
@@ -206,18 +309,21 @@ describe("argument parsing", () => {
         async postAlert() {
           throw new Error("network");
         },
+        async listAlerts() {
+          throw new Error("network");
+        },
+        async cancelAlert() {
+          throw new Error("network");
+        },
       };
-      const help = createProgram(runtime(dir, backend)).commands.find((command) => command.name() === "ask")?.helpInformation() ?? "";
+      const help = createProgram(runtime(dir, backend)).commands.find((command) => command.name() === "send")?.helpInformation() ?? "";
       expect(help).not.toContain("--webhook");
       expect(help).not.toContain("--timeout");
       expect(help.toLowerCase()).not.toContain("wait for a reply");
 
       const parse = (argv: string[]) => createProgram(runtime(dir, backend)).parseAsync(argv, { from: "user" });
-      await expect(parse(["ask", "Up yet?", "--options", "Yes,No", "--webhook", "https://example.com"])).rejects.toThrow(/unknown option/u);
-      await expect(parse(["ask", "Up yet?", "--options", "Yes,No", "--timeout", "10"])).rejects.toThrow(/unknown option/u);
-      await expect(parse(["ask", "Up yet?", "--options", "Yes,No", "--at", "06:00"])).rejects.toThrow(PHASE_8);
-      await expect(parse(["schedule", "Wake up", "--at", "06:00"])).rejects.toThrow(PHASE_8);
-      await expect(parse(["send", "Gym time", "--at", "06:00"])).rejects.toThrow(PHASE_8);
+      await expect(parse(["ask", "Up yet?"])).rejects.toThrow(/unknown command/u);
+      await expect(parse(["send", "--webhook", "https://example.com"])).rejects.toThrow(/unknown option/u);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

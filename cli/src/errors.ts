@@ -8,8 +8,6 @@ export class CliError extends Error {
   }
 }
 
-export const PHASE_8 = "not in v0 yet (phase 8)";
-
 /** Drop secret values before anything is written to a terminal or a log. */
 export function redact(text: string, secrets: readonly string[]): string {
   let out = text;

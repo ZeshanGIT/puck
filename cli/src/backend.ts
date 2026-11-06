@@ -14,12 +14,25 @@ export interface AlertBody {
   question: string;
   priority: "normal" | "urgent";
   selectionMode: "single" | "multi";
-  options: { id: string; label: string }[];
+  presentation: "choice" | "swipe";
+  options: { id: string; label: string; icon?: string }[];
+  scheduledFor?: number;
+}
+
+export interface ListedAlert {
+  questionId: string;
+  question: string;
+  status: "scheduled" | "pending" | "answered" | "cancelled";
+  priority: "normal" | "urgent";
+  scheduledFor: number | null;
+  createdAt: number;
 }
 
 export interface Backend {
   createPairing(deploymentUrl: string, input: PairingInput): Promise<PairingResult>;
   postAlert(siteUrl: string, botId: string, secret: string, body: AlertBody): Promise<{ questionId: string }>;
+  listAlerts(siteUrl: string, botId: string, secret: string): Promise<ListedAlert[]>;
+  cancelAlert(siteUrl: string, botId: string, secret: string, questionId: string): Promise<void>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -83,4 +96,66 @@ export const liveBackend: Backend = {
     }
     return { questionId: parsed.questionId };
   },
+
+  async listAlerts(siteUrl, botId, secret) {
+    const parsed = await botRequest(siteUrl, "/alerts", "GET", botId, secret);
+    if (!Array.isArray(parsed)) throw new CliError("alert list was not a list");
+    return parsed.map((item) => {
+      if (
+        !isRecord(item) ||
+        typeof item.questionId !== "string" ||
+        typeof item.question !== "string" ||
+        (item.status !== "scheduled" && item.status !== "pending" && item.status !== "answered" && item.status !== "cancelled") ||
+        (item.priority !== "normal" && item.priority !== "urgent") ||
+        (item.scheduledFor !== null && typeof item.scheduledFor !== "number") ||
+        typeof item.createdAt !== "number"
+      ) {
+        throw new CliError("alert list was not a list");
+      }
+      return {
+        questionId: item.questionId,
+        question: item.question,
+        status: item.status,
+        priority: item.priority,
+        scheduledFor: item.scheduledFor,
+        createdAt: item.createdAt,
+      };
+    });
+  },
+
+  async cancelAlert(siteUrl, botId, secret, questionId) {
+    await botRequest(siteUrl, `/alerts/${questionId}/cancel`, "POST", botId, secret);
+  },
 };
+
+async function botRequest(siteUrl: string, path: string, method: "GET" | "POST", botId: string, secret: string): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetch(`${siteUrl}${path}`, {
+      method,
+      headers: {
+        "x-puck-bot-id": botId,
+        authorization: `Bearer ${secret}`,
+      },
+    });
+  } catch {
+    throw new CliError("could not reach the deployment");
+  }
+  const text = await response.text();
+  if (!response.ok) {
+    let message = `alert was not accepted (${response.status})`;
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      if (isRecord(parsed) && typeof parsed.error === "string") message = parsed.error;
+    } catch {
+      // The status is enough when the body is not JSON.
+    }
+    throw new CliError(redact(message, [secret]));
+  }
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new CliError("alert response was not JSON");
+  }
+}
