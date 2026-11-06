@@ -1,0 +1,22 @@
+appId: in.puckit.app
+env:
+  SAMPLE: home
+---
+# Opens a dev sample screen (puck://dev-alert?sample=${SAMPLE}, dev builds only) and checks the app
+# did not crash. Ends with stopApp so the next run never inherits a sample screen.
+# Run: bun run flow dev-sample SAMPLE=home
+- runFlow: launch-app.yaml
+- openLink: "puck://dev-alert?sample=${SAMPLE}"
+- waitForAnimationToEnd:
+    timeout: 5000
+# The sample bundle can take a while after the link; for the Home sample wait for its header.
+- runFlow:
+    when:
+      true: ${SAMPLE == 'home'}
+    commands:
+      - extendedWaitUntil:
+          visible: "Settings"
+          timeout: 30000
+- takeScreenshot: dev-sample-${SAMPLE}
+- assertNotVisible: ".*(has stopped|isn't responding).*"
+- stopApp

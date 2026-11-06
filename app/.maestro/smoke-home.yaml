@@ -1,0 +1,6 @@
+appId: in.puckit.app
+---
+# The real Home (not a dev sample) draws: the "Puck" header and the Settings icon button.
+- runFlow: launch-app.yaml
+- assertVisible: "Puck"
+- assertVisible: "Settings"

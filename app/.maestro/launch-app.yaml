@@ -1,0 +1,9 @@
+appId: in.puckit.app
+---
+# Subflow: force-start the Puck dev client on Metro (port 8082) and wait for the bundle to draw.
+# Use from a flow with: - runFlow: launch-app.yaml
+- stopApp
+- openLink: "puck://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8082"
+- extendedWaitUntil:
+    visible: "Puck"
+    timeout: 60000

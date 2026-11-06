@@ -46,6 +46,7 @@
     "gallery": "sh scripts/gallery.sh",
     "lock": "sh scripts/lock.sh",
     "unlock": "sh scripts/unlock.sh",
+    "flow": "sh scripts/flow.sh",
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit"
   },
