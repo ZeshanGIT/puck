@@ -21,6 +21,7 @@ import { readClientId } from "../clientStore";
 import { SwipeScreen } from "../SwipeScreen";
 import { clearDisplayedAlert } from "../urgentDisplay";
 import { A1ChoiceSingle } from "./A1ChoiceSingle";
+import { A2ChoiceMulti } from "./A2ChoiceMulti";
 
 export type AnswerHandler = (optionIds: string[], customReply?: string) => Promise<void>;
 
@@ -72,8 +73,11 @@ function AlertScreen({ alert, waiting, onAnswer }: AlertHostProps & { onAnswer: 
     // Keyed by the question so the next alert starts fresh (blob arrives, nothing armed).
     return <A1ChoiceSingle key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} />;
   }
-  // TODO(A2, A3): replace these two POC screens with the new multi and swipe screens.
-  // They record the answer themselves and ignore `onAnswer`.
+  if (alert.selectionMode === "multi" && alert.presentation === "choice") {
+    return <A2ChoiceMulti key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} />;
+  }
+  // TODO(A3): replace the POC swipe screen with the new swipe screen.
+  // The POC screens record the answer themselves and ignore `onAnswer`.
   return alert.presentation === "swipe" ? (
     <SwipeScreen alert={alert} waiting={waiting} />
   ) : (
