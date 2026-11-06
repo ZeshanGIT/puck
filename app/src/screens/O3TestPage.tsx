@@ -30,11 +30,27 @@ export function O3TestPage({ clientId, onContinue }: { clientId: string; onConti
   const client = useConvex();
   const toast = useToast();
   const blob = useRef<BlobHandle>(null);
-  const pending = useQuery(anyApi.alerts.pending, { clientId }) as PendingAlert[] | undefined;
+  // Test pages left from an earlier try are cancelled first, so one never greets the person
+  // before they tap Send. The pending query waits for that.
+  const [cleared, setCleared] = useState(false);
+  const pending = useQuery(anyApi.alerts.pending, cleared ? { clientId } : "skip") as PendingAlert[] | undefined;
   const [send, setSend] = useState<Send>("idle");
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const sawAlert = useRef(false);
+
+  useEffect(() => {
+    let alive = true;
+    client
+      .mutation(anyApi.alerts.cancelTests, { clientId })
+      .catch((caught: unknown) => console.error(readableError(caught)))
+      .finally(() => {
+        if (alive) setCleared(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [client, clientId]);
 
   // Make sure this client can be pushed to, if notifications are on.
   useEffect(() => {

@@ -99,6 +99,29 @@ export const create = internalMutationGeneric({
  * Settings S5). At most one unanswered test page per client: a fresh one is returned as it is,
  * stale ones are cancelled and replaced (see `decideTestPage`).
  */
+/**
+ * Cancels this client's unanswered test pages (pending or scheduled). The test page screen calls
+ * it on open, so a page left from an earlier try never greets the person before they tap Send.
+ */
+export const cancelTests = mutationGeneric({
+  args: { clientId: v.string() },
+  returns: v.object({ cancelled: v.number() }),
+  handler: async (ctx, args) => {
+    const client = await requireClient(ctx, args.clientId);
+    const botDocId = await getOrCreateBuiltInBot(ctx);
+    let cancelled = 0;
+    for (const status of ["pending", "scheduled"] as const) {
+      const rows = await ctx.db.query("alerts").withIndex("by_status", (q) => q.eq("status", status)).take(100);
+      for (const alert of rows) {
+        if (alert.botId !== botDocId || alert.targetClientId !== client._id) continue;
+        await ctx.db.patch(alert._id, { status: "cancelled", updatedAt: Date.now() });
+        cancelled += 1;
+      }
+    }
+    return { cancelled };
+  },
+});
+
 export const sendTest = mutationGeneric({
   args: { clientId: v.string(), delaySeconds: v.optional(v.number()) },
   returns: v.object({ questionId: v.string() }),
