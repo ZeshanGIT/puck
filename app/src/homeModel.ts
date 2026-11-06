@@ -173,6 +173,15 @@ export function stackableCount(items: readonly NeedItem[]): number {
   return items.filter((item) => item.status === "pending" && !item.queued).length;
 }
 
+/**
+ * The stack button's label. `ready` is what the button opens (`stackableCount`), `cards` is the cards
+ * listed under "Needs you". The prototype's "Go through all N" when they are the same; otherwise
+ * "Go through the N ready now", so the button does not read as all of the cards.
+ */
+export function goThroughLabel(ready: number, cards: number): string {
+  return ready === cards ? `Go through all ${ready}` : `Go through the ${ready} ready now`;
+}
+
 /* ---------------------------------------------------------------------- Earlier */
 
 export interface HistoryRowModel {

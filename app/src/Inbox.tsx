@@ -206,40 +206,46 @@ function InboxBody({
   }
   const alert = deck.alert;
   if (!alert) {
-    if (detailId) {
-      return (
-        <View style={styles.stack}>
-          <H4Detail questionId={detailId} onBack={closeDetail} />
-        </View>
-      );
-    }
+    // Home stays mounted under the detail (H4), so Back shows the list that is already loaded. While
+    // the detail is up Home is hidden, so it takes no touches and is not read by a screen reader.
     return (
       <View style={styles.stack}>
-        <ConnectedH1Home
-          clientId={clientId}
-          notifications={notifications}
-          fullScreenAllowed={fullScreen.allowed}
-          onAllowFullScreen={() => void allowFullScreen()}
-          onOpenNeed={openNeed}
-          onGoThroughAll={goThroughAll}
-          onOpenAlert={openDetail}
-          onBots={comingLater}
-          onSettings={comingLater}
-          onPairBot={() => setPairing(true)}
-          footer={
-            <View style={styles.footer}>
-              <PuckTextLink label="Pair a bot" onPress={() => setPairing(true)} />
-              {email ? <PuckBody>Signed in as {email}.</PuckBody> : null}
-              {__DEV__ && onDevReplayOnboarding ? (
-                <PuckTextLink label="Dev: replay onboarding" onPress={onDevReplayOnboarding} />
-              ) : null}
-              {__DEV__ && onDevDesignGallery ? (
-                <PuckTextLink label="Dev: design gallery" onPress={onDevDesignGallery} />
-              ) : null}
-              <PuckTextLink label="Sign out" onPress={onSignOut} />
-            </View>
-          }
-        />
+        <View
+          style={detailId ? styles.hidden : styles.stack}
+          accessibilityElementsHidden={detailId !== null}
+          importantForAccessibility={detailId ? "no-hide-descendants" : "auto"}
+        >
+          <ConnectedH1Home
+            clientId={clientId}
+            notifications={notifications}
+            fullScreenAllowed={fullScreen.allowed}
+            onAllowFullScreen={() => void allowFullScreen()}
+            onOpenNeed={openNeed}
+            onGoThroughAll={goThroughAll}
+            onOpenAlert={openDetail}
+            onBots={comingLater}
+            onSettings={comingLater}
+            onPairBot={() => setPairing(true)}
+            footer={
+              <View style={styles.footer}>
+                <PuckTextLink label="Pair a bot" onPress={() => setPairing(true)} />
+                {email ? <PuckBody>Signed in as {email}.</PuckBody> : null}
+                {__DEV__ && onDevReplayOnboarding ? (
+                  <PuckTextLink label="Dev: replay onboarding" onPress={onDevReplayOnboarding} />
+                ) : null}
+                {__DEV__ && onDevDesignGallery ? (
+                  <PuckTextLink label="Dev: design gallery" onPress={onDevDesignGallery} />
+                ) : null}
+                <PuckTextLink label="Sign out" onPress={onSignOut} />
+              </View>
+            }
+          />
+        </View>
+        {detailId ? (
+          <View style={styles.overlay}>
+            <H4Detail questionId={detailId} onBack={closeDetail} />
+          </View>
+        ) : null}
         <Toast message={toast.message} visible={toast.visible} />
       </View>
     );
@@ -296,6 +302,12 @@ const styles = StyleSheet.create({
   },
   stack: {
     flex: 1,
+  },
+  hidden: {
+    display: "none",
+  },
+  overlay: {
+    ...StyleSheet.absoluteFill,
   },
   filled: {
     flex: 1,

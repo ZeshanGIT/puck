@@ -35,6 +35,7 @@ import {
   isNoBotsYet,
   knownBots,
   needsTitle,
+  goThroughLabel,
   needsYou,
   stackableCount,
   type BannerId,
@@ -133,7 +134,7 @@ export function H1Home(props: H1HomeProps) {
             </View>
             {stackable > 1 ? (
               <View style={styles.all}>
-                <Btn label={`Go through all ${stackable}`} variant="line" onPress={props.onGoThroughAll} />
+                <Btn label={goThroughLabel(stackable, needs.length)} variant="line" onPress={props.onGoThroughAll} />
               </View>
             ) : null}
           </>

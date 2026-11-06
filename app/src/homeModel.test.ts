@@ -12,6 +12,7 @@ import {
   needsTitle,
   needsYou,
   snoozeNote,
+  goThroughLabel,
   stackableCount,
   type HistoryItem,
   type WaitingAlert,
@@ -148,6 +149,17 @@ describe("needsYou", () => {
       { now: NOW, queuedIds: new Set(["q"]) },
     );
     expect(stackableCount(items)).toBe(2);
+  });
+});
+
+describe("goThroughLabel", () => {
+  test("the prototype's words when every card can be gone through", () => {
+    expect(goThroughLabel(2, 2)).toBe("Go through all 2");
+  });
+
+  test("says how many are ready when some cards are snoozed or not sent", () => {
+    expect(goThroughLabel(2, 4)).toBe("Go through the 2 ready now");
+    expect(goThroughLabel(0, 1)).toBe("Go through the 0 ready now");
   });
 });
 
