@@ -15,6 +15,7 @@ import type * as clients from "../clients.js";
 import type * as delivery from "../delivery.js";
 import type * as device from "../device.js";
 import type * as http from "../http.js";
+import type * as lib_alertFields from "../lib/alertFields.js";
 import type * as lib_builtInBot from "../lib/builtInBot.js";
 import type * as lib_clientAuth from "../lib/clientAuth.js";
 import type * as lib_clientRules from "../lib/clientRules.js";
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   delivery: typeof delivery;
   device: typeof device;
   http: typeof http;
+  "lib/alertFields": typeof lib_alertFields;
   "lib/builtInBot": typeof lib_builtInBot;
   "lib/clientAuth": typeof lib_clientAuth;
   "lib/clientRules": typeof lib_clientRules;
