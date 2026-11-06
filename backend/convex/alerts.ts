@@ -1,8 +1,12 @@
 import { cancelStep, isQuestionId, isoUtc, releaseStep, type AlertOption } from "@puck/shared";
-import { internalMutationGeneric, internalQueryGeneric, queryGeneric } from "convex/server";
+import { internalMutationGeneric, internalQueryGeneric, mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
+import { getOrCreateBuiltInBot } from "./bots";
 import { requireDevice } from "./device";
+import { TEST_PAGE_OPTIONS, TEST_PAGE_QUESTION, decideTestPage } from "./lib/builtInBot";
 import { requireClient } from "./lib/clientAuth";
 import { newQuestionId } from "./lib/crypto";
 import { alertIsForClient, selectPushTargets } from "./lib/pushTargets";
@@ -14,6 +18,62 @@ function storedOptions(options: AlertOption[]) {
   return options.map((entry) =>
     entry.icon === undefined ? { id: entry.id, label: entry.label } : entry,
   );
+}
+
+interface NewAlert {
+  question: string;
+  // Same loose types the schema validators give (`literals()` widens to string).
+  priority: string;
+  selectionMode: string;
+  presentation: string;
+  options: AlertOption[];
+  scheduledFor: number | null;
+  targetClientId?: string;
+}
+
+/** Allocates a question id, inserts the alert and schedules its push (or its release). */
+async function insertAlert(ctx: MutationCtx, botDocId: Id<"bots">, args: NewAlert): Promise<{ questionId: string }> {
+  const bot = await ctx.db.get(botDocId);
+  if (!bot || bot.pairingState !== "paired") throw new Error("bot is not paired");
+
+  let questionId = "";
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const candidate = newQuestionId();
+    if (!isQuestionId(candidate)) continue;
+    const existing = await ctx.db
+      .query("alerts")
+      .withIndex("by_questionId", (q) => q.eq("questionId", candidate))
+      .unique();
+    if (!existing) {
+      questionId = candidate;
+      break;
+    }
+  }
+  if (!questionId) throw new Error("could not allocate a question id");
+
+  const now = Date.now();
+  const scheduledFor = args.scheduledFor === null ? undefined : args.scheduledFor;
+  const status = scheduledFor !== undefined && scheduledFor > now ? "scheduled" : "pending";
+  const alertId = await ctx.db.insert("alerts", {
+    questionId,
+    botId: botDocId,
+    question: args.question,
+    priority: args.priority,
+    selectionMode: args.selectionMode,
+    presentation: args.presentation,
+    options: storedOptions(args.options),
+    status,
+    ...(scheduledFor === undefined ? {} : { scheduledFor }),
+    ...(args.targetClientId ? { targetClientId: args.targetClientId } : {}),
+    createdAt: now,
+    updatedAt: now,
+  });
+  if (status === "pending") {
+    await ctx.scheduler.runAfter(0, internal.push.send, { alertId });
+  } else if (scheduledFor !== undefined) {
+    await ctx.scheduler.runAt(scheduledFor, internal.alerts.release, { alertId });
+  }
+  return { questionId };
 }
 
 export const create = internalMutationGeneric({
@@ -29,47 +89,46 @@ export const create = internalMutationGeneric({
   },
   returns: v.object({ questionId: v.string() }),
   handler: async (ctx, args) => {
-    const bot = await ctx.db.get(args.botDocId);
-    if (!bot || bot.pairingState !== "paired") throw new Error("bot is not paired");
+    const { botDocId, ...alert } = args;
+    return await insertAlert(ctx, botDocId, alert);
+  },
+});
 
-    let questionId = "";
-    for (let attempt = 0; attempt < 8; attempt++) {
-      const candidate = newQuestionId();
-      if (!isQuestionId(candidate)) continue;
-      const existing = await ctx.db
-        .query("alerts")
-        .withIndex("by_questionId", (q) => q.eq("questionId", candidate))
-        .unique();
-      if (!existing) {
-        questionId = candidate;
-        break;
+/**
+ * A test page: an urgent alert from the built-in Puck bot to the calling client (onboarding O3,
+ * Settings S5). At most one unanswered test page per client: a fresh one is returned as it is,
+ * stale ones are cancelled and replaced (see `decideTestPage`).
+ */
+export const sendTest = mutationGeneric({
+  args: { clientId: v.string() },
+  returns: v.object({ questionId: v.string() }),
+  handler: async (ctx, args) => {
+    const client = await requireClient(ctx, args.clientId);
+    const botDocId = await getOrCreateBuiltInBot(ctx);
+    const pendingRows = await ctx.db
+      .query("alerts")
+      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .take(100);
+    const mine = pendingRows.filter((alert) => alert.botId === botDocId && alert.targetClientId === client._id);
+    const decision = decideTestPage(
+      mine.map((alert) => ({ questionId: alert.questionId, createdAt: alert.createdAt })),
+      Date.now(),
+    );
+    if (decision.action === "reuse") return { questionId: decision.questionId };
+    for (const alert of mine) {
+      if (decision.cancel.includes(alert.questionId)) {
+        await ctx.db.patch(alert._id, { status: "cancelled", updatedAt: Date.now() });
       }
     }
-    if (!questionId) throw new Error("could not allocate a question id");
-
-    const now = Date.now();
-    const scheduledFor = args.scheduledFor === null ? undefined : args.scheduledFor;
-    const status = scheduledFor !== undefined && scheduledFor > now ? "scheduled" : "pending";
-    const alertId = await ctx.db.insert("alerts", {
-      questionId,
-      botId: args.botDocId,
-      question: args.question,
-      priority: args.priority,
-      selectionMode: args.selectionMode,
-      presentation: args.presentation,
-      options: storedOptions(args.options),
-      status,
-      ...(scheduledFor === undefined ? {} : { scheduledFor }),
-      ...(args.targetClientId ? { targetClientId: args.targetClientId } : {}),
-      createdAt: now,
-      updatedAt: now,
+    return await insertAlert(ctx, botDocId, {
+      question: TEST_PAGE_QUESTION,
+      priority: "urgent",
+      selectionMode: "single",
+      presentation: "choice",
+      options: [...TEST_PAGE_OPTIONS],
+      scheduledFor: null,
+      targetClientId: client._id,
     });
-    if (status === "pending") {
-      await ctx.scheduler.runAfter(0, internal.push.send, { alertId });
-    } else if (scheduledFor !== undefined) {
-      await ctx.scheduler.runAt(scheduledFor, internal.alerts.release, { alertId });
-    }
-    return { questionId };
   },
 });
 

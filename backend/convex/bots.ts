@@ -6,9 +6,12 @@ import {
   tooManyPendingBots,
   validatePairingInput,
 } from "@puck/shared";
-import { internalQueryGeneric, mutationGeneric } from "convex/server";
+import { internalMutationGeneric, internalQueryGeneric, mutationGeneric } from "convex/server";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { requireDevice } from "./device";
+import { BUILT_IN_BOT_ID, BUILT_IN_BOT_NAME, botMayAuthenticate } from "./lib/builtInBot";
 import { TOO_MANY_PENDING_BOTS } from "./lib/deviceAuth";
 import { encryptHeader, hashSecret, mutationRandomInt, newSecret, timingSafeEqual } from "./lib/crypto";
 
@@ -141,8 +144,39 @@ export const authenticate = internalQueryGeneric({
       .withIndex("by_publicId", (q) => q.eq("id", args.botId))
       .unique();
     const matches = timingSafeEqual(args.secretHash, bot?.secretHash ?? DUMMY_HASH);
-    if (!bot || !matches) return { ok: false as const, reason: "unauthorized" as const };
+    if (!bot || !matches || !botMayAuthenticate(bot)) return { ok: false as const, reason: "unauthorized" as const };
     if (bot.pairingState !== "paired") return { ok: false as const, reason: "not_paired" as const };
     return { ok: true as const, botDocId: bot._id };
   },
+});
+
+/**
+ * The built-in Puck bot's row, created on first use. It is paired, has no webhook, and its secret
+ * hash is the hash of a random secret that is thrown away, so nothing can match it (and
+ * `authenticate` refuses built-in bots anyway). Mutations are serialized, so this is race-safe.
+ */
+export async function getOrCreateBuiltInBot(ctx: MutationCtx): Promise<Id<"bots">> {
+  const existing = await ctx.db
+    .query("bots")
+    .withIndex("by_publicId", (q) => q.eq("id", BUILT_IN_BOT_ID))
+    .unique();
+  if (existing) return existing._id;
+  return await ctx.db.insert("bots", {
+    id: BUILT_IN_BOT_ID,
+    name: BUILT_IN_BOT_NAME,
+    secretHash: await hashSecret(newSecret()),
+    webhookUrl: "",
+    webhookHeader: "",
+    routine: BUILT_IN_BOT_NAME,
+    pairingState: "paired",
+    builtIn: true,
+    createdAt: Date.now(),
+  });
+}
+
+/** Gets or creates the built-in Puck bot. Idempotent. */
+export const ensureBuiltIn = internalMutationGeneric({
+  args: {},
+  returns: v.id("bots"),
+  handler: async (ctx) => getOrCreateBuiltInBot(ctx),
 });

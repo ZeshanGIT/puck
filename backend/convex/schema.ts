@@ -54,6 +54,8 @@ export default defineSchema({
     pairingState,
     pairingCodeHash: v.optional(v.string()),
     pairingCodeExpiresAt: v.optional(v.number()),
+    // True only for the built-in Puck bot (test pages). It has no webhook and cannot authenticate.
+    builtIn: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index("by_publicId", ["id"])

@@ -2,6 +2,7 @@ import { DELIVERY_MAX_ATTEMPTS, buildAnswerPayload, deliveryBackoffMs } from "@p
 import { internalActionGeneric, internalMutationGeneric } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { deliveryRoute } from "./lib/builtInBot";
 import { CryptoError, decryptHeader } from "./lib/crypto";
 
 /** Claim one delivery attempt and return the webhook call, or report that nothing should be sent. */
@@ -26,6 +27,11 @@ export const begin = internalMutationGeneric({
     const attempts = answer.deliveryAttempts + 1;
     const alert = await ctx.db.get(answer.alertId);
     const bot = alert ? await ctx.db.get(alert.botId) : null;
+    if (alert && bot && deliveryRoute(bot) === "built-in") {
+      // The built-in Puck bot has no webhook. Nothing is sent, so no attempt is counted.
+      await ctx.db.patch(answer._id, { deliveryStatus: "delivered" });
+      return { proceed: false as const };
+    }
     if (!alert || !bot) {
       await ctx.db.patch(answer._id, {
         deliveryAttempts: attempts,
