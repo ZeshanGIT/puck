@@ -17,8 +17,9 @@ import { usePushRegistration } from "./src/push";
 import { recordQueuedAnswer, useAnswerQueueFlush } from "./src/screens/A10Offline";
 import { useWakeSnoozed } from "./src/screens/A11Snooze";
 import { AlertHost } from "./src/screens/AlertHost";
+import { AStack } from "./src/screens/AStack";
 import { DevGallery } from "./src/screens/DevGallery";
-import { freshSample, ALERT_SAMPLES } from "./src/screens/gallery/samples";
+import { freshGroup, freshSample, ALERT_SAMPLE_GROUPS, ALERT_SAMPLES } from "./src/screens/gallery/samples";
 import { O0Opening } from "./src/screens/O0Opening";
 import { O1Welcome } from "./src/screens/O1Welcome";
 import { O2Permissions } from "./src/screens/O2Permissions";
@@ -59,7 +60,8 @@ function useDevLinks() {
 /**
  * Dev only: `adb shell am start -a android.intent.action.VIEW -d "puck://dev-alert?sample=sheldon"`
  * opens an alert screen with a sample alert (`src/screens/gallery/samples`; `fyi` is the other
- * one so far). Answering shows what would have been sent and returns to the sample.
+ * one so far). Answering shows what would have been sent and returns to the sample. A sample
+ * that names a group (`sample=three-at-once`) opens its alerts as the A8 stack instead.
  */
 function useDevAlertLink() {
   const [sample, setSample] = useState<string | null>(null);
@@ -83,11 +85,27 @@ function DevAlertSample({ name }: { name: string }) {
   // A new `round` (the time the sample was opened) gives the sample fresh times and a fresh screen.
   const [round, setRound] = useState(() => Date.now());
   const alert = useMemo(() => freshSample(name, round), [name, round]);
+  const group = useMemo(() => (alert ? null : freshGroup(name, round)), [alert, name, round]);
+  if (group) {
+    // The stack keeps its own answered cards and moves on by itself, so nothing here starts it over.
+    const onGroupAnswer = async (target: { botName: string }, optionIds: string[], customReply?: string) => {
+      toast.show(
+        `Would send: ${target.botName}: ${optionIds.join(", ")}${customReply ? ` + "${customReply}"` : ""}`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    };
+    return (
+      <View style={styles.root}>
+        <AStack key={round} alerts={group} onAnswer={onGroupAnswer} />
+        <Toast message={toast.message} visible={toast.visible} />
+      </View>
+    );
+  }
   if (!alert) {
     return (
       <View style={styles.root}>
         <Text style={styles.devNote}>
-          Unknown sample: {name}. Known: {Object.keys(ALERT_SAMPLES).join(", ")}.
+          Unknown sample: {name}. Known: {[...Object.keys(ALERT_SAMPLES), ...Object.keys(ALERT_SAMPLE_GROUPS)].join(", ")}.
         </Text>
       </View>
     );

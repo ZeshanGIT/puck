@@ -1,7 +1,7 @@
 /**
  * Sample alerts for checking the alert screens on a device: `puck://dev-alert?sample=<name>`
  * (dev builds only, see `App.tsx`). Each alert card adds its own `samples/<id>.ts` file and
- * registers it here.
+ * registers it here. A8 adds groups of alerts shown as a stack (`sample=three-at-once`).
  */
 import type { PendingAlert } from "../../../ChoiceScreen";
 import { A1_SAMPLES } from "./a1";
@@ -9,6 +9,7 @@ import { A2_SAMPLES } from "./a2";
 import { A3_SAMPLES } from "./a3";
 import { A5_SAMPLES } from "./a5";
 import { A7_SAMPLES } from "./a7";
+import { ALERT_SAMPLE_GROUPS, freshGroup } from "./a8";
 
 export const ALERT_SAMPLES: Record<string, PendingAlert> = {
   ...A1_SAMPLES,
@@ -31,3 +32,6 @@ export function freshSample(name: string, now: number = Date.now()): PendingAler
     ...(sample.expiresAt === undefined ? {} : { expiresAt: now + sample.expiresAt }),
   };
 }
+
+/** The stack samples (A8) and their time helper; see `a8.ts`. */
+export { ALERT_SAMPLE_GROUPS, freshGroup };
