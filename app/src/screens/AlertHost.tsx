@@ -18,7 +18,8 @@ import { useCallback, useState } from "react";
 import { type PendingAlert, ChoiceScreen } from "../ChoiceScreen";
 import { replyPayload } from "../choice";
 import { readClientId } from "../clientStore";
-import { clearDisplayedAlert } from "../urgentDisplay";
+import { useReadingAloud } from "../speak";
+import { clearDisplayedAlert, useUrgentLook } from "../urgentDisplay";
 import type { UploadedAttachment } from "../attachments";
 import { A1ChoiceSingle } from "./A1ChoiceSingle";
 import { A2ChoiceMulti } from "./A2ChoiceMulti";
@@ -107,15 +108,19 @@ function AlertBody({
   onAnswer,
   onReply,
 }: AlertHostProps & { onAnswer: AnswerHandler; onReply: () => void }) {
+  // Urgent over the lock screen: the clock, and the night look from 10 PM to 7 AM (card T34).
+  const look = useUrgentLook(alert.priority);
+  const readingAloud = useReadingAloud(alert.questionId);
+  const frame = { night: look.night, clock: look.clock, readingAloud };
   if (alert.selectionMode === "single" && alert.presentation === "choice") {
     // Keyed by the question so the next alert starts fresh (blob arrives, nothing armed).
-    return <A1ChoiceSingle key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} onReply={onReply} />;
+    return <A1ChoiceSingle key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} onReply={onReply} {...frame} />;
   }
   if (alert.selectionMode === "multi" && alert.presentation === "choice") {
-    return <A2ChoiceMulti key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} onReply={onReply} />;
+    return <A2ChoiceMulti key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} onReply={onReply} {...frame} />;
   }
   if (alert.presentation === "swipe") {
-    return <A3Swipe key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} onReply={onReply} />;
+    return <A3Swipe key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} onReply={onReply} {...frame} />;
   }
   // The POC screens record the answer themselves and ignore `onAnswer`. Nothing reaches them now
   // that A1, A2 and A3 cover every alert; the old screens stay until the old Inbox is replaced.

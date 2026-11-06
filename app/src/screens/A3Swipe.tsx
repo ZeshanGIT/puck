@@ -49,6 +49,8 @@ export interface A3SwipeProps {
   night?: boolean;
   /** True only while the phone is really reading the message aloud (card T34). */
   readingAloud?: boolean;
+  /** The lock-screen clock at the top (an urgent alert over the lock screen). */
+  clock?: boolean;
 }
 
 const MAX_FONT_SCALE = 1.3;
@@ -73,7 +75,7 @@ const ICON_PATHS: Record<string, string> = {
 
 type Phase = "idle" | "sending" | "sent";
 
-export function A3Swipe({ alert, waiting, onAnswer, onReply, onSnooze, night, readingAloud }: A3SwipeProps) {
+export function A3Swipe({ alert, waiting, onAnswer, onReply, onSnooze, night, readingAloud, clock }: A3SwipeProps) {
   const { botId, botName } = alert;
   const bot = useMemo(() => botLook({ botId, botName }), [botId, botName]);
   const expiry = useExpiry(alert.expiresAt, alert.createdAt);
@@ -178,6 +180,7 @@ export function A3Swipe({ alert, waiting, onAnswer, onReply, onSnooze, night, re
       readingAloud={readingAloud}
       queue={waiting > 1 ? { position: 1, total: waiting } : null}
       night={night}
+      clock={clock}
       answered={phase !== "idle"}
       blobRef={blob}
       blobSize={blobSize}

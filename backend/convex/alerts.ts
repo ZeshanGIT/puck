@@ -322,6 +322,13 @@ export const loadForPush = internalQueryGeneric({
       question: v.string(),
       botName: v.string(),
       priority,
+      // What the phone needs to ring the way the alert asks (Protocol changes §1).
+      message: v.optional(v.string()),
+      ringSeconds: v.optional(v.number()),
+      speak: v.optional(v.boolean()),
+      bypassDnd: v.optional(v.boolean()),
+      bypassSilent: v.optional(v.boolean()),
+      requiresUnlock: v.optional(v.boolean()),
     }),
   ),
   handler: async (ctx, args) => {
@@ -349,6 +356,12 @@ export const loadForPush = internalQueryGeneric({
       question: alert.question,
       botName: bot.name,
       priority: alert.priority,
+      ...(alert.message === undefined ? {} : { message: alert.message }),
+      ...(alert.ringSeconds === undefined ? {} : { ringSeconds: alert.ringSeconds }),
+      ...(alert.speak === undefined ? {} : { speak: alert.speak }),
+      ...(alert.bypassDnd === undefined ? {} : { bypassDnd: alert.bypassDnd }),
+      ...(alert.bypassSilent === undefined ? {} : { bypassSilent: alert.bypassSilent }),
+      ...(alert.requiresUnlock === undefined ? {} : { requiresUnlock: alert.requiresUnlock }),
     };
   },
 });

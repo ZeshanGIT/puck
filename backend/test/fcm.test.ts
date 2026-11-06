@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { PUSH_CHANNEL_ID } from "@puck/shared";
-import { fcmBody, fcmErrorStatus, fcmMessage, googleAssertionClaims, isPushToken, readServiceAccount } from "../convex/lib/fcm";
+import {
+  fcmBody,
+  fcmErrorStatus,
+  fcmMessage,
+  googleAssertionClaims,
+  isPushToken,
+  pushAlertExtras,
+  readServiceAccount,
+} from "../convex/lib/fcm";
 
 const TOKEN = "fcm-token-value-0123456789";
 
@@ -91,5 +99,82 @@ describe("isPushToken", () => {
     expect(isPushToken(TOKEN)).toBe(true);
     expect(isPushToken("short")).toBe(false);
     expect(isPushToken(`${TOKEN} stolen`)).toBe(false);
+  });
+});
+
+describe("full-screen message flags", () => {
+  const base = {
+    pushToken: TOKEN,
+    questionId: "q_BEXA0M8Y5W1ADYPX",
+    question: "Time to get up",
+    botName: "Grok Bot",
+    priority: "urgent" as const,
+    fullScreen: true,
+  };
+
+  test("carries the ring length and flags as strings, and the message only when it is spoken", () => {
+    const message = fcmBody({
+      ...base,
+      message: "Flight at **10:40**",
+      ringSeconds: 300,
+      speak: true,
+      bypassDnd: true,
+      bypassSilent: false,
+      requiresUnlock: false,
+    });
+    expect(message.message.data).toEqual({
+      kind: "fullscreen",
+      questionId: base.questionId,
+      question: base.question,
+      botName: "Grok Bot",
+      priority: "urgent",
+      ringSeconds: "300",
+      speak: "true",
+      bypassDnd: "true",
+      bypassSilent: "false",
+      requiresUnlock: "false",
+      alertMessage: "Flight at **10:40**",
+    });
+  });
+
+  test("leaves out what the alert does not set, and the message when it is not spoken", () => {
+    const quiet = fcmBody({ ...base, message: "Private details", speak: false });
+    expect(quiet.message.data).toEqual({
+      kind: "fullscreen",
+      questionId: base.questionId,
+      question: base.question,
+      botName: "Grok Bot",
+      priority: "urgent",
+      speak: "false",
+    });
+    expect(JSON.stringify(fcmBody(base))).not.toContain("alertMessage");
+  });
+
+  test("cuts a long spoken message to the message limit", () => {
+    const message = fcmBody({ ...base, speak: true, message: "x".repeat(5000) });
+    expect(message.message.data?.alertMessage?.length).toBe(1000);
+  });
+
+  test("a shade notification ignores the new fields", () => {
+    const message = fcmBody({ ...base, fullScreen: false, speak: true, message: "hi", ringSeconds: 60 });
+    expect(message.message.notification?.body).toBe("Time to get up");
+    expect(message.message.data?.alertMessage).toBeUndefined();
+  });
+});
+
+describe("pushAlertExtras", () => {
+  test("picks the optional fields and drops wrong types", () => {
+    expect(
+      pushAlertExtras({
+        message: "m",
+        ringSeconds: 60,
+        speak: true,
+        bypassDnd: "yes",
+        requiresUnlock: false,
+        other: 1,
+      }),
+    ).toEqual({ message: "m", ringSeconds: 60, speak: true, requiresUnlock: false });
+    expect(pushAlertExtras({})).toEqual({});
+    expect(pushAlertExtras(null)).toEqual({});
   });
 });

@@ -46,6 +46,8 @@ export interface A1ChoiceSingleProps {
   night?: boolean;
   /** True only while the phone is really reading the message aloud (card T34). */
   readingAloud?: boolean;
+  /** The lock-screen clock at the top (an urgent alert over the lock screen). */
+  clock?: boolean;
 }
 
 /** `look(mainBlob(), -1, 4)` in `ACT.opt`. */
@@ -70,7 +72,7 @@ export function A1ChoiceSingle(props: A1ChoiceSingleProps) {
   );
 }
 
-function A1Body({ alert, waiting, onAnswer, onReply, onSnooze, night, readingAloud }: A1ChoiceSingleProps) {
+function A1Body({ alert, waiting, onAnswer, onReply, onSnooze, night, readingAloud, clock }: A1ChoiceSingleProps) {
   const { botId, botName } = alert;
   const bot = useMemo(() => botLook({ botId, botName }), [botId, botName]);
   const expiry = useExpiry(alert.expiresAt, alert.createdAt);
@@ -157,6 +159,7 @@ function A1Body({ alert, waiting, onAnswer, onReply, onSnooze, night, readingAlo
       readingAloud={readingAloud}
       queue={waiting > 1 ? { position: 1, total: waiting } : null}
       night={night}
+      clock={clock}
       answered={phase !== "idle"}
       blobRef={blob}
       blobSize={blobSize}

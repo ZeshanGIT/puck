@@ -5,7 +5,7 @@ import { v } from "convex/values";
 import { importPKCS8, SignJWT } from "jose";
 import { internal } from "./_generated/api";
 import { pushSummary } from "./lib/pushTargets";
-import { fcmBody, fcmErrorStatus, readServiceAccount } from "./lib/fcm";
+import { fcmBody, fcmErrorStatus, pushAlertExtras, readServiceAccount } from "./lib/fcm";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
@@ -88,6 +88,8 @@ export const send = internalActionGeneric({
               botName: target.botName,
               priority: target.priority,
               fullScreen: entry.fullScreenAllowed,
+              // The ring length, spoken text and bypass flags, when `loadForPush` returns them.
+              ...pushAlertExtras(target),
             }),
           ),
           signal: AbortSignal.timeout(15_000),

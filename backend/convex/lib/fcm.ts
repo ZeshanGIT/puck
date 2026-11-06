@@ -9,6 +9,35 @@ export interface PushAlert {
   botName: string;
   priority: "normal" | "urgent";
   fullScreen: boolean;
+  /** The alert's own fields (Protocol changes section 1). Only the full-screen message carries them. */
+  message?: string;
+  ringSeconds?: number;
+  speak?: boolean;
+  bypassDnd?: boolean;
+  bypassSilent?: boolean;
+  requiresUnlock?: boolean;
+}
+
+/** The longest message text sent in a push, the same as `message` on `POST /alerts`. */
+const PUSH_MESSAGE_MAX = 1_000;
+
+/**
+ * Picks the optional alert fields out of whatever the push query returned, so an older query
+ * that does not return them still works. Wrong types are dropped, never thrown on.
+ */
+export function pushAlertExtras(source: unknown): Pick<
+  PushAlert,
+  "message" | "ringSeconds" | "speak" | "bypassDnd" | "bypassSilent" | "requiresUnlock"
+> {
+  const record = isRecord(source) ? source : {};
+  const extras: ReturnType<typeof pushAlertExtras> = {};
+  if (typeof record.message === "string") extras.message = record.message;
+  if (typeof record.ringSeconds === "number") extras.ringSeconds = record.ringSeconds;
+  for (const flag of ["speak", "bypassDnd", "bypassSilent", "requiresUnlock"] as const) {
+    const value = record[flag];
+    if (typeof value === "boolean") extras[flag] = value;
+  }
+  return extras;
 }
 
 export interface ServiceAccount {
@@ -56,16 +85,27 @@ export function fcmMessage(alert: PushAlert) {
  * Keys that Expo would turn into its own notification (`title`, `message`, `body`) stay unused.
  */
 export function fcmFullScreenMessage(alert: PushAlert) {
+  // FCM data values are strings. A field the alert does not set is left out, so the phone
+  // applies its own defaults, and an older phone app ignores the keys it does not know.
+  const data: Record<string, string> = {
+    kind: FULL_SCREEN_KIND,
+    questionId: alert.questionId,
+    question: alert.question,
+    botName: alert.botName,
+    priority: alert.priority,
+  };
+  if (alert.ringSeconds !== undefined) data.ringSeconds = String(alert.ringSeconds);
+  if (alert.speak !== undefined) data.speak = String(alert.speak);
+  if (alert.bypassDnd !== undefined) data.bypassDnd = String(alert.bypassDnd);
+  if (alert.bypassSilent !== undefined) data.bypassSilent = String(alert.bypassSilent);
+  if (alert.requiresUnlock !== undefined) data.requiresUnlock = String(alert.requiresUnlock);
+  // Only a spoken alert needs its message on the phone before the app opens. The key is not
+  // `message`, which Expo would turn into its own notification text.
+  if (alert.speak === true && alert.message) data.alertMessage = alert.message.slice(0, PUSH_MESSAGE_MAX);
   return {
     message: {
       token: alert.pushToken,
-      data: {
-        kind: FULL_SCREEN_KIND,
-        questionId: alert.questionId,
-        question: alert.question,
-        botName: alert.botName,
-        priority: alert.priority,
-      },
+      data,
       android: {
         priority: "HIGH" as const,
       },

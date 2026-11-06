@@ -1,19 +1,36 @@
 package puck.fullscreen
 
+import android.app.Activity
 import android.app.KeyguardManager
+import android.app.Notification
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.RingtoneManager
 import android.os.Build
+import android.view.KeyEvent
+import android.view.Window
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
 /**
  * Reads NotificationManager.canUseFullScreenIntent and isNotificationPolicyAccessGranted
  * (Do Not Disturb access). Notifee exposes neither.
+ *
+ * Also the pieces of an urgent alert that Notifee cannot do (card T34):
+ * - createAlarmChannel: a channel on the alarm audio stream, so it rings in silent mode.
+ * - isLocked: the keyguard is showing, so the screen is over the lock screen.
+ * - isInCall: the phone is in a call (no permission needed: AudioManager.getMode()).
+ * - volume keys: an "onVolumeKey" event when a volume key goes down in the app's window, so a
+ *   ringing alert can be silenced without being answered. The key is not swallowed.
  */
 class FullScreenAccessModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("PuckFullScreenAccess")
+
+    Events("onVolumeKey")
 
     Function("canUse") {
       val context = appContext.reactContext ?: return@Function false
@@ -38,5 +55,92 @@ class FullScreenAccessModule : Module() {
       activity.runOnUiThread { activity.moveTaskToBack(true) }
       true
     }
+
+    // True while the lock screen (keyguard) is showing, which is when an alert covers it.
+    Function("isLocked") {
+      val context = appContext.reactContext ?: return@Function false
+      val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+      keyguard.isKeyguardLocked
+    }
+
+    // True during a phone call, an incoming call ringing, or a voice or video call in another
+    // app. The audio mode needs no permission, unlike the phone state listener (READ_PHONE_STATE).
+    Function("isInCall") {
+      val context = appContext.reactContext ?: return@Function false
+      val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      when (audio.mode) {
+        AudioManager.MODE_IN_CALL,
+        AudioManager.MODE_IN_COMMUNICATION,
+        AudioManager.MODE_RINGTONE,
+        AudioManager.MODE_CALL_SCREENING -> true
+        else -> false
+      }
+    }
+
+    // A channel whose sound plays on the alarm stream, so silent and vibrate mode do not mute it.
+    // Optionally also set to override Do Not Disturb (Puck needs Do Not Disturb access for that to
+    // apply). A channel's settings are fixed once it exists, so each combination has its own id.
+    // Returns false when the channel could not be created (Android 7 and older, or an error).
+    Function("createAlarmChannel") { id: String, name: String, bypassDnd: Boolean ->
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@Function false
+      val context = appContext.reactContext ?: return@Function false
+      try {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+          ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val attributes = AudioAttributes.Builder()
+          .setUsage(AudioAttributes.USAGE_ALARM)
+          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+          .build()
+        val channel = NotificationChannel(id, name, NotificationManager.IMPORTANCE_HIGH)
+        channel.setSound(sound, attributes)
+        channel.enableVibration(true)
+        channel.vibrationPattern = longArrayOf(0, 500, 400, 500)
+        channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        channel.setBypassDnd(bypassDnd)
+        manager.createNotificationChannel(channel)
+        true
+      } catch (error: Exception) {
+        false
+      }
+    }
+
+    // Starts reporting volume key presses in the current window. Also done each time the app
+    // comes to the front, because an alert can open a new activity (and a new window).
+    Function("watchVolumeKeys") {
+      appContext.currentActivity?.let { watchVolumeKeys(it) }
+      true
+    }
+
+    OnActivityEntersForeground {
+      appContext.currentActivity?.let { watchVolumeKeys(it) }
+    }
+  }
+
+  private fun watchVolumeKeys(activity: Activity) {
+    activity.runOnUiThread {
+      val window = activity.window
+      val current = window.callback
+      if (current != null && current !is VolumeKeyCallback) {
+        window.callback = VolumeKeyCallback(current) {
+          sendEvent("onVolumeKey", mapOf<String, Any?>())
+        }
+      }
+    }
+  }
+}
+
+/** Wraps the window's callback: tells the module about a volume key, then lets it through. */
+private class VolumeKeyCallback(
+  private val original: Window.Callback,
+  private val onVolumeKey: () -> Unit,
+) : Window.Callback by original {
+  override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    val volumeKey =
+      event.keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
+        event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN ||
+        event.keyCode == KeyEvent.KEYCODE_VOLUME_MUTE
+    if (volumeKey && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) onVolumeKey()
+    return original.dispatchKeyEvent(event)
   }
 }

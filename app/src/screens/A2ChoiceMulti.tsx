@@ -57,6 +57,8 @@ export interface A2ChoiceMultiProps {
   night?: boolean;
   /** True only while the phone is really reading the message aloud (card T34). */
   readingAloud?: boolean;
+  /** The lock-screen clock at the top (an urgent alert over the lock screen). */
+  clock?: boolean;
 }
 
 /** `look(mainBlob(),0,4)` in `ACT.send`. */
@@ -73,6 +75,7 @@ export function A2ChoiceMulti({
   onSnooze,
   night,
   readingAloud,
+  clock,
 }: A2ChoiceMultiProps) {
   const { botId, botName } = alert;
   const bot = useMemo(() => botLook({ botId, botName }), [botId, botName]);
@@ -175,6 +178,7 @@ export function A2ChoiceMulti({
       readingAloud={readingAloud}
       queue={waiting > 1 ? { position: 1, total: waiting } : null}
       night={night}
+      clock={clock}
       answered={phase !== "idle"}
       blobRef={blob}
       blobSize={blobSize}

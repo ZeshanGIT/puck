@@ -48,6 +48,7 @@ import type { BlobBot, Offset } from "./blobShapes";
 import { Pill } from "./Pill";
 import { RichText } from "./RichText";
 import { ThemeProvider, useBotTheme, useTheme } from "./theme";
+import { clockDateText, clockText } from "../localSettings";
 import { fontFamily, radii } from "./tokens";
 
 /** Paths copied from the prototype's `ICON` object (24 x 24 viewBox). */
@@ -240,6 +241,39 @@ function UrgentRings({ colour }: { colour: string }) {
 
 /* ----------------------------------------------------------------- parts */
 
+/** `.lockclock` and `.lockdate`: the time and date, as a call screen shows them. */
+function LockClock({ now }: { now: number }) {
+  const t = useTheme().tokens;
+  const date = new Date(now);
+  return (
+    <View
+      accessible
+      accessibilityLabel={`${clockText(date)}, ${clockDateText(date)}`}
+      style={styles.lockClock}
+    >
+      <Text
+        maxFontSizeMultiplier={MAX_FONT_SCALE}
+        style={{
+          color: t.ink,
+          fontFamily: fontFamily.extraBold,
+          fontSize: 64,
+          fontWeight: "800",
+          letterSpacing: -0.02 * 64,
+          lineHeight: 64,
+        }}
+      >
+        {clockText(date)}
+      </Text>
+      <Text
+        maxFontSizeMultiplier={MAX_FONT_SCALE}
+        style={{ color: t.ink2, fontFamily: fontFamily.bold, fontSize: 15, fontWeight: "700", marginTop: 6 }}
+      >
+        {clockDateText(date)}
+      </Text>
+    </View>
+  );
+}
+
 function ExpiryPill({ expiry }: { expiry: ExpiryView }) {
   const t = useTheme().tokens;
   const reduced = useReducedMotion();
@@ -318,6 +352,8 @@ export interface AlertFrameProps {
   queue?: { position: number; total: number } | null;
   /** Switches to the night tokens and the glow. The caller decides when it is night. */
   night?: boolean;
+  /** The lock-screen clock at the top (`.lockclock`, `.lockdate`). The caller decides: an urgent alert over the lock screen. */
+  clock?: boolean;
   /** The answer is in: the message, details, link and expiry go and the rings stop. */
   answered?: boolean;
   /** Lets the screen fire the blob's reactions (squash, leap and so on). */
@@ -349,6 +385,7 @@ function AlertFrameBody({
   readingAloud = false,
   queue,
   night = false,
+  clock = false,
   answered = false,
   blobRef,
   blobSize = 156,
@@ -405,6 +442,8 @@ function AlertFrameBody({
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {clock ? <LockClock now={now} /> : null}
+
           <View style={styles.ablob}>
             {urgent && !answered ? <UrgentRings colour={nightMode ? bt.glowRing : bt.bot} /> : null}
             <Blob ref={blob} bot={bot} size={blobSize} live look={look} />
@@ -531,6 +570,7 @@ const styles = StyleSheet.create({
   atopSide: { flexDirection: "row", alignItems: "center", gap: 10 },
   amid: { flex: 1, minHeight: 0 },
   amidContent: { flexGrow: 1, alignItems: "center", paddingHorizontal: 28 },
+  lockClock: { alignItems: "center", marginTop: 2 },
   ablob: { marginVertical: 18, alignItems: "center", justifyContent: "center" },
   ring: {
     position: "absolute",

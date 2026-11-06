@@ -4,6 +4,11 @@ type FullScreenNative = {
   canUse: () => boolean;
   leaveIfLocked?: () => boolean;
   hasDndAccess?: () => boolean;
+  isLocked?: () => boolean;
+  isInCall?: () => boolean;
+  createAlarmChannel?: (id: string, name: string, bypassDnd: boolean) => boolean;
+  watchVolumeKeys?: () => boolean;
+  addListener?: (eventName: "onVolumeKey", listener: () => void) => { remove: () => void };
 };
 
 function nativeModule(): FullScreenNative | null {
@@ -46,5 +51,70 @@ export function hasDndAccess(): boolean | null {
     return native.hasDndAccess() === true;
   } catch {
     return null;
+  }
+}
+
+/**
+ * True while the lock screen is showing, which is when an urgent alert covers it. Null when this
+ * build predates the native function.
+ */
+export function isLocked(): boolean | null {
+  try {
+    const native = nativeModule();
+    if (!native?.isLocked) return null;
+    return native.isLocked() === true;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True while the phone is in a call (or one is ringing, or a voice call runs in another app).
+ * False when this build predates the native function, so an alert rings as usual.
+ */
+export function isInCall(): boolean {
+  try {
+    return nativeModule()?.isInCall?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+/** True when this build can create a channel on the alarm audio stream. */
+export function canCreateAlarmChannel(): boolean {
+  try {
+    return typeof nativeModule()?.createAlarmChannel === "function";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Creates (or finds) a notification channel that rings on the alarm audio stream, so silent and
+ * vibrate mode do not mute it, optionally overriding Do Not Disturb. Settings are fixed once the
+ * channel exists. False when it could not be created.
+ */
+export function createAlarmChannel(id: string, name: string, bypassDnd: boolean): boolean {
+  try {
+    return nativeModule()?.createAlarmChannel?.(id, name, bypassDnd) === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Calls `listener` when a volume key goes down in the app's window (the key still works as
+ * usual). Returns the function that stops listening. Does nothing in a build without the native
+ * hook.
+ */
+export function onVolumeKey(listener: () => void): () => void {
+  try {
+    const native = nativeModule();
+    if (!native?.addListener) return () => {};
+    native.watchVolumeKeys?.();
+    const subscription = native.addListener("onVolumeKey", listener);
+    return () => subscription.remove();
+  } catch {
+    return () => {};
   }
 }
