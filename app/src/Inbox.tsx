@@ -1,19 +1,20 @@
 import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
 import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, ScrollView, StyleSheet, View } from "react-native";
+import { AppState, StyleSheet, View } from "react-native";
 import type { PendingAlert } from "./ChoiceScreen";
 import { readClientId } from "./clientStore";
 import { openFullScreenSettings, useFullScreenAccess } from "./fullScreenAccess";
 import { PairingScreen } from "./Pairing";
 import { useOpenedQuestionId } from "./push";
 import { readableError } from "./session";
-import { PuckBlob } from "./components/PuckBlob";
-import { PuckBody, PuckButton, PuckKicker, PuckTextLink, PuckTitle } from "./components/PuckButton";
+import { PuckBody, PuckTextLink, PuckTitle } from "./components/PuckButton";
 import { PuckScreen } from "./components/PuckScreen";
-import { OfflineBanner } from "./screens/A10Offline";
+import type { NeedItem } from "./homeModel";
 import { AlertHost, useAlertDeck } from "./screens/AlertHost";
+import { ConnectedH1Home } from "./screens/H1Home";
 import { StackHost } from "./screens/StackHost";
+import { Toast, useToast } from "./ui/Toast";
 
 export function Inbox({
   notifications,
@@ -88,7 +89,14 @@ function InboxBody({
     [pending, left],
   );
   // The alert on screen stays while its receipt or its A9 card is up, after it has left `pending`.
-  const deck = useAlertDeck(visible, openedId);
+  // The alert a tap on a "Needs you" card chose, ahead of the one a notification opened.
+  const [chosenId, setChosenId] = useState<string | null>(null);
+  const deck = useAlertDeck(visible, chosenId ?? openedId);
+  useEffect(() => {
+    if (chosenId !== null && !deck.live.some((item) => item.questionId === chosenId)) setChosenId(null);
+  }, [chosenId, deck.live]);
+  const toast = useToast();
+  const comingLater = useCallback(() => toast.show("Coming in a later step"), [toast.show]);
   // Two or more waiting (not expired) alerts are the A8 stack, which stays a stack until its
   // summary's Done even as answered alerts leave `pending`. While the last alert's receipt is
   // still up (`stale`) the stack waits for it to close.
@@ -101,6 +109,25 @@ function InboxBody({
   useEffect(() => {
     if (wantsStack) setStacking(true);
   }, [wantsStack]);
+  // H1's "Needs you": a pending alert comes back onto the screen (as the alert itself, or in a stack
+  // with the others); anything else (snoozed, waiting to send) opens its detail (H4, T52).
+  const openNeed = useCallback(
+    (item: NeedItem) => {
+      if (item.status !== "pending" || item.queued) {
+        comingLater();
+        return;
+      }
+      setLeft((before) => {
+        if (!before.has(item.questionId)) return before;
+        const next = new Set(before);
+        next.delete(item.questionId);
+        return next;
+      });
+      setChosenId(item.questionId);
+    },
+    [comingLater],
+  );
+  const goThroughAll = useCallback(() => setLeft(new Set()), []);
   const closeStack = useCallback((heldIds: string[]) => {
     setLeft((before) => new Set([...before, ...heldIds]));
     setStacking(false);
@@ -141,32 +168,34 @@ function InboxBody({
   const alert = deck.alert;
   if (!alert) {
     return (
-      <PuckScreen>
-        <OfflineBanner />
-        <ScrollView contentContainerStyle={styles.idleScroll} showsVerticalScrollIndicator={false}>
-          <View style={styles.idleHero}>
-            <PuckBlob size={132} mood="idle" />
-          </View>
-          <PuckKicker>Puck</PuckKicker>
-          <PuckTitle>Nothing paging you</PuckTitle>
-          <PuckBody>When a bot sends an alert, this screen gives way to the full reply flow.</PuckBody>
-          {email ? <PuckBody>Signed in as {email}.</PuckBody> : null}
-          {notifications === false ? (
-            <PuckBody>Notifications are off — bots cannot reach this phone while Puck is closed.</PuckBody>
-          ) : null}
-          {fullScreen.allowed === false ? (
-            <PuckButton label="Allow full-screen alerts" onPress={() => void allowFullScreen()} variant="ghost" />
-          ) : null}
-          <PuckButton label="Pair a bot" onPress={() => setPairing(true)} />
-          {__DEV__ && onDevReplayOnboarding ? (
-            <PuckTextLink label="Dev: replay onboarding" onPress={onDevReplayOnboarding} />
-          ) : null}
-          {__DEV__ && onDevDesignGallery ? (
-            <PuckTextLink label="Dev: design gallery" onPress={onDevDesignGallery} />
-          ) : null}
-          <PuckTextLink label="Sign out" onPress={onSignOut} />
-        </ScrollView>
-      </PuckScreen>
+      <View style={styles.stack}>
+        <ConnectedH1Home
+          clientId={clientId}
+          notifications={notifications}
+          fullScreenAllowed={fullScreen.allowed}
+          onAllowFullScreen={() => void allowFullScreen()}
+          onOpenNeed={openNeed}
+          onGoThroughAll={goThroughAll}
+          onOpenAlert={comingLater}
+          onBots={comingLater}
+          onSettings={comingLater}
+          onPairBot={() => setPairing(true)}
+          footer={
+            <View style={styles.footer}>
+              <PuckTextLink label="Pair a bot" onPress={() => setPairing(true)} />
+              {email ? <PuckBody>Signed in as {email}.</PuckBody> : null}
+              {__DEV__ && onDevReplayOnboarding ? (
+                <PuckTextLink label="Dev: replay onboarding" onPress={onDevReplayOnboarding} />
+              ) : null}
+              {__DEV__ && onDevDesignGallery ? (
+                <PuckTextLink label="Dev: design gallery" onPress={onDevDesignGallery} />
+              ) : null}
+              <PuckTextLink label="Sign out" onPress={onSignOut} />
+            </View>
+          }
+        />
+        <Toast message={toast.message} visible={toast.visible} />
+      </View>
     );
   }
   return (
@@ -208,14 +237,9 @@ class ScreenBoundary extends Component<{ children: ReactNode }, { message: strin
 }
 
 const styles = StyleSheet.create({
-  idleScroll: {
-    flexGrow: 1,
-    justifyContent: "center",
-    paddingBottom: 24,
-  },
-  idleHero: {
-    alignItems: "center",
-    marginBottom: 12,
+  footer: {
+    paddingTop: 22,
+    paddingHorizontal: 22,
   },
   linkBar: {
     paddingHorizontal: 26,

@@ -19,13 +19,23 @@ import { useWakeSnoozed } from "./src/screens/A11Snooze";
 import { AlertHost } from "./src/screens/AlertHost";
 import { AStack, type StackAnswer, type StackGone } from "./src/screens/AStack";
 import { DevGallery } from "./src/screens/DevGallery";
-import { freshGroup, freshSample, ALERT_SAMPLE_GROUPS, ALERT_SAMPLES } from "./src/screens/gallery/samples";
+import { H1Home } from "./src/screens/H1Home";
+import {
+  freshGroup,
+  freshHome,
+  freshSample,
+  isHomeSample,
+  HOME_SAMPLE_NAMES,
+  ALERT_SAMPLE_GROUPS,
+  ALERT_SAMPLES,
+} from "./src/screens/gallery/samples";
 import { StackSummary } from "./src/screens/StackSummary";
 import { O0Opening } from "./src/screens/O0Opening";
 import { O1Welcome } from "./src/screens/O1Welcome";
 import { O2Permissions } from "./src/screens/O2Permissions";
 import { O3TestPage } from "./src/screens/O3TestPage";
 import { O4FirstBot } from "./src/screens/O4FirstBot";
+import { knownBots, needsYou } from "./src/homeModel";
 import { goneCopy } from "./src/receiptCopy";
 import { readableError } from "./src/session";
 import { Toast, useToast } from "./src/ui/Toast";
@@ -79,6 +89,45 @@ function useDevAlertLink() {
     return () => subscription.remove();
   }, []);
   return { sample, closeSample: () => setSample(null) } as const;
+}
+
+/** H1 Home with fake data (`sample=home`, `home-clear`, `home-empty`): no backend, Load more brings older rows. */
+function DevHome({ name }: { name: string }) {
+  const toast = useToast();
+  const [round] = useState(() => Date.now());
+  const sample = useMemo(() => freshHome(name, round), [name, round]);
+  const [loaded, setLoaded] = useState(false);
+  const [now, setNow] = useState(round);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  if (!sample) return null;
+  const history = loaded ? [...sample.history, ...sample.older] : sample.history;
+  const needs = needsYou(sample.waiting, { now, queuedIds: new Set(sample.queuedIds) });
+  const later = () => toast.show("Coming in a later step");
+  return (
+    <View style={styles.root}>
+      <H1Home
+        banners={sample.banners}
+        onBanner={later}
+        needs={needs}
+        history={history}
+        historyStatus={loaded || sample.older.length === 0 ? "exhausted" : "canLoadMore"}
+        onLoadMore={() => setLoaded(true)}
+        bots={knownBots(sample.waiting, history)}
+        noBots={sample.noBots}
+        now={now}
+        onOpenNeed={later}
+        onGoThroughAll={() => toast.show("Would open the stack")}
+        onOpenAlert={later}
+        onBots={later}
+        onSettings={later}
+        onPairBot={later}
+      />
+      <Toast message={toast.message} visible={toast.visible} />
+    </View>
+  );
 }
 
 /** A sample alert in the real alert host, with an `onAnswer` that never touches the backend. */
@@ -151,7 +200,7 @@ function DevAlertSample({ name }: { name: string }) {
     return (
       <View style={styles.root}>
         <Text style={styles.devNote}>
-          Unknown sample: {name}. Known: {[...Object.keys(ALERT_SAMPLES), ...Object.keys(ALERT_SAMPLE_GROUPS)].join(", ")}.
+          Unknown sample: {name}. Known: {[...Object.keys(ALERT_SAMPLES), ...Object.keys(ALERT_SAMPLE_GROUPS), ...HOME_SAMPLE_NAMES].join(", ")}.
         </Text>
       </View>
     );
@@ -187,7 +236,11 @@ export default function App() {
     return (
       <GestureHandlerRootView style={styles.root}>
         <ConvexProvider client={convex}>
-          <DevAlertSample name={alertLink.sample} />
+          {isHomeSample(alertLink.sample) ? (
+            <DevHome name={alertLink.sample} />
+          ) : (
+            <DevAlertSample name={alertLink.sample} />
+          )}
         </ConvexProvider>
         <StatusBar style="dark" />
       </GestureHandlerRootView>

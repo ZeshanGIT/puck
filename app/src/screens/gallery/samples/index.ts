@@ -10,6 +10,7 @@ import { A3_SAMPLES } from "./a3";
 import { A5_SAMPLES } from "./a5";
 import { A7_SAMPLES } from "./a7";
 import { ALERT_SAMPLE_GROUPS, freshGroup } from "./a8";
+import { freshHome, HOME_SAMPLE_NAMES, isHomeSample } from "./home";
 
 export const ALERT_SAMPLES: Record<string, PendingAlert> = {
   ...A1_SAMPLES,
@@ -35,3 +36,6 @@ export function freshSample(name: string, now: number = Date.now()): PendingAler
 
 /** The stack samples (A8) and their time helper; see `a8.ts`. */
 export { ALERT_SAMPLE_GROUPS, freshGroup };
+
+/** The H1 Home samples (`home`, `home-clear`, `home-empty`); see `home.ts`. */
+export { freshHome, HOME_SAMPLE_NAMES, isHomeSample };
