@@ -23,6 +23,9 @@ import { Toast, useToast } from "../ui/Toast";
 
 type Send = "idle" | "sending" | "sent";
 
+/** Seconds between tapping Send and the page, so the phone can be locked first (App screens O3). */
+const LOCK_DELAY_SECONDS = 10;
+
 export function O3TestPage({ clientId, onContinue }: { clientId: string; onContinue: () => void }) {
   const client = useConvex();
   const toast = useToast();
@@ -54,13 +57,13 @@ export function O3TestPage({ clientId, onContinue }: { clientId: string; onConti
     else blob.current?.arrive();
   }, [done]);
 
-  async function sendTest() {
+  async function sendTest(delaySeconds: number) {
     setSend("sending");
     setError(null);
     try {
-      await client.mutation(anyApi.alerts.sendTest, { clientId });
+      await client.mutation(anyApi.alerts.sendTest, { clientId, delaySeconds });
       setSend("sent");
-      toast.show("Lock your phone now…");
+      if (delaySeconds > 0) toast.show(`Lock your phone now. Paging you in ${delaySeconds} seconds.`);
     } catch (caught) {
       setSend("idle");
       setError(readableError(caught));
@@ -85,13 +88,13 @@ export function O3TestPage({ clientId, onContinue }: { clientId: string; onConti
         ) : (
           <HeroText
             title="Try a test page"
-            body="Lock your phone after tapping below. Puck will ring you in a few seconds, so you know what it feels like."
+            body={`Tap below, then lock your phone. Puck will page you ${LOCK_DELAY_SECONDS} seconds later, so you know what it feels like.`}
           />
         )}
         {send === "sent" && !done ? <WaitingLine>Waiting for your answer…</WaitingLine> : null}
       </View>
       <View style={styles.bottom}>
-        {error ? <Banner message={error} action={{ label: "Try again", onPress: () => void sendTest() }} /> : null}
+        {error ? <Banner message={error} action={{ label: "Try again", onPress: () => void sendTest(LOCK_DELAY_SECONDS) }} /> : null}
         <View style={styles.buttons}>
           {done ? (
             <Btn label="Continue" onPress={onContinue} />
@@ -99,9 +102,10 @@ export function O3TestPage({ clientId, onContinue }: { clientId: string; onConti
             <>
               <Btn
                 label={send === "sending" ? "Sending…" : send === "sent" ? "Send again" : "Send a test page"}
-                onPress={() => void sendTest()}
+                onPress={() => void sendTest(LOCK_DELAY_SECONDS)}
                 disabled={send === "sending"}
               />
+              <Btn label="Test without locking" variant="line" onPress={() => void sendTest(0)} disabled={send === "sending"} />
               <Btn label="Skip" variant="ghost" onPress={onContinue} />
             </>
           )}

@@ -100,16 +100,32 @@ export const create = internalMutationGeneric({
  * stale ones are cancelled and replaced (see `decideTestPage`).
  */
 export const sendTest = mutationGeneric({
-  args: { clientId: v.string() },
+  args: { clientId: v.string(), delaySeconds: v.optional(v.number()) },
   returns: v.object({ questionId: v.string() }),
   handler: async (ctx, args) => {
     const client = await requireClient(ctx, args.clientId);
     const botDocId = await getOrCreateBuiltInBot(ctx);
-    const pendingRows = await ctx.db
-      .query("alerts")
-      .withIndex("by_status", (q) => q.eq("status", "pending"))
-      .take(100);
-    const mine = pendingRows.filter((alert) => alert.botId === botDocId && alert.targetClientId === client._id);
+    // A delay lets the person lock the phone first: the page is scheduled and released by the
+    // same scheduler as `puck schedule`. A delayed page replaces any unanswered one.
+    const delayMs = Math.min(60, Math.max(0, Math.floor(args.delaySeconds ?? 0))) * 1000;
+    const statuses = delayMs > 0 ? (["pending", "scheduled"] as const) : (["pending"] as const);
+    const rows = [];
+    for (const status of statuses) {
+      rows.push(...(await ctx.db.query("alerts").withIndex("by_status", (q) => q.eq("status", status)).take(100)));
+    }
+    const mine = rows.filter((alert) => alert.botId === botDocId && alert.targetClientId === client._id);
+    if (delayMs > 0) {
+      for (const alert of mine) await ctx.db.patch(alert._id, { status: "cancelled", updatedAt: Date.now() });
+      return await insertAlert(ctx, botDocId, {
+        question: TEST_PAGE_QUESTION,
+        priority: "urgent",
+        selectionMode: "single",
+        presentation: "choice",
+        options: [...TEST_PAGE_OPTIONS],
+        scheduledFor: Date.now() + delayMs,
+        targetClientId: client._id,
+      });
+    }
     const decision = decideTestPage(
       mine.map((alert) => ({ questionId: alert.questionId, createdAt: alert.createdAt })),
       Date.now(),
