@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { PUSH_CHANNEL_ID } from "@puck/shared";
+import { DISMISS_KIND, PUSH_CHANNEL_ID } from "@puck/shared";
 import {
   fcmBody,
+  fcmDismissMessage,
+  selectDismissTargets,
   fcmErrorStatus,
   fcmMessage,
   googleAssertionClaims,
@@ -176,5 +178,50 @@ describe("pushAlertExtras", () => {
     ).toEqual({ message: "m", ringSeconds: 60, speak: true, requiresUnlock: false });
     expect(pushAlertExtras({})).toEqual({});
     expect(pushAlertExtras(null)).toEqual({});
+  });
+});
+
+describe("fcmDismissMessage", () => {
+  test("is a data-only, high-priority message with string values", () => {
+    const message = fcmDismissMessage({ pushToken: TOKEN, questionId: "q_BEXA0M8Y5W1ADYPX" });
+    expect(message.message.token).toBe(TOKEN);
+    expect(message.message.data).toEqual({ kind: DISMISS_KIND, questionId: "q_BEXA0M8Y5W1ADYPX" });
+    expect(message.message.android.priority).toBe("HIGH");
+    expect("notification" in message.message).toBe(false);
+    expect(Object.values(message.message.data).every((value) => typeof value === "string")).toBe(true);
+  });
+});
+
+describe("selectDismissTargets", () => {
+  const clients = [
+    { id: "c1", pushToken: "token-for-client-one-0001", fullScreenAllowed: true },
+    { id: "c2", pushToken: "token-for-client-two-0002", fullScreenAllowed: false },
+    { id: "c3", pushToken: null },
+  ];
+  const device = { pushToken: "token-for-the-old-device-3" };
+
+  test("leaves out the client that answered and keeps the others and the legacy device", () => {
+    expect(selectDismissTargets({ clients, device, exceptClientId: "c1" })).toEqual([
+      "token-for-client-two-0002",
+      "token-for-the-old-device-3",
+    ]);
+  });
+
+  test("an answer from the legacy device leaves out only its token", () => {
+    expect(selectDismissTargets({ clients, device, exceptClientId: null })).toEqual([
+      "token-for-client-one-0001",
+      "token-for-client-two-0002",
+    ]);
+  });
+
+  test("a legacy device sharing the answering client's token is not pushed", () => {
+    const shared = { pushToken: "token-for-client-one-0001" };
+    expect(selectDismissTargets({ clients, device: shared, exceptClientId: "c1" })).toEqual([
+      "token-for-client-two-0002",
+    ]);
+  });
+
+  test("nobody else means no targets", () => {
+    expect(selectDismissTargets({ clients: [clients[0]!], device: null, exceptClientId: "c1" })).toEqual([]);
   });
 });

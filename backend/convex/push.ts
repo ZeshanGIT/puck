@@ -5,7 +5,7 @@ import { v } from "convex/values";
 import { importPKCS8, SignJWT } from "jose";
 import { internal } from "./_generated/api";
 import { pushSummary } from "./lib/pushTargets";
-import { fcmBody, fcmErrorStatus, pushAlertExtras, readServiceAccount } from "./lib/fcm";
+import { fcmBody, fcmDismissMessage, fcmErrorStatus, pushAlertExtras, readServiceAccount } from "./lib/fcm";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
@@ -101,6 +101,57 @@ export const send = internalActionGeneric({
       }
     }
     console.log(pushSummary(sent, target.targets.length));
+    return null;
+  },
+});
+
+/**
+ * Tells every client except the one that acted to drop an alert (answered or snoozed elsewhere,
+ * A9). A data-only push, `{kind: "dismiss", questionId}`; the phone removes its shade and
+ * lock-screen copy. Best effort: failures are logged without tokens and never retried.
+ */
+export const sendDismiss = internalActionGeneric({
+  args: { questionId: v.string(), exceptClientId: v.optional(v.string()) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const tokens = await ctx.runQuery(internal.alerts.loadDismissTargets, {
+      ...(args.exceptClientId === undefined ? {} : { exceptClientId: args.exceptClientId }),
+    });
+    if (tokens.length === 0) return null;
+    const raw = readEnv("FIREBASE_SERVICE_ACCOUNT");
+    if (!raw) {
+      console.log("dismiss skipped: firebase is not configured");
+      return null;
+    }
+    let account;
+    let accessToken;
+    try {
+      account = readServiceAccount(raw);
+      accessToken = await googleAccessToken(account.clientEmail, account.privateKey);
+    } catch {
+      console.log("dismiss failed: request");
+      return null;
+    }
+    const url = `https://fcm.googleapis.com/v1/projects/${account.projectId}/messages:send`;
+    let sent = 0;
+    for (const pushToken of tokens) {
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(fcmDismissMessage({ pushToken, questionId: args.questionId })),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (response.ok) sent += 1;
+        else console.log(`dismiss failed: ${fcmErrorStatus(await response.text())}`);
+      } catch {
+        console.log("dismiss failed: request");
+      }
+    }
+    console.log(`dismiss ${pushSummary(sent, tokens.length)}`);
     return null;
   },
 });

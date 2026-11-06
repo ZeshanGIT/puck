@@ -6,6 +6,7 @@ import {
   validateAttachments,
   validateCreateAlert,
   validatePairingInput,
+  validateSnoozeUntil,
 } from "./validate";
 
 const ship = {
@@ -407,5 +408,27 @@ describe("validateAttachments", () => {
     expect(() => validateAttachments([{ ...photo, size: 1.5 }])).toThrow(/whole number/);
     expect(() => validateAttachments([{ ...photo, size: -1 }])).toThrow(/whole number/);
     expect(() => validateAttachments([{ ...photo, size: "9" }])).toThrow(/whole number/);
+  });
+});
+
+describe("validateSnoozeUntil", () => {
+  const now = 1_700_000_000_000;
+
+  test("null is until I'm back", () => {
+    expect(validateSnoozeUntil(null, now)).toBeNull();
+  });
+
+  test("a time in the next 24 hours is kept", () => {
+    expect(validateSnoozeUntil(now + 5 * 60_000, now)).toBe(now + 5 * 60_000);
+    expect(validateSnoozeUntil(now + 24 * 60 * 60_000, now)).toBe(now + 24 * 60 * 60_000);
+  });
+
+  test("past, now, too far and non-integer times are refused", () => {
+    expect(() => validateSnoozeUntil(now, now)).toThrow(/future/);
+    expect(() => validateSnoozeUntil(now - 1, now)).toThrow(/future/);
+    expect(() => validateSnoozeUntil(now + 24 * 60 * 60_000 + 1, now)).toThrow(/24 hours/);
+    expect(() => validateSnoozeUntil(now + 1.5, now)).toThrow(/epoch/);
+    expect(() => validateSnoozeUntil("soon", now)).toThrow(/epoch/);
+    expect(() => validateSnoozeUntil(undefined, now)).toThrow(/epoch/);
   });
 });

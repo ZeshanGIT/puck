@@ -135,6 +135,10 @@ export default defineSchema({
     targetClientId: v.optional(v.string()),
     // The client that answered, when it answered through a Clerk identity. Legacy device answers leave it unset.
     answeredByClientId: v.optional(v.id("clients")),
+    // A snoozed alert (A11): when it comes back (epoch ms), or unset for "until I'm back", and the
+    // client that snoozed it. `alerts.wakeSnoozed` returns that client's untimed ones to pending.
+    snoozedUntil: v.optional(v.number()),
+    snoozedByClientId: v.optional(v.id("clients")),
     ...alertExtraFields,
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -158,4 +162,17 @@ export default defineSchema({
   })
     .index("by_alert", ["alertId"])
     .index("by_questionId", ["questionId"]),
+
+  // One `snoozed` webhook event (Q17), delivered like an answer: same four tries and backoff.
+  // `snoozedUntil` is epoch ms, or null for "until I'm back". Not an answer, so `answers` is untouched.
+  snoozeEvents: defineTable({
+    alertId: v.id("alerts"),
+    questionId: v.string(),
+    snoozedUntil: v.union(v.number(), v.null()),
+    snoozedAt: v.number(),
+    clientId: v.optional(v.id("clients")),
+    deliveryStatus,
+    deliveryAttempts: v.number(),
+    lastError: v.optional(v.string()),
+  }).index("by_alert", ["alertId"]),
 });

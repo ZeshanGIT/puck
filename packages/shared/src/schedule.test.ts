@@ -25,4 +25,8 @@ describe("cancelStep", () => {
     expect(cancelStep("cancelled")).toBe("unchanged");
     expect(cancelStep("answered")).toBe("rejected");
   });
+
+  test("a snoozed alert can be cancelled (J9)", () => {
+    expect(cancelStep("snoozed")).toBe("cancelled");
+  });
 });

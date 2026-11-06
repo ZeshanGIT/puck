@@ -20,6 +20,7 @@ import {
   PRESENTATIONS,
   PRIORITIES,
   SELECTION_MODES,
+  SNOOZE_MAX_MS,
   SWIPE_MAX_OPTIONS,
 } from "./model";
 
@@ -341,4 +342,16 @@ export function validatePairingInput(body: unknown): PairingInput {
     routine = oneLine(requiredString(body.routine, "routine"), "routine", 80);
   }
   return { name, webhookUrl, webhookHeader, routine };
+}
+
+/**
+ * Check the time of a snooze. `null` is "until I'm back". A number is epoch milliseconds in the
+ * future, at most `SNOOZE_MAX_MS` away. Returns the checked value.
+ */
+export function validateSnoozeUntil(until: unknown, now: number): number | null {
+  if (until === null) return null;
+  if (typeof until !== "number" || !Number.isInteger(until)) fail("until must be epoch milliseconds or null");
+  if (until <= now) fail("until must be in the future");
+  if (until > now + SNOOZE_MAX_MS) fail("a snooze can last at most 24 hours");
+  return until;
 }

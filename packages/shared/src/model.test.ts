@@ -4,10 +4,15 @@ import {
   deliveryBackoffMs,
   DELIVERY_MAX_ATTEMPTS,
   formatPairingCode,
+  goneReason,
   isBotId,
   isQuestionId,
   PENDING_BOT_CAP,
   questionIdFromBytes,
+  receiptState,
+  snoozeReleaseStep,
+  ALERT_STATUSES,
+  DISMISS_KIND,
   tooManyPendingBots,
 } from "./model";
 
@@ -53,5 +58,70 @@ describe("pending bot cap", () => {
     expect(tooManyPendingBots(PENDING_BOT_CAP - 1)).toBe(false);
     expect(tooManyPendingBots(PENDING_BOT_CAP)).toBe(true);
     expect(() => tooManyPendingBots(-1)).toThrow(/non-negative/);
+  });
+});
+
+describe("snoozed status and dismiss push", () => {
+  test("snoozed joins the old statuses", () => {
+    expect(ALERT_STATUSES).toEqual(["scheduled", "pending", "answered", "cancelled", "snoozed"]);
+    expect(DISMISS_KIND).toBe("dismiss");
+  });
+});
+
+describe("receiptState", () => {
+  test("no answer row means the phone is still sending", () => {
+    expect(receiptState(null)).toBe("pending");
+  });
+
+  test("a stored answer is sent until the webhook takes it", () => {
+    expect(receiptState({ deliveryStatus: "pending", deliveryAttempts: 0 })).toBe("sent");
+    expect(receiptState({ deliveryStatus: "pending", deliveryAttempts: 1 })).toBe("sent");
+    expect(receiptState({ deliveryStatus: "delivered", deliveryAttempts: 1 })).toBe("delivered");
+    // The built-in Puck bot is delivered without an attempt.
+    expect(receiptState({ deliveryStatus: "delivered", deliveryAttempts: 0 })).toBe("delivered");
+  });
+
+  test("a failed try, retrying or final, is failed", () => {
+    expect(receiptState({ deliveryStatus: "pending", deliveryAttempts: 1, lastError: "webhook request failed" })).toBe(
+      "failed",
+    );
+    expect(receiptState({ deliveryStatus: "pending", deliveryAttempts: 0, lastError: "x" })).toBe("sent");
+    expect(receiptState({ deliveryStatus: "failed", deliveryAttempts: 4, lastError: null })).toBe("failed");
+  });
+});
+
+describe("snoozeReleaseStep", () => {
+  test("releases only the snooze that scheduled it", () => {
+    expect(snoozeReleaseStep("snoozed", 1000, 1000)).toBe("pending");
+    expect(snoozeReleaseStep("snoozed", 2000, 1000)).toBe("skip");
+    expect(snoozeReleaseStep("snoozed", null, 1000)).toBe("skip");
+    expect(snoozeReleaseStep("pending", 1000, 1000)).toBe("skip");
+    expect(snoozeReleaseStep("answered", 1000, 1000)).toBe("skip");
+    expect(snoozeReleaseStep("cancelled", 1000, 1000)).toBe("skip");
+  });
+});
+
+describe("goneReason", () => {
+  const live = { status: "pending" as const, expiresAt: null, answeredByClientName: null, ownClientName: "Pixel 7", now: 1000 };
+
+  test("a waiting alert is not gone", () => {
+    expect(goneReason(live)).toBeNull();
+    expect(goneReason({ ...live, status: "snoozed" })).toBeNull();
+    expect(goneReason({ ...live, expiresAt: 2000 })).toBeNull();
+  });
+
+  test("cancelled and expired", () => {
+    expect(goneReason({ ...live, status: "cancelled" })).toBe("cancelled");
+    expect(goneReason({ ...live, expiresAt: 1000 })).toBe("expired");
+    expect(goneReason({ ...live, expiresAt: 999 })).toBe("expired");
+  });
+
+  test("answered on another client, but not on this one or an unknown one", () => {
+    expect(goneReason({ ...live, status: "answered", answeredByClientName: "MacBook" })).toBe("answeredElsewhere");
+    expect(goneReason({ ...live, status: "answered", answeredByClientName: "Pixel 7" })).toBeNull();
+    expect(goneReason({ ...live, status: "answered", answeredByClientName: null })).toBeNull();
+    expect(goneReason({ ...live, status: "answered", answeredByClientName: "MacBook", ownClientName: null })).toBe(
+      "answeredElsewhere",
+    );
   });
 });

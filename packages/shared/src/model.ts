@@ -35,6 +35,12 @@ export const PUSH_URGENT_CHANNEL_ID = "puck-urgent";
 /** FCM data flag. The phone draws this alert itself so it can cover the lock screen. */
 export const FULL_SCREEN_KIND = "fullscreen";
 
+/**
+ * FCM data flag. Tells a phone to drop an alert it is showing or has in the shade, because it was
+ * answered (or snoozed) on another client. Data-only: `{ kind: "dismiss", questionId }`.
+ */
+export const DISMISS_KIND = "dismiss";
+
 /** True when another pending bot would pass the cap. */
 export function tooManyPendingBots(pendingCount: number): boolean {
   if (!Number.isInteger(pendingCount) || pendingCount < 0) {
@@ -49,6 +55,7 @@ export const ALERT_STATUSES = [
   "pending", // waiting for a reply
   "answered", // a reply is stored; delivery may still be in progress
   "cancelled", // cancelled before a reply
+  "snoozed", // set aside for a while or until he is back (A11); `snoozedUntil` says when, or is unset
 ] as const;
 
 export type AlertStatus = (typeof ALERT_STATUSES)[number];
@@ -91,6 +98,73 @@ export type AnswerSource = (typeof ANSWER_SOURCES)[number];
 export const DELIVERY_STATUSES = ["pending", "delivered", "failed"] as const;
 
 export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
+
+/** What A7 shows for an answer on its way to the bot (Protocol changes section 3). */
+export const RECEIPT_STATES = ["pending", "sent", "delivered", "failed"] as const;
+
+export type ReceiptState = (typeof RECEIPT_STATES)[number];
+
+/**
+ * Maps an answer's stored delivery to the four receipt states.
+ * - no answer row yet: `pending` (the phone is still sending);
+ * - the answer is stored and the webhook has not yet answered: `sent`;
+ * - the webhook took it: `delivered`;
+ * - a try failed and Puck is retrying, or every try failed: `failed` ("Puck will keep trying").
+ */
+export function receiptState(
+  answer: { deliveryStatus: DeliveryStatus; deliveryAttempts: number; lastError?: string | null } | null,
+): ReceiptState {
+  if (!answer) return "pending";
+  if (answer.deliveryStatus === "delivered") return "delivered";
+  if (answer.deliveryStatus === "failed") return "failed";
+  // Still pending: a recorded error means an attempt already failed and a retry is scheduled.
+  return answer.deliveryAttempts > 0 && Boolean(answer.lastError) ? "failed" : "sent";
+}
+
+/** The webhook body is an answer or a snooze (Protocol changes section 2). */
+export const ANSWER_EVENTS = ["answer", "snoozed"] as const;
+
+export type AnswerEvent = (typeof ANSWER_EVENTS)[number];
+
+/** The longest timed snooze (24 hours). "Until I'm back" is a snooze with no time. */
+export const SNOOZE_MAX_MS = 24 * 60 * 60 * 1000;
+
+export type SnoozeReleaseStep = "pending" | "skip";
+
+/**
+ * A timed snooze ends only for the snooze that scheduled it. If the alert was answered,
+ * cancelled, snoozed again, or woken by "until I'm back" in between, the old job does nothing.
+ */
+export function snoozeReleaseStep(
+  status: AlertStatus,
+  snoozedUntil: number | null,
+  scheduledUntil: number,
+): SnoozeReleaseStep {
+  return status === "snoozed" && snoozedUntil === scheduledUntil ? "pending" : "skip";
+}
+
+export type GoneReason = "cancelled" | "expired" | "answeredElsewhere";
+
+/**
+ * Why the alert on screen is no longer waiting for him (A9), or null while it still is.
+ * `answeredByClientName` is the client that answered, as `alerts.state` returns it; the alert is
+ * "answered elsewhere" only when that name is known and is not this client's own.
+ */
+export function goneReason(input: {
+  status: AlertStatus;
+  expiresAt: number | null;
+  answeredByClientName: string | null;
+  ownClientName: string | null;
+  now: number;
+}): GoneReason | null {
+  if (input.status === "cancelled") return "cancelled";
+  if (input.status === "answered") {
+    const name = input.answeredByClientName;
+    return name !== null && name !== input.ownClientName ? "answeredElsewhere" : null;
+  }
+  if (input.expiresAt !== null && input.now >= input.expiresAt) return "expired";
+  return null;
+}
 
 /** Attempts include the first try. Later tries wait 1s, 4s, then 16s. */
 export const DELIVERY_MAX_ATTEMPTS = 4;
@@ -188,7 +262,27 @@ export interface AnswerPayload {
   customReply: string | null;
   answeredAt: string;
   source: AnswerSource;
+  /** Always `"answer"` here; a snooze has its own body (`SnoozedPayload`). */
+  event: "answer";
+  /** The client that answered (for example "Pixel 7"), when known. */
+  client?: string;
   attachments?: AnswerAttachment[];
+}
+
+/**
+ * JSON body Convex POSTs when he snoozes an alert (Q17). It is not an answer: there is no
+ * `answers`, so a wake-up bot can still escalate. `snoozedUntil` is ISO UTC, or null for
+ * "until I'm back".
+ */
+export interface SnoozedPayload {
+  event: "snoozed";
+  questionId: string;
+  question: string;
+  bot: string;
+  routine: string;
+  priority: Priority;
+  snoozedUntil: string | null;
+  client?: string;
 }
 
 /** Body accepted by `POST /alerts`. */

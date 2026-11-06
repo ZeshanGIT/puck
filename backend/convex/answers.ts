@@ -1,11 +1,19 @@
-import { AlertValidationError, validateAnswer, validateAttachments } from "@puck/shared";
-import { mutationGeneric } from "convex/server";
+import {
+  AlertValidationError,
+  receiptState,
+  validateAnswer,
+  validateAttachments,
+  validateSnoozeUntil,
+} from "@puck/shared";
+import { mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { requireDevice } from "./device";
 import { assertDistinctStorageIds, reconcileAttachment } from "./lib/attachments";
 import { requireClient } from "./lib/clientAuth";
 import { storedAttachment } from "./schema";
+
+const RECEIPT_STATES = v.union(v.literal("pending"), v.literal("sent"), v.literal("delivered"), v.literal("failed"));
 
 /**
  * Records Seshan's reply and schedules the webhook POST.
@@ -33,6 +41,9 @@ export const record = mutationGeneric({
     if (!alert) throw new Error("alert not found");
     if (alert.status === "answered") throw new Error("alert is already answered");
     if (alert.status === "cancelled") throw new Error("alert is cancelled");
+    // Past `expiresAt` the alert is Missed and can't be answered (an offline answer that comes
+    // back late is refused here, and the phone drops it).
+    if (alert.expiresAt !== undefined && Date.now() > alert.expiresAt) throw new Error("alert has expired");
 
     let recorded;
     let declared;
@@ -81,6 +92,104 @@ export const record = mutationGeneric({
       ...(client ? { answeredByClientId: client._id } : {}),
     });
     await ctx.scheduler.runAfter(0, internal.delivery.deliver, { answerId });
+    // Every other client drops its copy of the alert ("answered elsewhere", A9).
+    await ctx.scheduler.runAfter(0, internal.push.sendDismiss, {
+      questionId: alert.questionId,
+      ...(client ? { exceptClientId: client._id as string } : {}),
+    });
     return { questionId: alert.questionId };
+  },
+});
+
+/**
+ * Snoozes an alert (A11, Q17). `until` is epoch ms in the next 24 hours, or null for "until I'm
+ * back". The alert goes to `snoozed` (so `alerts.pending` leaves it out), the bot's webhook gets
+ * a `snoozed` event, and a timed snooze is released by the scheduler at `until` with a push like
+ * a new alert. A pending alert can be snoozed, and so can a snoozed one (a later snooze replaces
+ * the first; the first one's release does nothing). Other clients drop their copy.
+ */
+export const snooze = mutationGeneric({
+  args: {
+    clientId: v.string(),
+    questionId: v.string(),
+    until: v.union(v.number(), v.null()),
+  },
+  returns: v.object({ questionId: v.string(), snoozedUntil: v.union(v.number(), v.null()) }),
+  handler: async (ctx, args) => {
+    const client = await requireClient(ctx, args.clientId);
+    const alert = await ctx.db
+      .query("alerts")
+      .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))
+      .unique();
+    if (!alert) throw new Error("alert not found");
+    if (alert.status === "answered") throw new Error("alert is already answered");
+    if (alert.status === "cancelled") throw new Error("alert is cancelled");
+    if (alert.status !== "pending" && alert.status !== "snoozed") throw new Error("alert is not pending");
+    const now = Date.now();
+    let until: number | null;
+    try {
+      until = validateSnoozeUntil(args.until, now);
+    } catch (error) {
+      if (error instanceof AlertValidationError) throw new Error(error.message);
+      throw error;
+    }
+    await ctx.db.patch(alert._id, {
+      status: "snoozed",
+      updatedAt: now,
+      snoozedUntil: until ?? undefined,
+      snoozedByClientId: client._id,
+    });
+    const eventId = await ctx.db.insert("snoozeEvents", {
+      alertId: alert._id,
+      questionId: alert.questionId,
+      snoozedUntil: until,
+      snoozedAt: now,
+      clientId: client._id,
+      deliveryStatus: "pending",
+      deliveryAttempts: 0,
+    });
+    await ctx.scheduler.runAfter(0, internal.delivery.deliverSnooze, { eventId });
+    if (until !== null) {
+      await ctx.scheduler.runAt(until, internal.alerts.releaseSnoozed, {
+        alertId: alert._id,
+        snoozedUntil: until,
+      });
+    }
+    await ctx.scheduler.runAfter(0, internal.push.sendDismiss, {
+      questionId: alert.questionId,
+      exceptClientId: client._id as string,
+    });
+    return { questionId: alert.questionId, snoozedUntil: until };
+  },
+});
+
+/**
+ * Where an answer is on its way to the bot (A7): `pending` (not stored yet), `sent` (Puck has it),
+ * `delivered` (the bot took it), `failed` (a try failed; Puck keeps trying, or gave up). The app
+ * reads it to show Sent, then "Delivered to <bot>". Null when the alert does not exist.
+ */
+export const receipt = queryGeneric({
+  args: { clientId: v.string(), questionId: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({ state: RECEIPT_STATES, botName: v.string(), attempts: v.number() }),
+  ),
+  handler: async (ctx, args) => {
+    await requireClient(ctx, args.clientId);
+    const alert = await ctx.db
+      .query("alerts")
+      .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))
+      .unique();
+    if (!alert) return null;
+    const bot = await ctx.db.get(alert.botId);
+    const answer = await ctx.db
+      .query("answers")
+      .withIndex("by_questionId", (q) => q.eq("questionId", alert.questionId))
+      .unique();
+    return {
+      state: receiptState(answer),
+      botName: bot?.name ?? "the bot",
+      attempts: answer?.deliveryAttempts ?? 0,
+    };
   },
 });

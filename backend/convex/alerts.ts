@@ -1,4 +1,4 @@
-import { cancelStep, isQuestionId, isoUtc, releaseStep, type AlertExtras } from "@puck/shared";
+import { cancelStep, isQuestionId, isoUtc, releaseStep, snoozeReleaseStep, type AlertExtras } from "@puck/shared";
 import { internalMutationGeneric, internalQueryGeneric, mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -10,6 +10,7 @@ import { TEST_PAGE_OPTIONS, TEST_PAGE_QUESTION, decideTestPage } from "./lib/bui
 import { requireClient } from "./lib/clientAuth";
 import { pickAlertExtras, storedOption, type StoredOptionInput } from "./lib/alertFields";
 import { newQuestionId } from "./lib/crypto";
+import { selectDismissTargets } from "./lib/fcm";
 import { alertIsForClient, selectPushTargets } from "./lib/pushTargets";
 import {
   alertExtraFields,
@@ -202,7 +203,118 @@ export const release = internalMutationGeneric({
   },
 });
 
-/** Cancels a pending or scheduled alert owned by this bot. An answer stays stored. */
+/**
+ * Ends a timed snooze: the alert goes back to pending and gets the same push as a new alert
+ * (ringing again if urgent). Only the snooze that scheduled this job counts; if the alert was
+ * answered, cancelled, snoozed again or woken meanwhile, nothing happens.
+ */
+export const releaseSnoozed = internalMutationGeneric({
+  args: { alertId: v.id("alerts"), snoozedUntil: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const alert = await ctx.db.get(args.alertId);
+    if (!alert) return null;
+    if (snoozeReleaseStep(alert.status, alert.snoozedUntil ?? null, args.snoozedUntil) !== "pending") return null;
+    await ctx.db.patch(alert._id, {
+      status: "pending",
+      updatedAt: Date.now(),
+      snoozedUntil: undefined,
+      snoozedByClientId: undefined,
+    });
+    await ctx.scheduler.runAfter(0, internal.push.send, { alertId: alert._id });
+    return null;
+  },
+});
+
+/**
+ * "Until I'm back": the app calls this when it returns to the foreground. This client's untimed
+ * snoozed alerts go back to pending. No push, because he is already looking at the app.
+ * Timed snoozes keep their own release.
+ */
+export const wakeSnoozed = mutationGeneric({
+  args: { clientId: v.string() },
+  returns: v.object({ woken: v.number() }),
+  handler: async (ctx, args) => {
+    const client = await requireClient(ctx, args.clientId);
+    const rows = await ctx.db
+      .query("alerts")
+      .withIndex("by_status", (q) => q.eq("status", "snoozed"))
+      .take(100);
+    let woken = 0;
+    for (const alert of rows) {
+      if (alert.snoozedByClientId !== client._id || alert.snoozedUntil !== undefined) continue;
+      await ctx.db.patch(alert._id, {
+        status: "pending",
+        updatedAt: Date.now(),
+        snoozedByClientId: undefined,
+      });
+      woken += 1;
+    }
+    return { woken };
+  },
+});
+
+/**
+ * What the alert on screen is doing now, so the app can show A9 when it is no longer pending:
+ * cancelled, answered on another client (`answeredByClientName`), or past `expiresAt`.
+ * Null when the alert does not exist.
+ */
+export const state = queryGeneric({
+  args: { clientId: v.string(), questionId: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      status: alertStatus,
+      answeredByClientName: v.union(v.string(), v.null()),
+      expiresAt: v.union(v.number(), v.null()),
+      // What was chosen, for A9's "Answered on MacBook: Ship it". Empty until answered.
+      answerLabels: v.array(v.string()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    await requireClient(ctx, args.clientId);
+    const alert = await ctx.db
+      .query("alerts")
+      .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))
+      .unique();
+    if (!alert) return null;
+    const answeredBy = alert.answeredByClientId ? await ctx.db.get(alert.answeredByClientId) : null;
+    const answer =
+      alert.status === "answered"
+        ? await ctx.db
+            .query("answers")
+            .withIndex("by_questionId", (q) => q.eq("questionId", alert.questionId))
+            .unique()
+        : null;
+    return {
+      status: alert.status,
+      answeredByClientName: answeredBy?.name ?? null,
+      expiresAt: alert.expiresAt ?? null,
+      answerLabels: answer ? answer.answers.map((choice: { label: string }) => choice.label) : [],
+    };
+  },
+});
+
+/** Push tokens that should drop an alert someone else answered or snoozed. Tokens stay out of logs. */
+export const loadDismissTargets = internalQueryGeneric({
+  args: { exceptClientId: v.optional(v.string()) },
+  returns: v.array(v.string()),
+  handler: async (ctx, args) => {
+    const clients = await ctx.db.query("clients").take(MAX_PUSH_CLIENTS);
+    const device = await ctx.db.query("device").first();
+    return selectDismissTargets({
+      clients: clients.map((row) => ({
+        id: row._id as string,
+        pushToken: row.pushToken,
+        fullScreenAllowed: row.fullScreenAllowed,
+      })),
+      device,
+      exceptClientId: args.exceptClientId ?? null,
+    });
+  },
+});
+
+/** Cancels a pending, scheduled or snoozed alert owned by this bot. An answer stays stored. */
 export const cancel = internalMutationGeneric({
   args: { botDocId: v.id("bots"), questionId: v.string() },
   returns: v.object({ questionId: v.string(), status: v.literal("cancelled") }),
@@ -230,7 +342,7 @@ const listedAlert = v.object({
   createdAt: v.number(),
 });
 
-/** Pending and scheduled alerts for one bot, soonest first. */
+/** Pending, scheduled and snoozed alerts for one bot, soonest first. */
 export const listForBot = internalQueryGeneric({
   args: { botDocId: v.id("bots") },
   returns: v.array(listedAlert),
@@ -243,7 +355,11 @@ export const listForBot = internalQueryGeneric({
       .query("alerts")
       .withIndex("by_status", (q) => q.eq("status", "scheduled"))
       .take(50);
-    return [...pending, ...scheduled]
+    const snoozed = await ctx.db
+      .query("alerts")
+      .withIndex("by_status", (q) => q.eq("status", "snoozed"))
+      .take(50);
+    return [...pending, ...scheduled, ...snoozed]
       .filter((alert) => alert.botId === args.botDocId)
       .map((alert) => ({
         questionId: alert.questionId,

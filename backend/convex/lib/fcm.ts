@@ -1,4 +1,5 @@
-import { FULL_SCREEN_KIND, PUSH_CHANNEL_ID } from "@puck/shared";
+import { DISMISS_KIND, FULL_SCREEN_KIND, PUSH_CHANNEL_ID } from "@puck/shared";
+import { selectPushTargets, type PushTargetClient, type PushTargetDevice } from "./pushTargets";
 
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 
@@ -111,6 +112,46 @@ export function fcmFullScreenMessage(alert: PushAlert) {
       },
     },
   };
+}
+
+/**
+ * Data-only message that tells a phone to drop an alert (answered or snoozed on another client).
+ * The phone's background task removes the shade and lock-screen copy. No `notification` block,
+ * so nothing is drawn. Keys: `kind` and `questionId`, the same names the other data pushes use.
+ */
+export function fcmDismissMessage(input: { pushToken: string; questionId: string }) {
+  return {
+    message: {
+      token: input.pushToken,
+      data: { kind: DISMISS_KIND, questionId: input.questionId },
+      android: {
+        priority: "HIGH" as const,
+      },
+    },
+  };
+}
+
+/**
+ * Push tokens that should drop an alert: every client with a token, plus the legacy device, except
+ * whoever acted on it. `exceptClientId` is the client that answered; with null the legacy device
+ * answered, so its token is the one left out. A token shared with the acting client is left out too.
+ */
+export function selectDismissTargets(input: {
+  clients: readonly PushTargetClient[];
+  device: PushTargetDevice | null;
+  exceptClientId: string | null;
+}): string[] {
+  const skip = new Set<string>();
+  if (input.exceptClientId === null) {
+    if (input.device?.pushToken) skip.add(input.device.pushToken);
+  } else {
+    for (const client of input.clients) {
+      if (client.id === input.exceptClientId && client.pushToken) skip.add(client.pushToken);
+    }
+  }
+  return selectPushTargets({ clients: input.clients, device: input.device })
+    .map((target) => target.pushToken)
+    .filter((token) => !skip.has(token));
 }
 
 export function fcmBody(alert: PushAlert) {

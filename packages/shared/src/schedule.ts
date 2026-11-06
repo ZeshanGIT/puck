@@ -14,9 +14,9 @@ export function releaseStep(status: AlertStatus, scheduledFor: number | null, no
 
 export type CancelStep = "cancelled" | "unchanged" | "rejected";
 
-/** Pending and scheduled alerts can be cancelled. An answer cannot be undone. */
+/** Pending, scheduled and snoozed alerts can be cancelled (J9). An answer cannot be undone. */
 export function cancelStep(status: AlertStatus): CancelStep {
-  if (status === "scheduled" || status === "pending") return "cancelled";
+  if (status === "scheduled" || status === "pending" || status === "snoozed") return "cancelled";
   if (status === "cancelled") return "unchanged";
   return "rejected";
 }
