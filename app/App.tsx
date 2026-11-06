@@ -1,7 +1,7 @@
 import { ConvexProvider, useConvex } from "convex/react";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Linking, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { appGate, type GateStatus, type OnboardingStatus } from "./src/accountGate";
 import { useClerkAccount } from "./src/clerkAccount";
@@ -21,9 +21,34 @@ import { useAppFonts } from "./src/ui/useAppFonts";
 
 type SecretState = string | null | undefined;
 
+/** Dev only: `adb shell am start -a android.intent.action.VIEW -d puck://dev-gallery` opens the design gallery. */
+function useDevGalleryLink() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!__DEV__) return;
+    const check = (url: string | null | undefined) => {
+      if (url && url.startsWith("puck://dev-gallery")) setOpen(true);
+    };
+    void Linking.getInitialURL().then(check);
+    const subscription = Linking.addEventListener("url", ({ url }) => check(url));
+    return () => subscription.remove();
+  }, []);
+  return [open, setOpen] as const;
+}
+
 export default function App() {
   const fontsReady = useAppFonts();
+  const [galleryOpen, setGalleryOpen] = useDevGalleryLink();
   if (!fontsReady) return null;
+
+  if (__DEV__ && galleryOpen) {
+    return (
+      <GestureHandlerRootView style={styles.root}>
+        <DevGallery onBack={() => setGalleryOpen(false)} />
+        <StatusBar style="dark" />
+      </GestureHandlerRootView>
+    );
+  }
 
   return (
     <GestureHandlerRootView style={styles.root}>
