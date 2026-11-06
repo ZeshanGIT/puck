@@ -54,6 +54,8 @@ function readRawLine(input: NodeJS.ReadStream, output: Writable): Promise<string
   return new Promise((resolve) => {
     const previous = input.isRaw;
     input.setRawMode(true);
+    (input as { ref?: () => void }).ref?.();
+    input.resume();
     let value = "";
     const onData = (chunk: Buffer) => {
       for (const ch of chunk.toString("utf8")) {
@@ -76,6 +78,9 @@ function readRawLine(input: NodeJS.ReadStream, output: Writable): Promise<string
     const cleanup = () => {
       input.off("data", onData);
       if (input.isTTY) input.setRawMode(previous);
+      // A flowing or referenced stdin keeps the process alive after the last prompt.
+      input.pause();
+      (input as { unref?: () => void }).unref?.();
     };
     input.on("data", onData);
   });
