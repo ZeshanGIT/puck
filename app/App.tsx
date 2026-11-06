@@ -1,7 +1,7 @@
 import type { ClerkAccount } from "@puck/shared";
 import { ConvexProvider, useConvex } from "convex/react";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Linking, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { appGate, nextStep, type OnboardingStatus, type OnboardingStep } from "./src/accountGate";
@@ -20,9 +20,13 @@ import { AlertHost } from "./src/screens/AlertHost";
 import { AStack, type StackAnswer, type StackGone } from "./src/screens/AStack";
 import { DevGallery } from "./src/screens/DevGallery";
 import { H1Home } from "./src/screens/H1Home";
+import { H4DetailView } from "./src/screens/H4Detail";
 import {
+  DETAIL_SAMPLE_NAMES,
+  freshDetail,
   freshGroup,
   freshHome,
+  isDetailSample,
   freshSample,
   isHomeSample,
   HOME_SAMPLE_NAMES,
@@ -89,6 +93,23 @@ function useDevAlertLink() {
     return () => subscription.remove();
   }, []);
   return { sample, closeSample: () => setSample(null) } as const;
+}
+
+/** H4 Alert detail with fake data (`sample=detail`, `detail-ok`): no backend; Try again just shows a Toast. */
+function DevDetail({ name, onClose }: { name: string; onClose: () => void }) {
+  const [round] = useState(() => Date.now());
+  const sample = useMemo(() => freshDetail(name, round), [name, round]);
+  const [now, setNow] = useState(round);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const retry = useCallback(async () => "Sample only: nothing was sent", []);
+  return (
+    <View style={styles.root}>
+      <H4DetailView alert={sample} now={now} onBack={onClose} onRetry={retry} />
+    </View>
+  );
 }
 
 /** H1 Home with fake data (`sample=home`, `home-clear`, `home-empty`): no backend, Load more brings older rows. */
@@ -200,7 +221,7 @@ function DevAlertSample({ name }: { name: string }) {
     return (
       <View style={styles.root}>
         <Text style={styles.devNote}>
-          Unknown sample: {name}. Known: {[...Object.keys(ALERT_SAMPLES), ...Object.keys(ALERT_SAMPLE_GROUPS), ...HOME_SAMPLE_NAMES].join(", ")}.
+          Unknown sample: {name}. Known: {[...Object.keys(ALERT_SAMPLES), ...Object.keys(ALERT_SAMPLE_GROUPS), ...HOME_SAMPLE_NAMES, ...DETAIL_SAMPLE_NAMES].join(", ")}.
         </Text>
       </View>
     );
@@ -238,6 +259,8 @@ export default function App() {
         <ConvexProvider client={convex}>
           {isHomeSample(alertLink.sample) ? (
             <DevHome name={alertLink.sample} />
+          ) : isDetailSample(alertLink.sample) ? (
+            <DevDetail name={alertLink.sample} onClose={alertLink.closeSample} />
           ) : (
             <DevAlertSample name={alertLink.sample} />
           )}

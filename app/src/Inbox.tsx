@@ -13,6 +13,7 @@ import { PuckScreen } from "./components/PuckScreen";
 import type { NeedItem } from "./homeModel";
 import { AlertHost, useAlertDeck } from "./screens/AlertHost";
 import { ConnectedH1Home } from "./screens/H1Home";
+import { H4Detail } from "./screens/H4Detail";
 import { StackHost } from "./screens/StackHost";
 import { Toast, useToast } from "./ui/Toast";
 
@@ -66,6 +67,8 @@ function InboxBody({
     anyApi.alerts.pending,
     clientId === undefined ? "skip" : clientId ? { clientId } : {},
   ) as PendingAlert[] | undefined;
+  // Waiting alerts in full (the same fields as `pending`), so a snoozed one can open from Needs you.
+  const waiting = useQuery(anyApi.alerts.waiting, clientId ? { clientId } : "skip") as WaitingFullAlert[] | undefined;
   const openedId = useOpenedQuestionId();
   // Alerts he left in a stack ("Leave the rest for later") stay off the screen until he is back in
   // the app after being away, so the stack he just closed does not open again at once.
@@ -97,6 +100,13 @@ function InboxBody({
   }, [chosenId, deck.live]);
   const toast = useToast();
   const comingLater = useCallback(() => toast.show("Coming in a later step"), [toast.show]);
+  // H4, the alert detail, opened from an Earlier row; and a snoozed alert opened from Needs you, shown
+  // on the normal alert screen (it is not in `pending`, so `useAlertDeck` does not pick it).
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [snoozedOpen, setSnoozedOpen] = useState<WaitingFullAlert | null>(null);
+  const openDetail = useCallback((questionId: string) => setDetailId(questionId), []);
+  const closeDetail = useCallback(() => setDetailId(null), []);
+  const closeSnoozed = useCallback(() => setSnoozedOpen(null), []);
   // Two or more waiting (not expired) alerts are the A8 stack, which stays a stack until its
   // summary's Done even as answered alerts leave `pending`. While the last alert's receipt is
   // still up (`stale`) the stack waits for it to close.
@@ -113,8 +123,14 @@ function InboxBody({
   // with the others); anything else (snoozed, waiting to send) opens its detail (H4, T52).
   const openNeed = useCallback(
     (item: NeedItem) => {
-      if (item.status !== "pending" || item.queued) {
+      if (item.queued) {
         comingLater();
+        return;
+      }
+      if (item.status === "snoozed") {
+        const full = (waiting ?? []).find((alert) => alert.questionId === item.questionId);
+        if (full) setSnoozedOpen(full);
+        else comingLater();
         return;
       }
       setLeft((before) => {
@@ -125,7 +141,7 @@ function InboxBody({
       });
       setChosenId(item.questionId);
     },
-    [comingLater],
+    [comingLater, waiting],
   );
   const goThroughAll = useCallback(() => setLeft(new Set()), []);
   const closeStack = useCallback((heldIds: string[]) => {
@@ -134,6 +150,16 @@ function InboxBody({
   }, []);
   const fullScreen = useFullScreenAccess();
   const [pairing, setPairing] = useState(false);
+  // A new alert on screen takes over from an open detail.
+  const hasAlert = deck.alert !== null;
+  useEffect(() => {
+    if (hasAlert) setDetailId(null);
+  }, [hasAlert]);
+  // The snoozed alert is let go once it has left Waiting, or was snoozed again (a new `until`), so the
+  // alert screen's receipt or leave runs as it does for a pending alert.
+  const snoozedNow = snoozedOpen ? (waiting ?? []).find((alert) => alert.questionId === snoozedOpen.questionId) : undefined;
+  const snoozedStale =
+    snoozedOpen !== null && (snoozedNow === undefined || snoozedNow.snoozedUntil !== snoozedOpen.snoozedUntil);
 
   async function allowFullScreen() {
     try {
@@ -165,8 +191,28 @@ function InboxBody({
       </View>
     );
   }
+  if (snoozedOpen) {
+    return (
+      <View style={styles.filled}>
+        <AlertHost
+          alert={snoozedOpen}
+          waiting={deck.waiting}
+          launchedByAlert={false}
+          stale={snoozedStale}
+          onRelease={closeSnoozed}
+        />
+      </View>
+    );
+  }
   const alert = deck.alert;
   if (!alert) {
+    if (detailId) {
+      return (
+        <View style={styles.stack}>
+          <H4Detail questionId={detailId} onBack={closeDetail} />
+        </View>
+      );
+    }
     return (
       <View style={styles.stack}>
         <ConnectedH1Home
@@ -176,7 +222,7 @@ function InboxBody({
           onAllowFullScreen={() => void allowFullScreen()}
           onOpenNeed={openNeed}
           onGoThroughAll={goThroughAll}
-          onOpenAlert={comingLater}
+          onOpenAlert={openDetail}
           onBots={comingLater}
           onSettings={comingLater}
           onPairBot={() => setPairing(true)}
@@ -215,6 +261,9 @@ function InboxBody({
     </View>
   );
 }
+
+/** A waiting alert in full (`alerts.waiting` now returns the alert's fields, as `alerts.pending` does). */
+type WaitingFullAlert = PendingAlert & { status: "pending" | "snoozed"; snoozedUntil: number | null };
 
 class ScreenBoundary extends Component<{ children: ReactNode }, { message: string | null }> {
   state = { message: null as string | null };

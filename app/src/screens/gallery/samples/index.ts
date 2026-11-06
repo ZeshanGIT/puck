@@ -10,6 +10,7 @@ import { A3_SAMPLES } from "./a3";
 import { A5_SAMPLES } from "./a5";
 import { A7_SAMPLES } from "./a7";
 import { ALERT_SAMPLE_GROUPS, freshGroup } from "./a8";
+import { DETAIL_SAMPLE_NAMES, freshDetail, isDetailSample } from "./detail";
 import { freshHome, HOME_SAMPLE_NAMES, isHomeSample } from "./home";
 
 export const ALERT_SAMPLES: Record<string, PendingAlert> = {
@@ -39,3 +40,6 @@ export { ALERT_SAMPLE_GROUPS, freshGroup };
 
 /** The H1 Home samples (`home`, `home-clear`, `home-empty`); see `home.ts`. */
 export { freshHome, HOME_SAMPLE_NAMES, isHomeSample };
+
+/** The H4 Alert detail samples (`detail`, `detail-ok`); see `detail.ts`. */
+export { DETAIL_SAMPLE_NAMES, freshDetail, isDetailSample };
