@@ -46,3 +46,11 @@ export async function registerPushTokenWithConvex(
   if (token) await register(token);
   return true;
 }
+
+/** Notification permission for the O2 row. `canAskAgain` is false after a denial Android will not repeat. */
+export async function readNotificationRowState(): Promise<{ granted: boolean; canAskAgain: boolean }> {
+  const Notifications = await loadNotificationsModule();
+  if (!Notifications || Platform.OS !== "android") return { granted: false, canAskAgain: false };
+  const settings = await Notifications.getPermissionsAsync();
+  return { granted: settings.status === "granted", canAskAgain: settings.canAskAgain };
+}

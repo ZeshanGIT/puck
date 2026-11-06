@@ -19,6 +19,8 @@ export type ClerkView = "unknown" | "out" | "in";
 export function useClerkAccount(): {
   status: ClerkView;
   email: string | null;
+  /** The signed-in account, for the Clerk token that Convex asks for. Never log it. */
+  account: ClerkAccount | null;
   accept: (account: ClerkAccount) => Promise<void>;
   signOut: () => Promise<void>;
 } {
@@ -65,6 +67,7 @@ export function useClerkAccount(): {
   return {
     status,
     email: account?.email ?? null,
+    account,
     accept: async (next) => {
       await saveStoredAccount(next);
       await clearPendingSignIn();
@@ -95,7 +98,8 @@ export async function clearPendingSignIn(): Promise<void> {
   await SecureStore.deleteItemAsync(PENDING_KEY);
 }
 
-async function readStoredAccount(): Promise<ClerkAccount | null> {
+/** The stored account, read fresh. The Convex token fetcher uses it so a refreshed session is picked up. */
+export async function readStoredAccount(): Promise<ClerkAccount | null> {
   return readJson(ACCOUNT_KEY, isAccount);
 }
 
