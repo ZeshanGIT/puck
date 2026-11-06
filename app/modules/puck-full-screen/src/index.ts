@@ -8,6 +8,7 @@ type FullScreenNative = {
   isInCall?: () => boolean;
   createAlarmChannel?: (id: string, name: string, bypassDnd: boolean) => boolean;
   watchVolumeKeys?: () => boolean;
+  requestUnlock?: () => Promise<string>;
   addListener?: (eventName: "onVolumeKey", listener: () => void) => { remove: () => void };
 };
 
@@ -116,5 +117,25 @@ export function onVolumeKey(listener: () => void): () => void {
     return () => subscription.remove();
   } catch {
     return () => {};
+  }
+}
+
+/** How a request to dismiss the lock screen ended. */
+export type UnlockResult = "unlocked" | "cancelled" | "error";
+
+/**
+ * Asks Android to dismiss the lock screen (fingerprint or PIN where set; a swipe lock goes with no
+ * prompt). Resolves at once with "unlocked" when the phone is not locked. In a build without the
+ * native function it is "unlocked" only when the phone is known to be unlocked, otherwise "error".
+ * Never throws.
+ */
+export async function requestUnlock(): Promise<UnlockResult> {
+  try {
+    const native = nativeModule();
+    if (!native?.requestUnlock) return isLocked() === false ? "unlocked" : "error";
+    const result = await native.requestUnlock();
+    return result === "unlocked" || result === "cancelled" ? result : "error";
+  } catch {
+    return "error";
   }
 }

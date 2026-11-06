@@ -19,6 +19,7 @@ import { type PendingAlert, ChoiceScreen } from "../ChoiceScreen";
 import { replyPayload } from "../choice";
 import { readClientId } from "../clientStore";
 import { useReadingAloud } from "../speak";
+import { ensureUnlockedFor } from "../unlock";
 import { clearDisplayedAlert, useUrgentLook } from "../urgentDisplay";
 import type { UploadedAttachment } from "../attachments";
 import { A1ChoiceSingle } from "./A1ChoiceSingle";
@@ -52,6 +53,9 @@ function ConnectedAlertHost({ alert, waiting }: { alert: PendingAlert; waiting: 
     async (optionIds, customReply, attachments) => {
       // `replyPayload` trims the reply and refuses an empty answer, as `ChoiceScreen` does.
       // A reply that is only attachments is allowed.
+      // On the lock screen a destructive option, or a `requiresUnlock` alert, asks to unlock first.
+      // A throw here reaches the screen as a Toast and keeps the alert up (Q9, Q10).
+      await ensureUnlockedFor(alert, optionIds);
       const hasFiles = (attachments?.length ?? 0) > 0;
       const payload = hasFiles
         ? { optionIds, customReply: (customReply ?? "").trim() }
@@ -72,7 +76,7 @@ function ConnectedAlertHost({ alert, waiting }: { alert: PendingAlert; waiting: 
       await clearDisplayedAlert(questionId);
       if (waiting <= 1) leaveIfLocked();
     },
-    [record, questionId, waiting],
+    [record, questionId, waiting, alert],
   );
   return <AlertScreen alert={alert} waiting={waiting} onAnswer={onAnswer} />;
 }

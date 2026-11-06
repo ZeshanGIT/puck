@@ -12,6 +12,8 @@ import android.media.RingtoneManager
 import android.os.Build
 import android.view.KeyEvent
 import android.view.Window
+import java.util.concurrent.atomic.AtomicBoolean
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
@@ -25,6 +27,9 @@ import expo.modules.kotlin.modules.ModuleDefinition
  * - isInCall: the phone is in a call (no permission needed: AudioManager.getMode()).
  * - volume keys: an "onVolumeKey" event when a volume key goes down in the app's window, so a
  *   ringing alert can be silenced without being answered. The key is not swallowed.
+ *
+ * Unlock gating (card T37):
+ * - requestUnlock: asks the system to dismiss the keyguard (fingerprint or PIN where set).
  */
 class FullScreenAccessModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -61,6 +66,47 @@ class FullScreenAccessModule : Module() {
       val context = appContext.reactContext ?: return@Function false
       val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
       keyguard.isKeyguardLocked
+    }
+
+    // Asks the system to dismiss the keyguard for the current activity (which must be showing over
+    // it, as an urgent alert is). Resolves "unlocked" (also at once when not locked, and with no
+    // prompt on a swipe lock), "cancelled" (the person backed out) or "error" (no activity, or
+    // the system refused). Settles once only.
+    AsyncFunction("requestUnlock") { promise: Promise ->
+      val activity = appContext.currentActivity
+      if (activity == null) {
+        promise.resolve("error")
+        return@AsyncFunction
+      }
+      try {
+        val keyguard = activity.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        if (!keyguard.isKeyguardLocked) {
+          promise.resolve("unlocked")
+          return@AsyncFunction
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+          promise.resolve("error")
+          return@AsyncFunction
+        }
+        val settled = AtomicBoolean(false)
+        val settle = { result: String -> if (settled.compareAndSet(false, true)) promise.resolve(result) }
+        activity.runOnUiThread {
+          try {
+            keyguard.requestDismissKeyguard(
+              activity,
+              object : KeyguardManager.KeyguardDismissCallback() {
+                override fun onDismissSucceeded() = settle("unlocked")
+                override fun onDismissCancelled() = settle("cancelled")
+                override fun onDismissError() = settle("error")
+              },
+            )
+          } catch (error: Exception) {
+            settle("error")
+          }
+        }
+      } catch (error: Exception) {
+        promise.resolve("error")
+      }
     }
 
     // True during a phone call, an incoming call ringing, or a voice or video call in another
