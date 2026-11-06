@@ -61,3 +61,16 @@ describe("fullscreenAlert flags", () => {
     expect(read({ ringSeconds: 60 })?.ringSeconds).toBe(60);
   });
 });
+
+describe("fullscreenAlert bot id", () => {
+  test("reads the bot id when the push has one", () => {
+    const alert = fullscreenAlert({ data: { dataString: JSON.stringify({ ...ALERT, botId: "sheldon-11019" }) } });
+    expect(alert?.botId).toBe("sheldon-11019");
+  });
+
+  test("an older push has none, and a wrong type is dropped", () => {
+    expect(fullscreenAlert(ALERT)?.botId).toBeUndefined();
+    expect(fullscreenAlert({ ...ALERT, botId: 7 })?.botId).toBeUndefined();
+    expect(fullscreenAlert({ ...ALERT, botId: "" })?.botId).toBeUndefined();
+  });
+});

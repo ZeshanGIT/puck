@@ -456,6 +456,8 @@ export const loadForPush = internalQueryGeneric({
       questionId: v.string(),
       question: v.string(),
       botName: v.string(),
+      /** The bot's public id, for the phone's per-bot overrides. */
+      botId: v.optional(v.string()),
       priority,
       // What the phone needs to ring the way the alert asks (Protocol changes §1).
       message: v.optional(v.string()),
@@ -494,6 +496,7 @@ export const loadForPush = internalQueryGeneric({
       questionId: alert.questionId,
       question: alert.question,
       botName: bot.name,
+      botId: bot.id,
       priority: alert.priority,
       ...(alert.message === undefined ? {} : { message: alert.message }),
       ...(alert.ringSeconds === undefined ? {} : { ringSeconds: alert.ringSeconds }),

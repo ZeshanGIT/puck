@@ -175,8 +175,9 @@ async function settle(questionId: string): Promise<void> {
 
 async function startRinging(alert: FullScreenAlert, settings: LocalSettings): Promise<void> {
   const seconds = ringSecondsFor(alert.ringSeconds, settings);
-  // The payload has no bot id yet, so the per-bot overrides cannot apply here.
-  const decision = bypassDecision({ priority: "urgent", ...alert }, settings);
+  // The bot's own overrides (B2) apply when the push names the bot; without a bot id (an older
+  // backend) the global settings decide. The channel follows the decision (`urgentChannelId`).
+  const decision = bypassDecision({ priority: "urgent", ...alert }, settings, alert.botId);
   // Do Not Disturb access is what lets the channel override it; without it the alert rings normally.
   const dnd = decision.dnd && hasDndAccess() === true;
   const channelId = await ensureChannel({ dnd, silent: decision.silent });

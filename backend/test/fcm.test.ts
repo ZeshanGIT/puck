@@ -164,6 +164,33 @@ describe("full-screen message flags", () => {
   });
 });
 
+describe("bot id in the full-screen push", () => {
+  const base = {
+    pushToken: TOKEN,
+    questionId: "q_BEXA0M8Y5W1ADYPX",
+    question: "Time to get up",
+    botName: "Grok Bot",
+    priority: "urgent" as const,
+  };
+
+  test("is sent as botId, and left out when there is none", () => {
+    const withId = fcmBody({ ...base, fullScreen: true, botId: "sheldon-11019" });
+    expect(withId.message.data?.botId).toBe("sheldon-11019");
+    expect(Object.values(withId.message.data ?? {}).every((value) => typeof value === "string")).toBe(true);
+    expect(fcmBody({ ...base, fullScreen: true }).message.data?.botId).toBeUndefined();
+  });
+
+  test("the shade notification does not carry it", () => {
+    expect(fcmBody({ ...base, fullScreen: false, botId: "sheldon-11019" }).message.data?.botId).toBeUndefined();
+  });
+
+  test("pushAlertExtras passes a string bot id and drops anything else", () => {
+    expect(pushAlertExtras({ botId: "sheldon-11019" })).toEqual({ botId: "sheldon-11019" });
+    expect(pushAlertExtras({ botId: 7 })).toEqual({});
+    expect(pushAlertExtras({ botId: "" })).toEqual({});
+  });
+});
+
 describe("pushAlertExtras", () => {
   test("picks the optional fields and drops wrong types", () => {
     expect(

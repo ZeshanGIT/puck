@@ -4,6 +4,8 @@ export interface FullScreenAlert {
   questionId: string;
   question: string;
   botName: string;
+  /** The bot's public id (`sheldon-11019`), for its own Do Not Disturb and silent-mode overrides. Older pushes have none. */
+  botId?: string;
   /** The alert's message, sent only with `speak` so the phone can read it aloud. */
   message?: string;
   ringSeconds?: number;
@@ -28,6 +30,9 @@ export function fullscreenAlert(payload: unknown): FullScreenAlert | null {
   if (typeof question !== "string" || question.length === 0) return null;
   if (typeof botName !== "string" || botName.length === 0) return null;
   const alert: FullScreenAlert = { questionId, question, botName };
+  // Optional: an older backend does not send it. Anything but a non-empty string is dropped.
+  const botId = data.botId;
+  if (typeof botId === "string" && botId.length > 0) alert.botId = botId;
   // FCM data values are strings, so flags arrive as "true" and numbers as "300". Older payloads
   // carry none of these and keep working.
   const message = data.alertMessage;

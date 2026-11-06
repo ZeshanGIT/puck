@@ -8,6 +8,8 @@ export interface PushAlert {
   questionId: string;
   question: string;
   botName: string;
+  /** The bot's public id (`sheldon-11019`), so the phone can apply that bot's own settings. Full-screen message only. */
+  botId?: string;
   priority: "normal" | "urgent";
   fullScreen: boolean;
   /** The alert's own fields (Protocol changes section 1). Only the full-screen message carries them. */
@@ -28,11 +30,12 @@ const PUSH_MESSAGE_MAX = 1_000;
  */
 export function pushAlertExtras(source: unknown): Pick<
   PushAlert,
-  "message" | "ringSeconds" | "speak" | "bypassDnd" | "bypassSilent" | "requiresUnlock"
+  "message" | "botId" | "ringSeconds" | "speak" | "bypassDnd" | "bypassSilent" | "requiresUnlock"
 > {
   const record = isRecord(source) ? source : {};
   const extras: ReturnType<typeof pushAlertExtras> = {};
   if (typeof record.message === "string") extras.message = record.message;
+  if (typeof record.botId === "string" && record.botId.length > 0) extras.botId = record.botId;
   if (typeof record.ringSeconds === "number") extras.ringSeconds = record.ringSeconds;
   for (const flag of ["speak", "bypassDnd", "bypassSilent", "requiresUnlock"] as const) {
     const value = record[flag];
@@ -95,6 +98,9 @@ export function fcmFullScreenMessage(alert: PushAlert) {
     botName: alert.botName,
     priority: alert.priority,
   };
+  // Additive: an older phone app ignores the key. The phone looks up this bot's own Do Not Disturb
+  // and silent-mode overrides with it (`bypassDecision`).
+  if (alert.botId !== undefined) data.botId = alert.botId;
   if (alert.ringSeconds !== undefined) data.ringSeconds = String(alert.ringSeconds);
   if (alert.speak !== undefined) data.speak = String(alert.speak);
   if (alert.bypassDnd !== undefined) data.bypassDnd = String(alert.bypassDnd);
