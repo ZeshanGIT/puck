@@ -10,6 +10,7 @@ import { internalMutationGeneric, internalQueryGeneric, mutationGeneric } from "
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
+import { requireClient } from "./lib/clientAuth";
 import { requireDevice } from "./device";
 import { BUILT_IN_BOT_ID, BUILT_IN_BOT_NAME, botMayAuthenticate } from "./lib/builtInBot";
 import { TOO_MANY_PENDING_BOTS } from "./lib/deviceAuth";
@@ -109,12 +110,16 @@ export const createPairing = mutationGeneric({
   },
 });
 
-/** The app sends the six-digit code. The claimed device must call it. */
+/**
+ * The app sends the six-digit code. With `clientId` the caller is that signed-in client (Clerk
+ * identity); without it the claimed device must call it (the legacy path).
+ */
 export const approvePairing = mutationGeneric({
-  args: { pairingCode: v.string() },
+  args: { pairingCode: v.string(), clientId: v.optional(v.string()) },
   returns: v.object({ botId: v.string() }),
   handler: async (ctx, args) => {
-    await requireDevice(ctx);
+    if (args.clientId === undefined) await requireDevice(ctx);
+    else await requireClient(ctx, args.clientId);
     if (!/^\d{6}$/u.test(args.pairingCode)) invalidCode();
     const pairingCodeHash = await hashSecret(args.pairingCode);
     const bot = await ctx.db

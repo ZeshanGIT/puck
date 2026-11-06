@@ -2,6 +2,7 @@ import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { readClientId } from "./clientStore";
 import { readableError } from "./session";
 
 export function PairingScreen({ onClose }: { onClose?: () => void }) {
@@ -20,7 +21,8 @@ export function PairingScreen({ onClose }: { onClose?: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const result = (await approve({ pairingCode })) as { botId?: unknown };
+      const clientId = await readClientId();
+      const result = (await approve(clientId ? { pairingCode, clientId } : { pairingCode })) as { botId?: unknown };
       if (typeof result.botId !== "string" || result.botId.length === 0) {
         throw new Error("pairing did not return a bot id");
       }
