@@ -70,7 +70,9 @@ describe("live track", () => {
     expect(swipeDragMayBegin(-20, 4, max)).toBe(true);
     expect(swipeDragMayBegin(max * 0.72, 0, max)).toBe(false);
     expect(swipeDragMayBegin(-max, 2, max)).toBe(false);
-    expect(swipeDragMayBegin(4, 0, max)).toBe(false);
+    // At activation the translation can still be near zero: that is a real drag, not a stale touch.
+    expect(swipeDragMayBegin(0, 0, max)).toBe(true);
+    expect(swipeDragMayBegin(4, 0, max)).toBe(true);
     expect(swipeDragMayBegin(20, 40, max)).toBe(false);
     expect(swipeDragMayBegin(20, 0, 0)).toBe(false);
   });

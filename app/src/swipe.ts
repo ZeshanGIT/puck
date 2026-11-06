@@ -91,15 +91,16 @@ export function swipeDangerBlend(dx: number, max: number): number {
 }
 
 /**
- * The stale-touch guard for the live track. A real drag is first seen a little way inside the
- * mark and more sideways than up or down. A touch whose first reading is already past the mark
- * is the tail of the tap or swipe that opened the screen, and must not send an answer.
+ * The stale-touch guard for the live track. A touch whose first reading is already past the
+ * mark is the tail of the tap or swipe that opened the screen, and must not send an answer.
  * (The same rule as `swipeCanBegin`, scaled to the track's travel instead of a fixed 68.)
+ *
+ * It does NOT ask for a minimum distance: the pan only activates after `SWIPE_MIN_DRAG_PX`, and
+ * at activation the translation can still read near zero, so a minimum here rejected every real
+ * drag (the knob would not move at all).
  */
 export function swipeDragMayBegin(dx: number, dy: number, max: number): boolean {
   "worklet";
   const distance = Math.abs(dx);
-  return (
-    max > 0 && distance >= SWIPE_MIN_DRAG_PX && distance < max * SWIPE_COMMIT_FRACTION && distance > Math.abs(dy)
-  );
+  return max > 0 && distance < max * SWIPE_COMMIT_FRACTION && distance >= Math.abs(dy);
 }
