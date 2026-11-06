@@ -16,7 +16,22 @@
           "color": "#3c241c"
         }
       ],
-      "./plugins/withFullScreen"
+      "./plugins/withFullScreen",
+      "expo-font",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Puck uses the microphone so you can dictate a reply.",
+          "speechRecognitionPermission": "Puck uses speech recognition to turn your dictated reply into text."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Puck uses the camera so you can attach a photo to a reply.",
+          "photosPermission": "Puck uses your photos so you can attach a picture to a reply."
+        }
+      ]
     ],
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",

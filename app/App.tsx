@@ -2,9 +2,9 @@ import { ConvexProvider, useConvex } from "convex/react";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { appGate, type GateStatus, type OnboardingStatus } from "./src/accountGate";
 import { useClerkAccount } from "./src/clerkAccount";
-import { PuckFontGate } from "./src/components/PuckFontGate";
 import { PuckBody, PuckKicker, PuckTitle } from "./src/components/PuckButton";
 import { PuckScreen } from "./src/components/PuckScreen";
 import { convex } from "./src/client";
@@ -16,14 +16,18 @@ import { readOnboardingComplete } from "./src/onboarding/onboardingStore";
 import { readDevWalkthrough, startDevWalkthrough } from "./src/onboarding/devOnboarding";
 import { usePushRegistration } from "./src/push";
 import { deviceTokenFetcher, readableError } from "./src/session";
+import { useAppFonts } from "./src/ui/useAppFonts";
 
 type SecretState = string | null | undefined;
 
 export default function App() {
+  const fontsReady = useAppFonts();
+  if (!fontsReady) return null;
+
   return (
-    <PuckFontGate>
+    <GestureHandlerRootView style={styles.root}>
       <AppBody />
-    </PuckFontGate>
+    </GestureHandlerRootView>
   );
 }
 
@@ -206,4 +210,8 @@ function SignedIn({
   );
 }
 
-const styles = StyleSheet.create({});
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+});
