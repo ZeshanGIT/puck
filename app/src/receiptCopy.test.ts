@@ -8,6 +8,7 @@ import {
   receiptCloseDelayMs,
   receiptLine,
   receiptViewState,
+  shouldGoBack,
   snoozeSheetText,
   snoozeUntil,
 } from "./receiptCopy";
@@ -117,5 +118,14 @@ describe("snooze", () => {
 
   test("the sheet text names the bot", () => {
     expect(snoozeSheetText("Sheldon")).toBe("It waits under Waiting. Sheldon will know you snoozed.");
+  });
+});
+
+describe("shouldGoBack", () => {
+  test("goes back only for an alert that launched the app, and not after leaving the lock screen", () => {
+    expect(shouldGoBack({ launchedByAlert: true, leftLockScreen: false })).toBe(true);
+    expect(shouldGoBack({ launchedByAlert: true, leftLockScreen: true })).toBe(false);
+    expect(shouldGoBack({ launchedByAlert: false, leftLockScreen: false })).toBe(false);
+    expect(shouldGoBack({ launchedByAlert: false, leftLockScreen: true })).toBe(false);
   });
 });

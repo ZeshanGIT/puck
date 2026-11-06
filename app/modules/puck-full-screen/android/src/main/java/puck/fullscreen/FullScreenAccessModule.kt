@@ -61,6 +61,14 @@ class FullScreenAccessModule : Module() {
       true
     }
 
+    // Sends Puck's task to the back so the app he was in (or the home screen) shows again, whether
+    // or not the phone is locked. The process stays alive. False when there is no activity.
+    Function("goBack") {
+      val activity = appContext.currentActivity ?: return@Function false
+      activity.runOnUiThread { activity.moveTaskToBack(true) }
+      true
+    }
+
     // True while the lock screen (keyguard) is showing, which is when an alert covers it.
     Function("isLocked") {
       val context = appContext.reactContext ?: return@Function false

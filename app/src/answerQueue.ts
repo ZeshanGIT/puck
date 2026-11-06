@@ -147,6 +147,19 @@ export const secureQueueStorage: QueueStorage = {
   },
 };
 
+// The question ids in the stored queue, kept in memory so a screen can ask without waiting for
+// storage. Refreshed by every read-modify-write below, so it is filled once the queue has been read
+// (`useAnswerQueueFlush` does that at app start).
+let queuedIds = new Set<string>();
+
+/**
+ * True while an answer for this question waits on the phone to be sent. The inbox leaves such an
+ * alert out of its list, so it does not come back after the receipt closes.
+ */
+export function isQueuedLocally(questionId: string): boolean {
+  return queuedIds.has(questionId);
+}
+
 // Reads and writes are small read-modify-write steps; this keeps two of them from interleaving.
 let lock: Promise<unknown> = Promise.resolve();
 
@@ -155,6 +168,7 @@ function update<T>(storage: QueueStorage, change: (queue: QueuedAnswer[]) => { q
     const before = parseQueue(await storage.read());
     const { queue, result } = change(before);
     if (queue !== before) await storage.write(JSON.stringify(queue));
+    queuedIds = new Set(queue.map((entry) => entry.questionId));
     return result;
   });
   lock = run.catch(() => undefined);

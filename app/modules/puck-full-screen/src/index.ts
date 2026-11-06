@@ -3,6 +3,7 @@ import { requireNativeModule } from "expo";
 type FullScreenNative = {
   canUse: () => boolean;
   leaveIfLocked?: () => boolean;
+  goBack?: () => boolean;
   hasDndAccess?: () => boolean;
   isLocked?: () => boolean;
   isInCall?: () => boolean;
@@ -36,6 +37,19 @@ export function canUseFullScreenIntent(): boolean {
 export function leaveIfLocked(): boolean {
   try {
     return nativeModule()?.leaveIfLocked?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sends Puck to the back, so the app he was in (or the home screen) is showing again. Used after
+ * the alert screen is done and the phone is not locked. Returns false when there is no activity,
+ * and in a build that predates this native function. Never throws.
+ */
+export function goBack(): boolean {
+  try {
+    return nativeModule()?.goBack?.() === true;
   } catch {
     return false;
   }

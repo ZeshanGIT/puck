@@ -8,6 +8,7 @@ import {
   enqueueAnswer,
   flushAnswerQueue,
   isAnswerQueued,
+  isQueuedLocally,
   isPermanentAnswerError,
   loadAnswerQueue,
   nextToSend,
@@ -129,6 +130,15 @@ describe("enqueueAnswer and flushAnswerQueue", () => {
     expect(await isAnswerQueued("q_A", storage)).toBe(true);
     expect(await isAnswerQueued("q_B", storage)).toBe(false);
     expect((await loadAnswerQueue(storage)).map((entry) => entry.questionId)).toEqual(["q_A"]);
+  });
+
+  test("remembers in memory which questions are queued, until they are sent", async () => {
+    const storage = memoryStorage();
+    await enqueueAnswer(item("MEM"), storage);
+    expect(isQueuedLocally("q_MEM")).toBe(true);
+    expect(isQueuedLocally("q_OTHER")).toBe(false);
+    await flushAnswerQueue(async () => {}, { storage, now: () => NOW });
+    expect(isQueuedLocally("q_MEM")).toBe(false);
   });
 
   test("sends in order and empties the queue", async () => {

@@ -8,8 +8,10 @@
  * resolves; if it rejects, the sheet stays open and shows the error so he can try again.
  * The same sheet serves the one-option swipe, whose Snooze sits on the track (Q17).
  */
+import { anyApi } from "convex/server";
+import { useConvex } from "convex/react";
 import { useEffect, useState } from "react";
-import { StyleSheet, Text } from "react-native";
+import { AppState, StyleSheet, Text } from "react-native";
 import { readableError } from "../session";
 import { SNOOZE_CHOICES, snoozeSheetText, snoozeUntil, type SnoozeChoice } from "../receiptCopy";
 import { ICON } from "../ui/AlertFrame";
@@ -86,3 +88,23 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+/**
+ * "Until I'm back": when the app is opened or returns to the foreground, this client's untimed
+ * snoozed alerts go back to pending (`alerts.wakeSnoozed`, no push). Mount it once, signed in.
+ * Errors are ignored: the next time the app comes forward tries again.
+ */
+export function useWakeSnoozed(clientId: string | null): void {
+  const client = useConvex();
+  useEffect(() => {
+    if (!clientId) return;
+    const wake = () => {
+      client.mutation(anyApi.alerts.wakeSnoozed, { clientId }).catch(() => {});
+    };
+    wake();
+    const subscription = AppState.addEventListener("change", (next) => {
+      if (next === "active") wake();
+    });
+    return () => subscription.remove();
+  }, [client, clientId]);
+}

@@ -49,6 +49,16 @@ export function receiptCloseDelayMs(state: ReceiptViewState): number | null {
 }
 
 /**
+ * After the last answer (or the A9 card): should Puck send itself to the back? Only when the
+ * alert is what launched the app (a notification or the full-screen intent) and the phone was not
+ * locked (`leaveIfLocked` already stepped back to the lock screen). When he opened Puck himself,
+ * he stays where he is.
+ */
+export function shouldGoBack(input: { launchedByAlert: boolean; leftLockScreen: boolean }): boolean {
+  return input.launchedByAlert && !input.leftLockScreen;
+}
+
+/**
  * Joins what was sent into one line for the receipt: "Ship it", or "Ship it, Skip this one".
  * (The prototype stores the answer as one string.)
  */

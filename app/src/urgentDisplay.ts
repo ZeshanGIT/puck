@@ -2,6 +2,7 @@ import notifee, { AndroidImportance, AndroidVisibility, EventType, type Event } 
 import { PUSH_URGENT_CHANNEL_ID } from "@puck/shared";
 import { canCreateAlarmChannel, createAlarmChannel, hasDndAccess, isInCall, isLocked } from "puck-full-screen";
 import { useEffect, useState } from "react";
+import { dismissedQuestionId } from "./dismissPayload";
 import { fullscreenAlert, type FullScreenAlert } from "./fullscreenPayload";
 import {
   bypassDecision,
@@ -284,6 +285,12 @@ export async function handleNotifeeEvent(event: Event): Promise<void> {
 }
 
 export async function handleUrgentTask(data: unknown): Promise<void> {
+  // Answered or snoozed on another client: drop this phone's copy (shade, ring, voice).
+  const dismissed = dismissedQuestionId(data);
+  if (dismissed) {
+    await clearDisplayedAlert(dismissed);
+    return;
+  }
   const alert = fullscreenAlert(data);
   if (!alert) return;
   await displayUrgent(alert);

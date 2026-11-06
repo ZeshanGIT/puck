@@ -11,7 +11,8 @@ import { readableError } from "./session";
 import { PuckBlob } from "./components/PuckBlob";
 import { PuckBody, PuckButton, PuckKicker, PuckTextLink, PuckTitle } from "./components/PuckButton";
 import { PuckScreen } from "./components/PuckScreen";
-import { AlertHost } from "./screens/AlertHost";
+import { OfflineBanner } from "./screens/A10Offline";
+import { AlertHost, useAlertDeck } from "./screens/AlertHost";
 
 export function Inbox({
   notifications,
@@ -64,6 +65,8 @@ function InboxBody({
     clientId === undefined ? "skip" : clientId ? { clientId } : {},
   ) as PendingAlert[] | undefined;
   const openedId = useOpenedQuestionId();
+  // The alert on screen stays while its receipt or its A9 card is up, after it has left `pending`.
+  const deck = useAlertDeck(pending, openedId);
   const fullScreen = useFullScreenAccess();
   const [pairing, setPairing] = useState(false);
 
@@ -86,10 +89,11 @@ function InboxBody({
       </PuckScreen>
     );
   }
-  const alert = pending.find((item) => item.questionId === openedId) ?? pending[0];
+  const alert = deck.alert;
   if (!alert) {
     return (
       <PuckScreen>
+        <OfflineBanner />
         <ScrollView contentContainerStyle={styles.idleScroll} showsVerticalScrollIndicator={false}>
           <View style={styles.idleHero}>
             <PuckBlob size={132} mood="idle" />
@@ -123,7 +127,13 @@ function InboxBody({
           <PuckTextLink label="Allow full-screen alerts" onPress={() => void allowFullScreen()} />
         </View>
       ) : null}
-      <AlertHost alert={alert} waiting={pending.length} />
+      <AlertHost
+        alert={alert}
+        waiting={deck.waiting}
+        launchedByAlert={openedId === alert.questionId}
+        stale={deck.stale}
+        onRelease={deck.release}
+      />
     </View>
   );
 }

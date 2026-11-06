@@ -8,31 +8,29 @@
  * - The track (`SwipeTrack`) does the dragging, the haptics, the red knob toward a destructive
  *   side, the 400 ms arm delay, the stale-touch guard and the tap-twice route on the labels.
  *   While the knob is dragged the screen's blob looks toward that side (`look(big, dir*4, 3)`).
- * - A commit to an option makes the blob leap and shows the "You answered" receipt with
- *   "Sending…" while `onAnswer` is in flight, then "Sent". If `onAnswer` throws, a Toast shows
- *   the error and the track comes back, ready again.
+ * - A commit to an option makes the blob leap, and the host's receipt (A7) takes the bottom. If
+ *   `onAnswer` throws, a Toast shows the error and the track comes back, ready again.
  * - `expiresAt` counts down in the pill; when it passes the track is disabled and the pill says
- *   Missed (the A9 screen comes later).
- * - Reply (A5) and Snooze (A11) are built by later cards: `onReply` and `onSnooze` are theirs to
- *   supply. Until then tapping Reply, or committing to Snooze, shows a Toast and the knob springs
- *   home.
+ *   Missed (the host then shows the A9 card).
+ * - Reply (A5) and Snooze (A11) come from the host (`AlertHost`): `onReply` and `onSnooze`. Without
+ *   them tapping Reply, or committing to Snooze, shows a Toast and the knob springs home. The
+ *   receipt and the A9 card are the host's too (`receipt`, `gone`).
  *
  * Not here: the ringing, DND, spoken text and the night decision (card T34), the unlock check
  * for destructive options on the lock screen (Q10), and the stack of several alerts (A8).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Linking, StyleSheet, Text, View } from "react-native";
 import type { PendingAlert } from "../ChoiceScreen";
-import { Spinner } from "../onboarding/parts";
 import { readableError } from "../session";
-import { AlertFrame, AlertSecondaryRow, Glyph, ICON, useExpiry } from "../ui/AlertFrame";
+import { AlertFrame, AlertSecondaryRow, ICON, useExpiry } from "../ui/AlertFrame";
 import type { BlobHandle } from "../ui/Blob";
 import type { Offset } from "../ui/blobShapes";
 import { botLook } from "../ui/botLook";
 import { SwipeTrack, type SwipeSide, type SwipeSideSpec, type SwipeTrackHandle } from "../ui/SwipeTrack";
 import { useTheme } from "../ui/theme";
 import { Toast, useToast } from "../ui/Toast";
-import { fontFamily, radii } from "../ui/tokens";
+import { fontFamily } from "../ui/tokens";
 import { haptics } from "../ui/useTapTwice";
 
 export interface A3SwipeProps {
@@ -51,6 +49,13 @@ export interface A3SwipeProps {
   readingAloud?: boolean;
   /** The lock-screen clock at the top (an urgent alert over the lock screen). */
   clock?: boolean;
+  /**
+   * The A7 receipt, owned by the host (`AlertHost`): it covers the options once an answer is in,
+   * whether the answer came from here or from the reply sheet.
+   */
+  receipt?: ReactNode;
+  /** The A9 card, over a dimmed alert, when the alert is no longer needed. */
+  gone?: ReactNode;
 }
 
 const MAX_FONT_SCALE = 1.3;
@@ -75,7 +80,18 @@ const ICON_PATHS: Record<string, string> = {
 
 type Phase = "idle" | "sending" | "sent";
 
-export function A3Swipe({ alert, waiting, onAnswer, onReply, onSnooze, night, readingAloud, clock }: A3SwipeProps) {
+export function A3Swipe({
+  alert,
+  waiting,
+  onAnswer,
+  onReply,
+  onSnooze,
+  night,
+  readingAloud,
+  clock,
+  receipt,
+  gone,
+}: A3SwipeProps) {
   const { botId, botName } = alert;
   const bot = useMemo(() => botLook({ botId, botName }), [botId, botName]);
   const expiry = useExpiry(alert.expiresAt, alert.createdAt);
@@ -84,7 +100,6 @@ export function A3Swipe({ alert, waiting, onAnswer, onReply, onSnooze, night, re
   const track = useRef<SwipeTrackHandle>(null);
   const [look, setLook] = useState<Offset | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
-  const [answer, setAnswer] = useState("");
   const busy = useRef(false);
   const alive = useRef(true);
 
@@ -114,10 +129,16 @@ export function A3Swipe({ alert, waiting, onAnswer, onReply, onSnooze, night, re
 
   const comingLater = () => toast.show("Coming in a later step");
 
-  async function send(optionId: string, label: string) {
+  // An answer made from the reply sheet (A5) skips `send`, so the blob leaps when the receipt arrives.
+  const hasReceipt = receipt != null;
+  useEffect(() => {
+    if (hasReceipt && !busy.current) blob.current?.leap();
+  }, [hasReceipt]);
+
+
+  async function send(optionId: string) {
     if (busy.current) return;
     busy.current = true;
-    setAnswer(label);
     setPhase("sending");
     blob.current?.leap();
     try {
@@ -141,7 +162,7 @@ export function A3Swipe({ alert, waiting, onAnswer, onReply, onSnooze, night, re
       track.current?.reset();
       return;
     }
-    void send(option.id, option.label);
+    void send(option.id);
   }
 
   function onLookChange(direction: -1 | 0 | 1 | null) {
@@ -181,17 +202,15 @@ export function A3Swipe({ alert, waiting, onAnswer, onReply, onSnooze, night, re
       queue={waiting > 1 ? { position: 1, total: waiting } : null}
       night={night}
       clock={clock}
-      answered={phase !== "idle"}
+      answered={phase !== "idle" || receipt != null}
+      dimmed={gone != null}
       blobRef={blob}
       blobSize={blobSize}
       look={look}
       bottom={
-        phase !== "idle" ? (
-          <>
-            <Receipt answer={answer} sent={phase === "sent"} />
-            <View style={styles.receiptGap} />
-          </>
-        ) : valid && leftSpec && rightSpec ? (
+        receipt != null ? (
+          receipt
+        ) : phase !== "idle" ? null : valid && leftSpec && rightSpec ? (
           <>
             <Hint>{oneOption ? "Drag right when you're up" : "Drag toward your answer"}</Hint>
             <SwipeTrack
@@ -210,7 +229,12 @@ export function A3Swipe({ alert, waiting, onAnswer, onReply, onSnooze, night, re
           <Hint>This swipe needs one or two options.</Hint>
         )
       }
-      overlay={<Toast message={toast.message} visible={toast.visible} />}
+      overlay={
+        <>
+          {gone}
+          <Toast message={toast.message} visible={toast.visible} />
+        </>
+      }
     />
   );
 }
@@ -234,32 +258,6 @@ function Hint({ children }: { children: string }) {
   );
 }
 
-/** `.receipt` in its sending and sent states, as A1 draws it (the A7 screen builds on this later). */
-function Receipt({ answer, sent }: { answer: string; sent: boolean }) {
-  const t = useTheme().tokens;
-  return (
-    <View
-      accessible
-      accessibilityLiveRegion="polite"
-      accessibilityLabel={`You answered ${answer}. ${sent ? "Sent" : "Sending"}`}
-      style={[styles.receipt, { backgroundColor: t.card, borderColor: t.line }]}
-    >
-      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.receiptLabel, { color: t.ink3 }]}>
-        You answered
-      </Text>
-      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.receiptAnswer, { color: t.ink }]}>
-        {answer}
-      </Text>
-      <View style={styles.status}>
-        {sent ? <Glyph d={ICON.check} size={18} colour={t.ink2} width={2.6} /> : <Spinner />}
-        <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.statusText, { color: t.ink2 }]}>
-          {sent ? "Sent" : "Sending…"}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   hint: {
     textAlign: "center",
@@ -269,29 +267,4 @@ const styles = StyleSheet.create({
     letterSpacing: 13 * 0.01,
     marginBottom: 10,
   },
-  receipt: {
-    alignItems: "center",
-    borderRadius: radii.card,
-    borderWidth: 1.5,
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 18,
-  },
-  receiptLabel: {
-    fontFamily: fontFamily.extraBold,
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 13 * 0.07,
-    textTransform: "uppercase",
-  },
-  receiptAnswer: {
-    fontFamily: fontFamily.black,
-    fontSize: 22,
-    fontWeight: "900",
-    marginTop: 6,
-    textAlign: "center",
-  },
-  status: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 14 },
-  statusText: { fontFamily: fontFamily.extraBold, fontSize: 15, fontWeight: "800" },
-  receiptGap: { height: 52 },
 });

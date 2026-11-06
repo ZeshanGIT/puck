@@ -363,8 +363,10 @@ export interface AlertFrameProps {
   look?: Offset | null;
   /** Pinned at the bottom: hint, options, the Reply and Snooze row. */
   bottom: ReactNode;
-  /** Drawn over everything (a Toast). */
+  /** Drawn over everything (a Toast, the A9 card). */
   overlay?: ReactNode;
+  /** A9: the alert is gone. Everything but the overlay goes grey (`.dim`: opacity .35) and takes no touches. */
+  dimmed?: boolean;
 }
 
 export function AlertFrame(props: AlertFrameProps) {
@@ -392,6 +394,7 @@ function AlertFrameBody({
   look,
   bottom,
   overlay,
+  dimmed = false,
 }: AlertFrameProps) {
   const { tokens: t, dark, night: nightMode } = useTheme();
   const bt = useBotTheme(bot);
@@ -437,7 +440,8 @@ function AlertFrameBody({
         </View>
 
         <ScrollView
-          style={styles.amid}
+          style={[styles.amid, dimmed ? styles.dim : null]}
+          pointerEvents={dimmed ? "none" : "auto"}
           contentContainerStyle={styles.amidContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -550,7 +554,13 @@ function AlertFrameBody({
           <View style={styles.spacer} />
         </ScrollView>
 
-        <View style={styles.abottom}>{bottom}</View>
+        <View
+          style={[styles.abottom, dimmed ? styles.dim : null]}
+          pointerEvents={dimmed ? "none" : "auto"}
+          importantForAccessibility={dimmed ? "no-hide-descendants" : "auto"}
+        >
+          {bottom}
+        </View>
       </View>
       {overlay}
     </View>
@@ -559,6 +569,8 @@ function AlertFrameBody({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  /** `.dim{opacity:.35; pointer-events:none; filter:grayscale(.4)}` */
+  dim: { opacity: 0.35, filter: [{ grayscale: 0.4 }] },
   content: { flex: 1 },
   atop: {
     height: 34,

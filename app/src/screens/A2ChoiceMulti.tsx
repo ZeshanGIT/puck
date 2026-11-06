@@ -7,19 +7,20 @@
  * - "Send N" is the tap-twice control: disabled at 0, "Send 2" at rest, the first tap arms it
  *   ("Tap again to send 2", the blob looks down, a timer bar drains for 4 s), the second tap
  *   sends. Changing the selection while it is armed disarms it, as `updSend()` does.
- * - A send makes the blob leap and shows the "You answered" receipt with the labels joined by
- *   ", ", "Sending…" while `onAnswer` is in flight, then "Sent". `onAnswer` gets the ids in the
- *   order of the options. If it throws, a Toast shows the error and the checks stay as they were.
+ * - A send makes the blob leap, and the host's receipt (A7) takes the bottom. `onAnswer` gets the
+ *   ids in the order of the options. If it throws, a Toast shows the error and the checks stay as
+ *   they were.
  * - `expiresAt` counts down in the pill; when it passes, the options, Select all and Send are
- *   disabled and the pill says Missed (the A9 screen comes later).
- * - Reply (A5) and Snooze (A11) are built by later cards: `onReply` and `onSnooze` are theirs
- *   to supply. Until then tapping either shows a Toast.
+ *   disabled and the pill says Missed (the host then shows the A9 card).
+ * - Reply (A5) and Snooze (A11) come from the host (`AlertHost`): `onReply` and `onSnooze`. Without
+ *   them tapping either shows a Toast. The receipt and the A9 card are the host's too (`receipt`,
+ *   `gone`).
  *
  * Not here: the ringing, DND, spoken text and the night decision (card T34), the unlock check
  * for destructive options on the lock screen (Q10), a reply sent with the checked options (A5),
  * and the stack of several alerts (A8).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -29,9 +30,8 @@ import Animated, {
 } from "react-native-reanimated";
 import type { PendingAlert } from "../ChoiceScreen";
 import { emptyChoice, tapOption, toggleAll, type ChoiceState } from "../choice";
-import { Spinner } from "../onboarding/parts";
 import { readableError } from "../session";
-import { AlertFrame, AlertSecondaryRow, Glyph, ICON, useExpiry } from "../ui/AlertFrame";
+import { AlertFrame, AlertSecondaryRow, useExpiry } from "../ui/AlertFrame";
 import { ArmTimer } from "../ui/ArmTimer";
 import type { BlobHandle } from "../ui/Blob";
 import type { Offset } from "../ui/blobShapes";
@@ -59,6 +59,13 @@ export interface A2ChoiceMultiProps {
   readingAloud?: boolean;
   /** The lock-screen clock at the top (an urgent alert over the lock screen). */
   clock?: boolean;
+  /**
+   * The A7 receipt, owned by the host (`AlertHost`): it covers the options once an answer is in,
+   * whether the answer came from here or from the reply sheet.
+   */
+  receipt?: ReactNode;
+  /** The A9 card, over a dimmed alert, when the alert is no longer needed. */
+  gone?: ReactNode;
 }
 
 /** `look(mainBlob(),0,4)` in `ACT.send`. */
@@ -76,6 +83,8 @@ export function A2ChoiceMulti({
   night,
   readingAloud,
   clock,
+  receipt,
+  gone,
 }: A2ChoiceMultiProps) {
   const { botId, botName } = alert;
   const bot = useMemo(() => botLook({ botId, botName }), [botId, botName]);
@@ -85,7 +94,6 @@ export function A2ChoiceMulti({
   const [choice, setChoice] = useState<ChoiceState>(emptyChoice);
   const [look, setLook] = useState<Offset | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
-  const [answer, setAnswer] = useState("");
   const busy = useRef(false);
   const alive = useRef(true);
 
@@ -107,6 +115,12 @@ export function A2ChoiceMulti({
     previousCount.current = count;
     AccessibilityInfo.announceForAccessibility(`${count} selected`);
   }, [count]);
+
+  // An answer made from the reply sheet (A5) skips `send`, so the blob leaps when the receipt arrives.
+  const hasReceipt = receipt != null;
+  useEffect(() => {
+    if (hasReceipt && !busy.current) blob.current?.leap();
+  }, [hasReceipt]);
 
   function toggle(optionId: string) {
     setChoice((state) => tapOption(state, "multi", optionId).state);
@@ -134,7 +148,6 @@ export function A2ChoiceMulti({
     if (chosen.length === 0) return;
     busy.current = true;
     setLook(null);
-    setAnswer(chosen.map((o) => o.label).join(", "));
     setPhase("sending");
     blob.current?.leap();
     try {
@@ -179,12 +192,15 @@ export function A2ChoiceMulti({
       queue={waiting > 1 ? { position: 1, total: waiting } : null}
       night={night}
       clock={clock}
-      answered={phase !== "idle"}
+      answered={phase !== "idle" || receipt != null}
+      dimmed={gone != null}
       blobRef={blob}
       blobSize={blobSize}
       look={look}
       bottom={
-        phase === "idle" ? (
+        receipt != null ? (
+          receipt
+        ) : phase === "idle" ? (
           <>
             <SelectAll disabled={expired} allSelected={count === options.length} onPress={selectAll} />
             <View style={styles.opts}>
@@ -211,14 +227,14 @@ export function A2ChoiceMulti({
             />
             <AlertSecondaryRow onReply={onReply ?? comingLater} onSnooze={onSnooze ?? comingLater} />
           </>
-        ) : (
-          <>
-            <Receipt answer={answer} sent={phase === "sent"} />
-            <View style={styles.receiptGap} />
-          </>
-        )
+        ) : null
       }
-      overlay={<Toast message={toast.message} visible={toast.visible} />}
+      overlay={
+        <>
+          {gone}
+          <Toast message={toast.message} visible={toast.visible} />
+        </>
+      }
     />
   );
 }
@@ -350,32 +366,6 @@ function SendButton({
   );
 }
 
-/** `.receipt` in its sending and sent states (the A7 screen builds on this later). Same as A1's. */
-function Receipt({ answer, sent }: { answer: string; sent: boolean }) {
-  const t = useTheme().tokens;
-  return (
-    <View
-      accessible
-      accessibilityLiveRegion="polite"
-      accessibilityLabel={`You answered ${answer}. ${sent ? "Sent" : "Sending"}`}
-      style={[styles.receipt, { backgroundColor: t.card, borderColor: t.line }]}
-    >
-      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.receiptLabel, { color: t.ink3 }]}>
-        You answered
-      </Text>
-      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.receiptAnswer, { color: t.ink }]}>
-        {answer}
-      </Text>
-      <View style={styles.status}>
-        {sent ? <Glyph d={ICON.check} size={18} colour={t.ink2} width={2.6} /> : <Spinner />}
-        <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.statusText, { color: t.ink2 }]}>
-          {sent ? "Sent" : "Sending…"}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   selall: { flexDirection: "row", justifyContent: "flex-end", marginTop: -2, marginHorizontal: 2, marginBottom: 10 },
   selallDisabled: { opacity: 0.32 },
@@ -390,29 +380,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   sendText: { fontFamily: fontFamily.black, fontSize: 18, fontWeight: "900" },
-  receipt: {
-    alignItems: "center",
-    borderRadius: radii.card,
-    borderWidth: 1.5,
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 18,
-  },
-  receiptLabel: {
-    fontFamily: fontFamily.extraBold,
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 13 * 0.07,
-    textTransform: "uppercase",
-  },
-  receiptAnswer: {
-    fontFamily: fontFamily.black,
-    fontSize: 22,
-    fontWeight: "900",
-    marginTop: 6,
-    textAlign: "center",
-  },
-  status: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 14 },
-  statusText: { fontFamily: fontFamily.extraBold, fontSize: 15, fontWeight: "800" },
-  receiptGap: { height: 52 },
 });

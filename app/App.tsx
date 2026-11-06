@@ -1,5 +1,5 @@
 import type { ClerkAccount } from "@puck/shared";
-import { ConvexProvider } from "convex/react";
+import { ConvexProvider, useConvex } from "convex/react";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
 import { Linking, StyleSheet, Text, View } from "react-native";
@@ -14,6 +14,8 @@ import { DevMenu } from "./src/onboarding/DevMenu";
 import { readDevWalkthrough, startDevWalkthrough, stopDevWalkthrough } from "./src/onboarding/devOnboarding";
 import { markOnboardingComplete, readOnboardingComplete } from "./src/onboarding/onboardingStore";
 import { usePushRegistration } from "./src/push";
+import { recordQueuedAnswer, useAnswerQueueFlush } from "./src/screens/A10Offline";
+import { useWakeSnoozed } from "./src/screens/A11Snooze";
 import { AlertHost } from "./src/screens/AlertHost";
 import { DevGallery } from "./src/screens/DevGallery";
 import { freshSample, ALERT_SAMPLES } from "./src/screens/gallery/samples";
@@ -94,11 +96,16 @@ function DevAlertSample({ name }: { name: string }) {
     toast.show(`Would send: ${optionIds.join(", ")}${customReply ? ` + "${customReply}"` : ""}`);
     // About 1.2 s in all: in flight, then sent, then back to the same sample to try again.
     await new Promise((resolve) => setTimeout(resolve, 700));
-    setTimeout(() => setRound(Date.now()), 500);
+    // Long enough to see the receipt's "Delivered" line before the sample starts over.
+    setTimeout(() => setRound(Date.now()), 1800);
+  };
+  const onSnooze = async (until: number | null) => {
+    toast.show(`Would snooze: ${until === null ? "until I'm back" : `until ${new Date(until).toLocaleTimeString()}`}`);
+    setTimeout(() => setRound(Date.now()), 1500);
   };
   return (
     <View style={styles.root}>
-      <AlertHost key={round} alert={alert} waiting={1} onAnswer={onAnswer} />
+      <AlertHost key={round} alert={alert} waiting={1} onAnswer={onAnswer} onSnooze={onSnooze} />
       <Toast message={toast.message} visible={toast.visible} />
     </View>
   );
@@ -298,6 +305,7 @@ function AppBody({
       case "inbox":
         return (
           <SignedIn
+            clientId={clientId}
             email={clerk.email}
             onSignOut={() => void signOut()}
             onDevReplayOnboarding={() => void walkThroughEveryStep()}
@@ -308,12 +316,27 @@ function AppBody({
   }
 }
 
+/**
+ * Things that run while signed in, whatever screen is up: send the answers kept on the phone when
+ * the connection is back (A10), and wake "until I'm back" snoozes when the app comes forward (A11).
+ */
+function BackgroundDuties({ clientId }: { clientId: string | null }) {
+  const client = useConvex();
+  useAnswerQueueFlush((item) => recordQueuedAnswer(client, clientId ?? "", item).then(() => undefined), {
+    enabled: clientId !== null,
+  });
+  useWakeSnoozed(clientId);
+  return null;
+}
+
 function SignedIn({
+  clientId,
   email,
   onSignOut,
   onDevReplayOnboarding,
   onDevGallery,
 }: {
+  clientId: string | null;
   email: string | null;
   onSignOut: () => void;
   onDevReplayOnboarding: () => void;
@@ -321,13 +344,16 @@ function SignedIn({
 }) {
   const notifications = usePushRegistration(true);
   return (
-    <Inbox
-      notifications={notifications}
-      email={email}
-      onSignOut={onSignOut}
-      onDevReplayOnboarding={onDevReplayOnboarding}
-      onDevDesignGallery={__DEV__ ? onDevGallery : undefined}
-    />
+    <>
+      <BackgroundDuties clientId={clientId} />
+      <Inbox
+        notifications={notifications}
+        email={email}
+        onSignOut={onSignOut}
+        onDevReplayOnboarding={onDevReplayOnboarding}
+        onDevDesignGallery={__DEV__ ? onDevGallery : undefined}
+      />
+    </>
   );
 }
 

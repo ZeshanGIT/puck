@@ -4,9 +4,9 @@
  * (`vault/Projects/Puck/mockups/Puck prototype.html`); `App screens.md` A9, `User journeys.md` J9.
  *
  * `A9Gone` is the card that sits over the bottom of the alert (a `.gone` block: 20 dp in from the
- * sides, 28 dp above the bottom). Pass it to `AlertFrame`'s `overlay`, and wrap the frame's
- * `bottom` content in `GoneDim` so the options go grey and stop taking touches. Work out `reason`
- * with `goneReason` from `@puck/shared` and `alerts.state` (see `useAlertGone`).
+ * sides, 28 dp above the bottom). The screens take it as `gone` (it goes in `AlertFrame`'s
+ * `overlay`, and `AlertFrame`'s `dimmed` greys the alert). `GoneDim` is the same dimming for any
+ * other content. `useAlertGone` works out the reason from `alerts.state` and `goneReason`.
  *
  * It closes on a tap of Continue, as the doc says ("after a tap"). `autoCloseMs` also closes it by
  * itself after that long, for a host that wants it (an alert over the lock screen).
@@ -110,17 +110,18 @@ export interface AlertGoneState {
 }
 
 /**
- * Watches `alerts.state` for the alert on screen and says when it is no longer pending. Null while
- * it still is. `ownClientName` is this phone's client name, so his own answer is not "elsewhere".
- * `now` is only for the expiry check; it re-renders as `alerts.state` changes, and the screen's
- * own `useExpiry` already ticks at `expiresAt`. Needs the Convex provider and a client id.
+ * Watches `alerts.state` for the alert on screen and says when it is no longer pending: `gone` is
+ * null while it still is, and `loading` is true until the first answer from Convex (so a host can
+ * tell "not gone" from "not known yet"). `ownClientName` is this phone's client name, so his own
+ * answer is not "elsewhere". Needs the Convex provider; with no `clientId` it skips the query and
+ * reports not loading.
  */
 export function useAlertGone(input: {
   clientId: string | null;
   questionId: string;
   ownClientName: string | null;
   now?: number;
-}): AlertGoneState | null {
+}): { gone: AlertGoneState | null; loading: boolean } {
   const state = useQuery(
     anyApi.alerts.state,
     input.clientId ? { clientId: input.clientId, questionId: input.questionId } : "skip",
@@ -128,7 +129,8 @@ export function useAlertGone(input: {
     | { status: AlertStatus; answeredByClientName: string | null; expiresAt: number | null; answerLabels?: string[] }
     | null
     | undefined;
-  if (!state) return null;
+  if (state === undefined) return { gone: null, loading: input.clientId !== null };
+  if (state === null) return { gone: null, loading: false };
   const reason = goneReason({
     status: state.status,
     expiresAt: state.expiresAt,
@@ -136,12 +138,15 @@ export function useAlertGone(input: {
     ownClientName: input.ownClientName,
     now: input.now ?? Date.now(),
   });
-  if (reason === null) return null;
+  if (reason === null) return { gone: null, loading: false };
   return {
-    reason,
-    ...(state.answeredByClientName ? { clientName: state.answeredByClientName } : {}),
-    ...(state.answerLabels && state.answerLabels.length > 0 ? { answerLabels: state.answerLabels } : {}),
-    ...(state.expiresAt !== null ? { expiredAt: state.expiresAt } : {}),
+    gone: {
+      reason,
+      ...(state.answeredByClientName ? { clientName: state.answeredByClientName } : {}),
+      ...(state.answerLabels && state.answerLabels.length > 0 ? { answerLabels: state.answerLabels } : {}),
+      ...(state.expiresAt !== null ? { expiredAt: state.expiresAt } : {}),
+    },
+    loading: false,
   };
 }
 

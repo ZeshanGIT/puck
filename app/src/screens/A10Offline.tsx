@@ -7,9 +7,9 @@
  * of A10 is `A7Receipt`'s `failed` state.
  */
 import { anyApi } from "convex/server";
-import { useConvex } from "convex/react";
+import { type ConvexReactClient, useConvex } from "convex/react";
 import { useEffect, useRef, useState } from "react";
-import { flushAnswerQueue, type QueuedAnswer } from "../answerQueue";
+import { flushAnswerQueue, loadAnswerQueue, type QueuedAnswer } from "../answerQueue";
 import { Banner } from "../ui/Banner";
 
 /** True while the Convex connection is up (`connectionState().isWebSocketConnected`). */
@@ -46,6 +46,10 @@ export function useAnswerQueueFlush(
   sendRef.current = send;
   const sentRef = useRef(options.onSent);
   sentRef.current = options.onSent;
+  // Read the stored queue once at start, so `isQueuedLocally` is right even before a connection.
+  useEffect(() => {
+    void loadAnswerQueue().catch(() => {});
+  }, []);
   useEffect(() => {
     if (!enabled || !online) return;
     void flushAnswerQueue((item) => sendRef.current(item), { onSent: (item) => sentRef.current?.(item) }).catch(() => {
@@ -55,15 +59,13 @@ export function useAnswerQueueFlush(
 }
 
 /** `answers.record` as `useAnswerQueueFlush` needs it, for a host that has the Convex client at hand. */
-export function recordQueuedAnswer(
-  client: { mutation: (reference: never, args: Record<string, unknown>) => Promise<unknown> },
-  clientId: string,
-  item: QueuedAnswer,
-): Promise<unknown> {
-  return client.mutation(anyApi.answers.record as never, {
+export function recordQueuedAnswer(client: ConvexReactClient, clientId: string, item: QueuedAnswer): Promise<unknown> {
+  return client.mutation(anyApi.answers.record, {
     questionId: item.questionId,
     clientId,
     optionIds: item.optionIds,
+    // When he gave it, so H4 and the bot see the real time; the server ignores a time it can't believe.
+    answeredAt: item.queuedAt,
     ...(item.customReply ? { customReply: item.customReply } : {}),
     ...(item.attachments && item.attachments.length > 0 ? { attachments: item.attachments } : {}),
   });
