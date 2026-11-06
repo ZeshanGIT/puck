@@ -11,6 +11,7 @@
 import { createContext, type ReactNode, useContext } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { PALETTE, botTheme, type BotThemeMode } from "../ui/botTheme";
+import { ThemeProvider, type ThemeMode } from "../ui/theme";
 import {
   darkTokens,
   fontFamily,
@@ -44,12 +45,15 @@ export function ModeBlock({
   bot: BotThemeMode;
   children: ReactNode;
 }) {
+  const mode: ThemeMode = bot.night ? "night" : bot.dark ? "dark" : "light";
   return (
     <GalleryModeContext.Provider value={{ tokens, bot }}>
-      <View style={[styles.block, { backgroundColor: tokens.bg, borderColor: tokens.edge }]}>
-        <Text style={[styles.blockTitle, { color: tokens.ink }]}>{title}</Text>
-        {children}
-      </View>
+      <ThemeProvider mode={mode}>
+        <View style={[styles.block, { backgroundColor: tokens.bg, borderColor: tokens.edge }]}>
+          <Text style={[styles.blockTitle, { color: tokens.ink }]}>{title}</Text>
+          {children}
+        </View>
+      </ThemeProvider>
     </GalleryModeContext.Provider>
   );
 }
@@ -216,6 +220,13 @@ function Radii() {
   );
 }
 
+/**
+ * Component sections, rendered in the Light and Dark blocks (and in Night when
+ * `night` is true). Each entry is a component from `./gallery/` that reads
+ * `useTheme()`. Add a line here when a card adds a component.
+ */
+const COMPONENT_SECTIONS: { title: string; Component: () => ReactNode; night?: boolean }[] = [];
+
 export function DevGallery({ onBack }: { onBack: () => void }) {
   return (
     <ScrollView style={[styles.root, { backgroundColor: lightTokens.bg }]} contentContainerStyle={styles.content}>
@@ -236,6 +247,11 @@ export function DevGallery({ onBack }: { onBack: () => void }) {
         <Section title="Radii">
           <Radii />
         </Section>
+        {COMPONENT_SECTIONS.map(({ title, Component }) => (
+          <Section key={title} title={title}>
+            <Component />
+          </Section>
+        ))}
       </ModeBlock>
 
       <ModeBlock title="Dark" tokens={darkTokens} bot={{ dark: true }}>
@@ -251,11 +267,21 @@ export function DevGallery({ onBack }: { onBack: () => void }) {
         <Section title="Radii">
           <Radii />
         </Section>
+        {COMPONENT_SECTIONS.map(({ title, Component }) => (
+          <Section key={title} title={title}>
+            <Component />
+          </Section>
+        ))}
 
         <ModeBlock title="Night" tokens={darkTokens} bot={{ night: true }}>
           <Section title="Bot colours">
             <BotChips />
           </Section>
+          {COMPONENT_SECTIONS.filter((entry) => entry.night).map(({ title, Component }) => (
+            <Section key={title} title={title}>
+              <Component />
+            </Section>
+          ))}
         </ModeBlock>
       </ModeBlock>
     </ScrollView>
