@@ -10,16 +10,16 @@ import { anyApi } from "convex/server";
 import { useConvex, useQuery } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { ChoiceScreen, type PendingAlert } from "../ChoiceScreen";
+import type { PendingAlert } from "../ChoiceScreen";
 import { syncClientFullScreen, syncClientPushToken } from "../clientAuth";
 import { HeroText, OnboardingFrame, WaitingLine } from "../onboarding/parts";
-import { SwipeScreen } from "../SwipeScreen";
 import { readableError } from "../session";
 import { Banner } from "../ui/Banner";
 import { Blob, type BlobHandle } from "../ui/Blob";
 import { SAMPLE_BOTS } from "../ui/blobShapes";
 import { Btn } from "../ui/Btn";
 import { Toast, useToast } from "../ui/Toast";
+import { AlertHost } from "./AlertHost";
 
 type Send = "idle" | "sending" | "sent";
 
@@ -88,11 +88,7 @@ export function O3TestPage({ clientId, onContinue }: { clientId: string; onConti
 
   // The test page (or any alert for this client) is on screen: answer it here.
   if (alert && !done) {
-    return alert.presentation === "swipe" ? (
-      <SwipeScreen alert={alert} waiting={pending?.length ?? 1} />
-    ) : (
-      <ChoiceScreen alert={alert} waiting={pending?.length ?? 1} />
-    );
+    return <AlertHost alert={alert} waiting={pending?.length ?? 1} />;
   }
 
   return (

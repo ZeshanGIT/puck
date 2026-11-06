@@ -1,3 +1,4 @@
+import type { AlertExtras, AlertOption } from "@puck/shared";
 import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
 import { useEffect, useRef, useState } from "react";
@@ -8,7 +9,8 @@ import { leaveIfLocked } from "puck-full-screen";
 import { readableError } from "./session";
 import { clearDisplayedAlert } from "./urgentDisplay";
 
-export interface PendingAlert {
+/** One row of the backend's `alerts.pending` view. The new alert fields (`AlertExtras`) are optional. */
+export interface PendingAlert extends AlertExtras {
   questionId: string;
   question: string;
   botId: string;
@@ -16,7 +18,7 @@ export interface PendingAlert {
   priority: "normal" | "urgent";
   selectionMode: "single" | "multi";
   presentation: "choice" | "swipe";
-  options: { id: string; label: string; icon?: string }[];
+  options: AlertOption[];
   createdAt: number;
 }
 

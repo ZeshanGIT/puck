@@ -1,8 +1,8 @@
 import type { ClerkAccount } from "@puck/shared";
 import { ConvexProvider } from "convex/react";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
-import { Linking, StyleSheet } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Linking, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { appGate, nextStep, type OnboardingStatus, type OnboardingStep } from "./src/accountGate";
 import { useClerkAccount } from "./src/clerkAccount";
@@ -14,13 +14,16 @@ import { DevMenu } from "./src/onboarding/DevMenu";
 import { readDevWalkthrough, startDevWalkthrough, stopDevWalkthrough } from "./src/onboarding/devOnboarding";
 import { markOnboardingComplete, readOnboardingComplete } from "./src/onboarding/onboardingStore";
 import { usePushRegistration } from "./src/push";
+import { AlertHost } from "./src/screens/AlertHost";
 import { DevGallery } from "./src/screens/DevGallery";
+import { freshSample, ALERT_SAMPLES } from "./src/screens/gallery/samples";
 import { O0Opening } from "./src/screens/O0Opening";
 import { O1Welcome } from "./src/screens/O1Welcome";
 import { O2Permissions } from "./src/screens/O2Permissions";
 import { O3TestPage } from "./src/screens/O3TestPage";
 import { O4FirstBot } from "./src/screens/O4FirstBot";
 import { readableError } from "./src/session";
+import { Toast, useToast } from "./src/ui/Toast";
 import { useAppFonts } from "./src/ui/useAppFonts";
 
 /**
@@ -51,10 +54,74 @@ function useDevLinks() {
   return { galleryOpen, setGalleryOpen, section, menuOpen, setMenuOpen } as const;
 }
 
+/**
+ * Dev only: `adb shell am start -a android.intent.action.VIEW -d "puck://dev-alert?sample=sheldon"`
+ * opens an alert screen with a sample alert (`src/screens/gallery/samples`; `fyi` is the other
+ * one so far). Answering shows what would have been sent and returns to the sample.
+ */
+function useDevAlertLink() {
+  const [sample, setSample] = useState<string | null>(null);
+  useEffect(() => {
+    if (!__DEV__) return;
+    const check = (url: string | null | undefined) => {
+      if (!url?.startsWith("puck://dev-alert")) return;
+      const match = /[?&]sample=([^&#]+)/u.exec(url);
+      setSample(match?.[1] ? decodeURIComponent(match[1]) : "sheldon");
+    };
+    void Linking.getInitialURL().then(check);
+    const subscription = Linking.addEventListener("url", ({ url }) => check(url));
+    return () => subscription.remove();
+  }, []);
+  return { sample, closeSample: () => setSample(null) } as const;
+}
+
+/** A sample alert in the real alert host, with an `onAnswer` that never touches the backend. */
+function DevAlertSample({ name }: { name: string }) {
+  const toast = useToast();
+  // A new `round` (the time the sample was opened) gives the sample fresh times and a fresh screen.
+  const [round, setRound] = useState(() => Date.now());
+  const alert = useMemo(() => freshSample(name, round), [name, round]);
+  if (!alert) {
+    return (
+      <View style={styles.root}>
+        <Text style={styles.devNote}>
+          Unknown sample: {name}. Known: {Object.keys(ALERT_SAMPLES).join(", ")}.
+        </Text>
+      </View>
+    );
+  }
+  const onAnswer = async (optionIds: string[], customReply?: string) => {
+    toast.show(`Would send: ${optionIds.join(", ")}${customReply ? ` + "${customReply}"` : ""}`);
+    // About 1.2 s in all: in flight, then sent, then back to the same sample to try again.
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    setTimeout(() => setRound(Date.now()), 500);
+  };
+  return (
+    <View style={styles.root}>
+      <AlertHost key={round} alert={alert} waiting={1} onAnswer={onAnswer} />
+      <Toast message={toast.message} visible={toast.visible} />
+    </View>
+  );
+}
+
 export default function App() {
   const fontsReady = useAppFonts();
   const links = useDevLinks();
+  const alertLink = useDevAlertLink();
   if (!fontsReady) return null;
+
+  if (__DEV__ && alertLink.sample) {
+    // The Convex provider is only here so a sample for a screen that is not rebuilt yet (the old
+    // multi and swipe screens) can render; the new screens never use it.
+    return (
+      <GestureHandlerRootView style={styles.root}>
+        <ConvexProvider client={convex}>
+          <DevAlertSample name={alertLink.sample} />
+        </ConvexProvider>
+        <StatusBar style="dark" />
+      </GestureHandlerRootView>
+    );
+  }
 
   if (__DEV__ && links.galleryOpen) {
     return (
@@ -267,5 +334,10 @@ function SignedIn({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+  },
+  devNote: {
+    marginTop: 80,
+    paddingHorizontal: 24,
+    fontSize: 16,
   },
 });

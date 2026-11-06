@@ -2,8 +2,7 @@ import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
 import { Component, type ReactNode, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { ChoiceScreen, type PendingAlert } from "./ChoiceScreen";
-import { SwipeScreen } from "./SwipeScreen";
+import type { PendingAlert } from "./ChoiceScreen";
 import { readClientId } from "./clientStore";
 import { openFullScreenSettings, useFullScreenAccess } from "./fullScreenAccess";
 import { PairingScreen } from "./Pairing";
@@ -12,6 +11,7 @@ import { readableError } from "./session";
 import { PuckBlob } from "./components/PuckBlob";
 import { PuckBody, PuckButton, PuckKicker, PuckTextLink, PuckTitle } from "./components/PuckButton";
 import { PuckScreen } from "./components/PuckScreen";
+import { AlertHost } from "./screens/AlertHost";
 
 export function Inbox({
   notifications,
@@ -123,11 +123,7 @@ function InboxBody({
           <PuckTextLink label="Allow full-screen alerts" onPress={() => void allowFullScreen()} />
         </View>
       ) : null}
-      {alert.presentation === "swipe" ? (
-        <SwipeScreen alert={alert} waiting={pending.length} />
-      ) : (
-        <ChoiceScreen alert={alert} waiting={pending.length} />
-      )}
+      <AlertHost alert={alert} waiting={pending.length} />
     </View>
   );
 }
