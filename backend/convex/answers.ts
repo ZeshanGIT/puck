@@ -1,6 +1,7 @@
 import {
   AlertValidationError,
   receiptState,
+  resolveAnsweredAt,
   validateAnswer,
   validateAttachments,
   validateSnoozeUntil,
@@ -29,6 +30,9 @@ export const record = mutationGeneric({
     customReply: v.optional(v.string()),
     clientId: v.optional(v.string()),
     attachments: v.optional(v.array(storedAttachment)),
+    // When the phone's answer was given, for one that waited offline. Used only when it is not in
+    // the future and at most 24 hours old (`resolveAnsweredAt`); otherwise the server's time is.
+    answeredAt: v.optional(v.number()),
   },
   returns: v.object({ questionId: v.string() }),
   handler: async (ctx, args) => {
@@ -41,9 +45,11 @@ export const record = mutationGeneric({
     if (!alert) throw new Error("alert not found");
     if (alert.status === "answered") throw new Error("alert is already answered");
     if (alert.status === "cancelled") throw new Error("alert is cancelled");
-    // Past `expiresAt` the alert is Missed and can't be answered (an offline answer that comes
-    // back late is refused here, and the phone drops it).
-    if (alert.expiresAt !== undefined && Date.now() > alert.expiresAt) throw new Error("alert has expired");
+    const now = Date.now();
+    const answeredAt = resolveAnsweredAt(args.answeredAt, now);
+    // Past `expiresAt` the alert is Missed and can't be answered (an answer given in time that
+    // comes back late from the phone's queue still counts, by its own time).
+    if (alert.expiresAt !== undefined && answeredAt > alert.expiresAt) throw new Error("alert has expired");
 
     let recorded;
     let declared;
@@ -74,7 +80,6 @@ export const record = mutationGeneric({
       }
     }
 
-    const answeredAt = Date.now();
     const answerId = await ctx.db.insert("answers", {
       alertId: alert._id,
       questionId: alert.questionId,
@@ -88,7 +93,7 @@ export const record = mutationGeneric({
     });
     await ctx.db.patch(alert._id, {
       status: "answered",
-      updatedAt: answeredAt,
+      updatedAt: now,
       ...(client ? { answeredByClientId: client._id } : {}),
     });
     await ctx.scheduler.runAfter(0, internal.delivery.deliver, { answerId });

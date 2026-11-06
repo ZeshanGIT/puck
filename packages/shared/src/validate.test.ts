@@ -7,6 +7,7 @@ import {
   validateCreateAlert,
   validatePairingInput,
   validateSnoozeUntil,
+  resolveAnsweredAt,
 } from "./validate";
 
 const ship = {
@@ -430,5 +431,27 @@ describe("validateSnoozeUntil", () => {
     expect(() => validateSnoozeUntil(now + 1.5, now)).toThrow(/epoch/);
     expect(() => validateSnoozeUntil("soon", now)).toThrow(/epoch/);
     expect(() => validateSnoozeUntil(undefined, now)).toThrow(/epoch/);
+  });
+});
+
+describe("resolveAnsweredAt", () => {
+  const now = 1_700_000_000_000;
+  const day = 24 * 60 * 60_000;
+
+  test("keeps a time in the last 24 hours", () => {
+    expect(resolveAnsweredAt(now - 5 * 60_000, now)).toBe(now - 5 * 60_000);
+    expect(resolveAnsweredAt(now, now)).toBe(now);
+    expect(resolveAnsweredAt(now - day, now)).toBe(now - day);
+  });
+
+  test("a time in the future or older than 24 hours uses the server's time", () => {
+    expect(resolveAnsweredAt(now + 1, now)).toBe(now);
+    expect(resolveAnsweredAt(now - day - 1, now)).toBe(now);
+  });
+
+  test("missing or malformed values use the server's time", () => {
+    for (const value of [undefined, null, "yesterday", NaN, Infinity, 1.5, {}]) {
+      expect(resolveAnsweredAt(value, now)).toBe(now);
+    }
   });
 });

@@ -403,6 +403,8 @@ export const pending = queryGeneric({
     const views = [];
     for (const alert of rows) {
       if (client && !alertIsForClient(alert.targetClientId, client._id)) continue;
+      // An alert past its expiry can no longer be answered (Q8); the app shows A9 for one on screen.
+      if (alert.expiresAt !== undefined && alert.expiresAt <= Date.now()) continue;
       const bot = await ctx.db.get(alert.botId);
       if (!bot || bot.pairingState !== "paired") continue;
       views.push({

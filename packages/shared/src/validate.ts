@@ -355,3 +355,19 @@ export function validateSnoozeUntil(until: unknown, now: number): number | null 
   if (until > now + SNOOZE_MAX_MS) fail("a snooze can last at most 24 hours");
   return until;
 }
+
+/** An offline answer may carry the time it was given; older than this and it is not believed. */
+export const ANSWERED_AT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The time to store for an answer. `answeredAt` is the phone's own time, sent with an answer that
+ * waited offline (J11). It is used only when it is a whole number, not in the future and not more
+ * than 24 hours old; anything else (missing, in the future, too old, not a number) is ignored and
+ * `now`, the server's time, is used.
+ */
+export function resolveAnsweredAt(answeredAt: unknown, now: number): number {
+  if (typeof answeredAt !== "number" || !Number.isInteger(answeredAt)) return now;
+  if (answeredAt > now) return now;
+  if (now - answeredAt > ANSWERED_AT_MAX_AGE_MS) return now;
+  return answeredAt;
+}

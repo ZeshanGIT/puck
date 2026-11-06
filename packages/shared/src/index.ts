@@ -77,6 +77,8 @@ export {
   validateCreateAlert,
   validatePairingInput,
   validateSnoozeUntil,
+  resolveAnsweredAt,
+  ANSWERED_AT_MAX_AGE_MS,
 } from "./validate";
 export {
   CONVEX_TOKEN_TEMPLATE,
