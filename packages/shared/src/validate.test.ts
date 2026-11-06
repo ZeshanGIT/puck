@@ -3,6 +3,7 @@ import {
   AlertValidationError,
   validateAlertTiming,
   validateAnswer,
+  validateAttachments,
   validateCreateAlert,
   validatePairingInput,
 } from "./validate";
@@ -313,6 +314,22 @@ describe("validateAnswer", () => {
   });
 });
 
+describe("validateAnswer with attachments", () => {
+  const options = [{ id: "ship", label: "Ship it" }];
+
+  test("attachments alone make a reply", () => {
+    expect(
+      validateAnswer({ selectionMode: "single", options, optionIds: [], hasAttachments: true }),
+    ).toEqual({ answers: [], customReply: null });
+  });
+
+  test("an empty reply is still refused without attachments", () => {
+    expect(() =>
+      validateAnswer({ selectionMode: "single", options, optionIds: [], hasAttachments: false }),
+    ).toThrow(/choose an option/);
+  });
+});
+
 describe("validatePairingInput", () => {
   test("accepts an https webhook and a one-line authorization header", () => {
     expect(
@@ -352,5 +369,43 @@ describe("validatePairingInput", () => {
         webhookHeader: "Bearer x\nEvil: 1",
       }),
     ).toThrow(/one line/);
+  });
+});
+
+describe("validateAttachments", () => {
+  const photo = { type: "photo", name: "IMG_1.jpg", mime: "image/jpeg", size: 2048 };
+  const file = { type: "file", name: "build-log.txt", mime: "text/plain", size: 18_000 };
+
+  test("absent means none", () => {
+    expect(validateAttachments(undefined)).toEqual([]);
+    expect(validateAttachments(null)).toEqual([]);
+    expect(validateAttachments([])).toEqual([]);
+  });
+
+  test("keeps only the four fields and trims the name", () => {
+    expect(validateAttachments([{ ...photo, name: " IMG_1.jpg ", extra: 1 }, file])).toEqual([photo, file]);
+  });
+
+  test("allows five and rejects six", () => {
+    expect(validateAttachments(Array.from({ length: 5 }, () => photo))).toHaveLength(5);
+    expect(() => validateAttachments(Array.from({ length: 6 }, () => photo))).toThrow(/at most 5/);
+  });
+
+  test("allows exactly 20 MB and rejects one byte more", () => {
+    const limit = 20 * 1024 * 1024;
+    expect(validateAttachments([{ ...file, size: limit }])[0]?.size).toBe(limit);
+    expect(() => validateAttachments([{ ...file, size: limit + 1 }])).toThrow(/20 MB/);
+  });
+
+  test("rejects a bad shape", () => {
+    expect(() => validateAttachments("nope")).toThrow(/must be an array/);
+    expect(() => validateAttachments(["x"])).toThrow(/attachments\[0\] must be an object/);
+    expect(() => validateAttachments([{ ...photo, type: "video" }])).toThrow(/photo or file/);
+    expect(() => validateAttachments([{ ...photo, name: "  " }])).toThrow(/name is required/);
+    expect(() => validateAttachments([{ ...photo, name: "a\nb" }])).toThrow(/one line/);
+    expect(() => validateAttachments([{ ...photo, mime: "jpeg" }])).toThrow(/media type/);
+    expect(() => validateAttachments([{ ...photo, size: 1.5 }])).toThrow(/whole number/);
+    expect(() => validateAttachments([{ ...photo, size: -1 }])).toThrow(/whole number/);
+    expect(() => validateAttachments([{ ...photo, size: "9" }])).toThrow(/whole number/);
   });
 });

@@ -14,16 +14,18 @@
 import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
 import { leaveIfLocked } from "puck-full-screen";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { type PendingAlert, ChoiceScreen } from "../ChoiceScreen";
 import { replyPayload } from "../choice";
 import { readClientId } from "../clientStore";
 import { clearDisplayedAlert } from "../urgentDisplay";
+import type { UploadedAttachment } from "../attachments";
 import { A1ChoiceSingle } from "./A1ChoiceSingle";
 import { A2ChoiceMulti } from "./A2ChoiceMulti";
 import { A3Swipe } from "./A3Swipe";
+import { A5Reply } from "./A5Reply";
 
-export type AnswerHandler = (optionIds: string[], customReply?: string) => Promise<void>;
+export type AnswerHandler = (optionIds: string[], customReply?: string, attachments?: UploadedAttachment[]) => Promise<void>;
 
 export interface AlertHostProps {
   alert: PendingAlert;
@@ -34,7 +36,8 @@ export interface AlertHostProps {
 
 export function AlertHost({ alert, waiting, onAnswer }: AlertHostProps) {
   return onAnswer ? (
-    <AlertScreen alert={alert} waiting={waiting} onAnswer={onAnswer} />
+    // An explicit `onAnswer` is the dev sample route: there is no backend, so no uploads either.
+    <AlertScreen alert={alert} waiting={waiting} onAnswer={onAnswer} sample />
   ) : (
     <ConnectedAlertHost alert={alert} waiting={waiting} />
   );
@@ -45,20 +48,25 @@ function ConnectedAlertHost({ alert, waiting }: { alert: PendingAlert; waiting: 
   const record = useMutation(anyApi.answers.record);
   const { questionId } = alert;
   const onAnswer = useCallback<AnswerHandler>(
-    async (optionIds, customReply) => {
+    async (optionIds, customReply, attachments) => {
       // `replyPayload` trims the reply and refuses an empty answer, as `ChoiceScreen` does.
-      const payload = replyPayload({
-        mode: "multi",
-        state: { armedId: null, selectedIds: optionIds },
-        confirmId: null,
-        customReply: customReply ?? "",
-      });
+      // A reply that is only attachments is allowed.
+      const hasFiles = (attachments?.length ?? 0) > 0;
+      const payload = hasFiles
+        ? { optionIds, customReply: (customReply ?? "").trim() }
+        : replyPayload({
+            mode: "multi",
+            state: { armedId: null, selectedIds: optionIds },
+            confirmId: null,
+            customReply: customReply ?? "",
+          });
       const clientId = await readClientId();
       await record({
         questionId,
         ...(clientId ? { clientId } : {}),
         optionIds: payload.optionIds,
         ...(payload.customReply ? { customReply: payload.customReply } : {}),
+        ...(hasFiles ? { attachments } : {}),
       });
       await clearDisplayedAlert(questionId);
       if (waiting <= 1) leaveIfLocked();
@@ -68,16 +76,46 @@ function ConnectedAlertHost({ alert, waiting }: { alert: PendingAlert; waiting: 
   return <AlertScreen alert={alert} waiting={waiting} onAnswer={onAnswer} />;
 }
 
-function AlertScreen({ alert, waiting, onAnswer }: AlertHostProps & { onAnswer: AnswerHandler }) {
+function AlertScreen({
+  alert,
+  waiting,
+  onAnswer,
+  sample,
+}: AlertHostProps & { onAnswer: AnswerHandler; sample?: boolean }) {
+  const [replyOpen, setReplyOpen] = useState(false);
+  const openReply = useCallback(() => setReplyOpen(true), []);
+  return (
+    <>
+      <AlertBody alert={alert} waiting={waiting} onAnswer={onAnswer} onReply={openReply} />
+      <A5Reply
+        visible={replyOpen}
+        onClose={() => setReplyOpen(false)}
+        alert={alert}
+        onSend={async (optionIds, customReply, attachments) => {
+          await onAnswer(optionIds, customReply, attachments);
+          setReplyOpen(false);
+        }}
+        getUploadUrl={sample ? () => Promise.reject(new Error("Uploads need a real alert")) : undefined}
+      />
+    </>
+  );
+}
+
+function AlertBody({
+  alert,
+  waiting,
+  onAnswer,
+  onReply,
+}: AlertHostProps & { onAnswer: AnswerHandler; onReply: () => void }) {
   if (alert.selectionMode === "single" && alert.presentation === "choice") {
     // Keyed by the question so the next alert starts fresh (blob arrives, nothing armed).
-    return <A1ChoiceSingle key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} />;
+    return <A1ChoiceSingle key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} onReply={onReply} />;
   }
   if (alert.selectionMode === "multi" && alert.presentation === "choice") {
-    return <A2ChoiceMulti key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} />;
+    return <A2ChoiceMulti key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} onReply={onReply} />;
   }
   if (alert.presentation === "swipe") {
-    return <A3Swipe key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} />;
+    return <A3Swipe key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} onReply={onReply} />;
   }
   // The POC screens record the answer themselves and ignore `onAnswer`. Nothing reaches them now
   // that A1, A2 and A3 cover every alert; the old screens stay until the old Inbox is replaced.

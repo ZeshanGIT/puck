@@ -1,9 +1,14 @@
 import {
+  ATTACHMENT_TYPES,
+  MAX_ATTACHMENTS,
+  MAX_ATTACHMENT_BYTES,
   MAX_OPTIONS,
   type AlertExtras,
   type AlertLink,
   type AlertOption,
   type AnswerChoice,
+  type AttachmentMeta,
+  type AttachmentType,
   type CreateAlertInput,
   type OptionTone,
   type PairingInput,
@@ -240,12 +245,14 @@ export function validateAlertTiming(input: Pick<CreateAlertInput, "scheduledFor"
 /**
  * Check a reply against the alert that was stored.
  * Single mode accepts at most one option. A custom reply can stand alone or sit beside options.
+ * With `hasAttachments` the attachments can stand alone too (a photo with no words).
  */
 export function validateAnswer(input: {
   selectionMode: SelectionMode;
   options: AlertOption[];
   optionIds: unknown;
   customReply?: unknown;
+  hasAttachments?: boolean;
 }): RecordedAnswer {
   if (!Array.isArray(input.optionIds)) fail("optionIds must be an array");
   if (input.optionIds.length > input.options.length) fail("too many option ids");
@@ -268,10 +275,46 @@ export function validateAnswer(input: {
     const text = requiredString(input.customReply, "customReply").trim();
     if (text) customReply = oneLine(text, "customReply", 2_000);
   }
-  if (answers.length === 0 && customReply === null) {
+  if (answers.length === 0 && customReply === null && input.hasAttachments !== true) {
     fail("choose an option or send a custom reply");
   }
   return { answers, customReply };
+}
+
+const ATTACHMENT_NAME_MAX = 255;
+const ATTACHMENT_MIME_MAX = 127;
+const MIME_PATTERN = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i;
+
+function isAttachmentType(value: string): value is AttachmentType {
+  return (ATTACHMENT_TYPES as readonly string[]).includes(value);
+}
+
+/**
+ * Check the attachment list of a reply: at most `MAX_ATTACHMENTS`, each `{type, name, mime, size}`
+ * with a size from 0 to `MAX_ATTACHMENT_BYTES`. Undefined and null mean no attachments.
+ * `size` is what the phone claims; the backend replaces it with the stored file's real size.
+ */
+export function validateAttachments(value: unknown): AttachmentMeta[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) fail("attachments must be an array");
+  if (value.length > MAX_ATTACHMENTS) fail(`at most ${MAX_ATTACHMENTS} attachments`);
+  return value.map((raw, index) => {
+    const field = `attachments[${index}]`;
+    if (!isRecord(raw)) fail(`${field} must be an object`);
+    const type = requiredString(raw.type, `${field}.type`);
+    if (!isAttachmentType(type)) fail(`${field}.type must be photo or file`);
+    const name = oneLine(requiredString(raw.name, `${field}.name`), `${field}.name`, ATTACHMENT_NAME_MAX);
+    const mime = requiredString(raw.mime, `${field}.mime`).trim();
+    if (mime.length > ATTACHMENT_MIME_MAX || !MIME_PATTERN.test(mime)) {
+      fail(`${field}.mime must be a media type such as image/jpeg`);
+    }
+    const size = raw.size;
+    if (typeof size !== "number" || !Number.isInteger(size) || size < 0) {
+      fail(`${field}.size must be a whole number of bytes`);
+    }
+    if (size > MAX_ATTACHMENT_BYTES) fail(`${field} is over the ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB limit`);
+    return { type, name, mime, size };
+  });
 }
 
 /** Check the webhook URL and Authorization header Seshan pastes during pairing. */

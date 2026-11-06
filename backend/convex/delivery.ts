@@ -2,6 +2,7 @@ import { DELIVERY_MAX_ATTEMPTS, buildAnswerPayload, deliveryBackoffMs } from "@p
 import { internalActionGeneric, internalMutationGeneric } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { payloadAttachment } from "./lib/attachments";
 import { deliveryRoute } from "./lib/builtInBot";
 import { CryptoError, decryptHeader } from "./lib/crypto";
 
@@ -52,11 +53,25 @@ export const begin = internalMutationGeneric({
       answeredAt: answer.answeredAt,
       source: answer.source,
     });
+    // Storage URLs are made now, so a retry sends fresh ones. Added only when the reply has files,
+    // which keeps v0 payloads identical.
+    const attachments = [];
+    for (const item of answer.attachments ?? []) {
+      const url = await ctx.storage.getUrl(item.storageId);
+      if (!url) {
+        await ctx.db.patch(answer._id, {
+          deliveryStatus: "failed",
+          lastError: `attachment ${item.name} is no longer in storage`,
+        });
+        return { proceed: false as const };
+      }
+      attachments.push(payloadAttachment(item, url));
+    }
     return {
       proceed: true as const,
       webhookUrl: bot.webhookUrl,
       webhookHeader: bot.webhookHeader,
-      body: JSON.stringify(payload),
+      body: JSON.stringify(attachments.length > 0 ? { ...payload, attachments } : payload),
     };
   },
 });
@@ -67,16 +82,8 @@ export const complete = internalMutationGeneric({
   handler: async (ctx, args) => {
     const answer = await ctx.db.get(args.answerId);
     if (!answer || answer.deliveryStatus !== "pending") return null;
-    await ctx.db.replace(answer._id, {
-      alertId: answer.alertId,
-      questionId: answer.questionId,
-      answers: answer.answers,
-      customReply: answer.customReply,
-      source: answer.source,
-      answeredAt: answer.answeredAt,
-      deliveryAttempts: answer.deliveryAttempts,
-      deliveryStatus: "delivered",
-    });
+    // Patch, not replace, so the answer keeps its attachments. Undefined clears `lastError`.
+    await ctx.db.patch(answer._id, { deliveryStatus: "delivered", lastError: undefined });
     return null;
   },
 });

@@ -1,6 +1,7 @@
 import {
   ALERT_STATUSES,
   ANSWER_SOURCES,
+  ATTACHMENT_TYPES,
   DELIVERY_STATUSES,
   OPTION_TONES,
   PAIRING_STATES,
@@ -62,6 +63,17 @@ export const clientPlatform = v.union(...literals(CLIENT_PLATFORMS));
 export const answerChoice = v.object({
   id: v.string(),
   label: v.string(),
+});
+
+export const attachmentType = v.union(...literals(ATTACHMENT_TYPES));
+
+/** One file on a reply: the Convex storage id and what the phone said about it (size re-checked on the server). */
+export const storedAttachment = v.object({
+  storageId: v.id("_storage"),
+  type: attachmentType,
+  name: v.string(),
+  mime: v.string(),
+  size: v.number(),
 });
 
 export default defineSchema({
@@ -141,6 +153,8 @@ export default defineSchema({
     deliveryStatus,
     deliveryAttempts: v.number(),
     lastError: v.optional(v.string()),
+    // Reply attachments (Protocol changes section 3). Absent on a reply without any.
+    attachments: v.optional(v.array(storedAttachment)),
   })
     .index("by_alert", ["alertId"])
     .index("by_questionId", ["questionId"]),

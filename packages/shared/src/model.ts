@@ -150,9 +150,33 @@ export interface AnswerChoice {
   label: string;
 }
 
+/** A reply can carry at most this many attachments (Protocol changes section 4). */
+export const MAX_ATTACHMENTS = 5;
+
+/** The largest attachment, in bytes (20 MB). */
+export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+/** A camera or gallery picture is a `photo`; anything else the phone attaches is a `file`. */
+export const ATTACHMENT_TYPES = ["photo", "file"] as const;
+
+export type AttachmentType = (typeof ATTACHMENT_TYPES)[number];
+
+/** What the phone says about an uploaded file. The backend re-checks `size` against storage. */
+export interface AttachmentMeta {
+  type: AttachmentType;
+  name: string;
+  mime: string;
+  size: number;
+}
+
+/** One attachment in the webhook payload: its metadata and a Convex storage URL to fetch it from. */
+export interface AnswerAttachment extends AttachmentMeta {
+  url: string;
+}
+
 /**
  * JSON body Convex POSTs to the asking bot's webhook.
- * Field order matches the v0 spec sample.
+ * Field order matches the v0 spec sample. `attachments` is present only when the reply has some.
  */
 export interface AnswerPayload {
   questionId: string;
@@ -164,6 +188,7 @@ export interface AnswerPayload {
   customReply: string | null;
   answeredAt: string;
   source: AnswerSource;
+  attachments?: AnswerAttachment[];
 }
 
 /** Body accepted by `POST /alerts`. */
