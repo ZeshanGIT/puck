@@ -15,6 +15,7 @@ import { ClerkTokenError, fetchConvexToken, type ClerkAccount } from "@puck/shar
 import { anyApi } from "convex/server";
 import { useConvex, type ConvexReactClient } from "convex/react";
 import * as Device from "expo-device";
+import { canUseFullScreenIntent } from "puck-full-screen";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClerkView } from "./clerkAccount";
 import { clerkHost, readStoredAccount } from "./clerkAccount";
@@ -179,6 +180,14 @@ export async function syncClientPushToken(client: ConvexReactClient, clientId: s
   await registerPushTokenWithConvex(Notifications, async (token) => {
     await client.mutation(anyApi.clients.setPushToken, { clientId, token });
   });
+}
+
+/**
+ * Saves whether this phone may cover the lock screen on its client row. Without it the backend
+ * sends an urgent alert as a plain notification (no ring). Best effort.
+ */
+export async function syncClientFullScreen(client: ConvexReactClient, clientId: string): Promise<void> {
+  await client.mutation(anyApi.clients.setFlags, { clientId, fullScreenAllowed: canUseFullScreenIntent() });
 }
 
 /* ---------- the hook ---------- */

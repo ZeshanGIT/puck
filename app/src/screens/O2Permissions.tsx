@@ -11,7 +11,7 @@ import { useConvex } from "convex/react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { canUseFullScreenIntent } from "puck-full-screen";
-import { syncClientPushToken } from "../clientAuth";
+import { syncClientFullScreen, syncClientPushToken } from "../clientAuth";
 import { openDndAccessSettings } from "../onboarding/dndAccess";
 import { openFullScreenSettings } from "../onboarding/fullScreenSetup";
 import { ensureNotificationPermission, readNotificationRowState } from "../onboarding/notificationSetup";
@@ -43,7 +43,11 @@ export function O2Permissions({ clientId, onContinue }: { clientId: string; onCo
     setFullScreen(nextFullScreen);
     const before = previous.current;
     previous.current = { notification: nextNotification.granted, fullScreen: nextFullScreen };
-    if (!before) return;
+    if (!before) {
+      // First look: record the current state on the client row so an urgent alert can ring.
+      syncClientFullScreen(client, clientId).catch((error: unknown) => console.error(readableError(error)));
+      return;
+    }
     if (nextNotification.granted && !before.notification) {
       toast.show("Notifications on");
       syncClientPushToken(client, clientId).catch((error: unknown) => console.error(readableError(error)));

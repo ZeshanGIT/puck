@@ -11,7 +11,7 @@ import { useConvex, useQuery } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { ChoiceScreen, type PendingAlert } from "../ChoiceScreen";
-import { syncClientPushToken } from "../clientAuth";
+import { syncClientFullScreen, syncClientPushToken } from "../clientAuth";
 import { HeroText, OnboardingFrame, WaitingLine } from "../onboarding/parts";
 import { SwipeScreen } from "../SwipeScreen";
 import { readableError } from "../session";
@@ -36,6 +36,7 @@ export function O3TestPage({ clientId, onContinue }: { clientId: string; onConti
   // Make sure this client can be pushed to, if notifications are on.
   useEffect(() => {
     syncClientPushToken(client, clientId).catch((caught: unknown) => console.error(readableError(caught)));
+    syncClientFullScreen(client, clientId).catch((caught: unknown) => console.error(readableError(caught)));
   }, [client, clientId]);
 
   const alert = pending?.[0];
