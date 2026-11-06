@@ -21,30 +21,38 @@ import { useAppFonts } from "./src/ui/useAppFonts";
 
 type SecretState = string | null | undefined;
 
-/** Dev only: `adb shell am start -a android.intent.action.VIEW -d puck://dev-gallery` opens the design gallery. */
+/**
+ * Dev only: `adb shell am start -a android.intent.action.VIEW -d puck://dev-gallery` opens the
+ * design gallery; `puck://dev-gallery?section=Blob` shows only that component's section.
+ */
 function useDevGalleryLink() {
   const [open, setOpen] = useState(false);
+  const [section, setSection] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (!__DEV__) return;
     const check = (url: string | null | undefined) => {
-      if (url && url.startsWith("puck://dev-gallery")) setOpen(true);
+      if (url && url.startsWith("puck://dev-gallery")) {
+        const match = /[?&]section=([^&#]+)/u.exec(url);
+        setSection(match?.[1] ? decodeURIComponent(match[1]) : undefined);
+        setOpen(true);
+      }
     };
     void Linking.getInitialURL().then(check);
     const subscription = Linking.addEventListener("url", ({ url }) => check(url));
     return () => subscription.remove();
   }, []);
-  return [open, setOpen] as const;
+  return [open, setOpen, section] as const;
 }
 
 export default function App() {
   const fontsReady = useAppFonts();
-  const [galleryOpen, setGalleryOpen] = useDevGalleryLink();
+  const [galleryOpen, setGalleryOpen, gallerySection] = useDevGalleryLink();
   if (!fontsReady) return null;
 
   if (__DEV__ && galleryOpen) {
     return (
       <GestureHandlerRootView style={styles.root}>
-        <DevGallery onBack={() => setGalleryOpen(false)} />
+        <DevGallery onBack={() => setGalleryOpen(false)} section={gallerySection} />
         <StatusBar style="dark" />
       </GestureHandlerRootView>
     );

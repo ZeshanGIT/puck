@@ -12,6 +12,10 @@ import { createContext, type ReactNode, useContext } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { PALETTE, botTheme, type BotThemeMode } from "../ui/botTheme";
 import { ThemeProvider, type ThemeMode } from "../ui/theme";
+import { BlobGallery } from "./gallery/BlobGallery";
+import { BtnGallery } from "./gallery/BtnGallery";
+import { RichTextGallery } from "./gallery/RichTextGallery";
+import { SmallComponentsGallery } from "./gallery/SmallComponentsGallery";
 import {
   darkTokens,
   fontFamily,
@@ -225,9 +229,19 @@ function Radii() {
  * `night` is true). Each entry is a component from `./gallery/` that reads
  * `useTheme()`. Add a line here when a card adds a component.
  */
-const COMPONENT_SECTIONS: { title: string; Component: () => ReactNode; night?: boolean }[] = [];
+const COMPONENT_SECTIONS: { title: string; Component: () => ReactNode; night?: boolean }[] = [
+  { title: "Blob", Component: BlobGallery, night: true },
+  { title: "Buttons", Component: BtnGallery, night: true },
+  { title: "Small components", Component: SmallComponentsGallery },
+  { title: "Rich text", Component: RichTextGallery },
+];
 
-export function DevGallery({ onBack }: { onBack: () => void }) {
+export function DevGallery({ onBack, section }: { onBack: () => void; section?: string }) {
+  const only = section?.toLowerCase();
+  const components = only
+    ? COMPONENT_SECTIONS.filter((entry) => entry.title.toLowerCase() === only)
+    : COMPONENT_SECTIONS;
+  const foundations = !only;
   return (
     <ScrollView style={[styles.root, { backgroundColor: lightTokens.bg }]} contentContainerStyle={styles.content}>
       <Pressable onPress={onBack} accessibilityRole="button" style={styles.back}>
@@ -235,19 +249,23 @@ export function DevGallery({ onBack }: { onBack: () => void }) {
       </Pressable>
 
       <ModeBlock title="Light" tokens={lightTokens} bot={{}}>
-        <Section title="Tokens">
-          <TokenChips />
-        </Section>
-        <Section title="Bot colours">
-          <BotChips />
-        </Section>
-        <Section title="Type scale">
-          <TypeScale />
-        </Section>
-        <Section title="Radii">
-          <Radii />
-        </Section>
-        {COMPONENT_SECTIONS.map(({ title, Component }) => (
+        {foundations ? (
+          <>
+            <Section title="Tokens">
+              <TokenChips />
+            </Section>
+            <Section title="Bot colours">
+              <BotChips />
+            </Section>
+            <Section title="Type scale">
+              <TypeScale />
+            </Section>
+            <Section title="Radii">
+              <Radii />
+            </Section>
+          </>
+        ) : null}
+        {components.map(({ title, Component }) => (
           <Section key={title} title={title}>
             <Component />
           </Section>
@@ -255,29 +273,35 @@ export function DevGallery({ onBack }: { onBack: () => void }) {
       </ModeBlock>
 
       <ModeBlock title="Dark" tokens={darkTokens} bot={{ dark: true }}>
-        <Section title="Tokens">
-          <TokenChips />
-        </Section>
-        <Section title="Bot colours">
-          <BotChips />
-        </Section>
-        <Section title="Type scale">
-          <TypeScale />
-        </Section>
-        <Section title="Radii">
-          <Radii />
-        </Section>
-        {COMPONENT_SECTIONS.map(({ title, Component }) => (
+        {foundations ? (
+          <>
+            <Section title="Tokens">
+              <TokenChips />
+            </Section>
+            <Section title="Bot colours">
+              <BotChips />
+            </Section>
+            <Section title="Type scale">
+              <TypeScale />
+            </Section>
+            <Section title="Radii">
+              <Radii />
+            </Section>
+          </>
+        ) : null}
+        {components.map(({ title, Component }) => (
           <Section key={title} title={title}>
             <Component />
           </Section>
         ))}
 
         <ModeBlock title="Night" tokens={darkTokens} bot={{ night: true }}>
-          <Section title="Bot colours">
-            <BotChips />
-          </Section>
-          {COMPONENT_SECTIONS.filter((entry) => entry.night).map(({ title, Component }) => (
+          {foundations ? (
+            <Section title="Bot colours">
+              <BotChips />
+            </Section>
+          ) : null}
+          {components.filter((entry) => entry.night).map(({ title, Component }) => (
             <Section key={title} title={title}>
               <Component />
             </Section>

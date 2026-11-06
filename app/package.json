@@ -43,6 +43,7 @@
     "android": "export JAVA_HOME=\"$(/usr/libexec/java_home -v 17)\" ANDROID_HOME=\"$HOME/Library/Android/sdk\" && expo run:android",
     "avd": "export ANDROID_HOME=\"$HOME/Library/Android/sdk\" && exec \"$ANDROID_HOME/emulator/emulator\" -avd Paseo_Phone_API_35 -gpu host",
     "shot": "sh scripts/shot.sh",
+    "gallery": "sh scripts/gallery.sh",
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit"
   },
