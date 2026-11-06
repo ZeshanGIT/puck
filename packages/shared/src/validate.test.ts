@@ -17,6 +17,7 @@ describe("validateCreateAlert", () => {
       question: ship.question,
       priority: "urgent",
       selectionMode: "single",
+      presentation: "choice",
       options: [
         { id: "ship", label: "Ship it" },
         { id: "hold", label: "Hold", icon: "pause" },
@@ -42,6 +43,31 @@ describe("validateCreateAlert", () => {
         options: [1, 2, 3, 4, 5].map((n) => ({ id: `o${n}`, label: `Option ${n}` })),
       }),
     ).toThrow(/at most 4 options/);
+  });
+
+  test("defaults a missing presentation to choice and rejects a three-option swipe", () => {
+    expect(validateCreateAlert({ ...ship, presentation: undefined }).presentation).toBe("choice");
+    expect(
+      validateCreateAlert({
+        ...ship,
+        presentation: "swipe",
+        selectionMode: "single",
+      }).presentation,
+    ).toBe("swipe");
+    expect(() =>
+      validateCreateAlert({
+        ...ship,
+        presentation: "swipe",
+        options: [
+          { id: "snooze", label: "Snooze" },
+          { id: "dismiss", label: "Dismiss" },
+          { id: "later", label: "Later" },
+        ],
+      }),
+    ).toThrow(/exactly two options/);
+    expect(() => validateCreateAlert({ ...ship, presentation: "swipe", selectionMode: "multi" })).toThrow(
+      /single choice/,
+    );
   });
 
   test("allows a one-way alert with no options", () => {

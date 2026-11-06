@@ -6,9 +6,12 @@ import {
   type PairingInput,
   type Priority,
   type RecordedAnswer,
+  type Presentation,
   type SelectionMode,
+  PRESENTATIONS,
   PRIORITIES,
   SELECTION_MODES,
+  SWIPE_OPTION_COUNT,
 } from "./model";
 
 export class AlertValidationError extends Error {
@@ -51,6 +54,10 @@ function isSelectionMode(value: string): value is SelectionMode {
   return (SELECTION_MODES as readonly string[]).includes(value);
 }
 
+function isPresentation(value: string): value is Presentation {
+  return (PRESENTATIONS as readonly string[]).includes(value);
+}
+
 function parseOption(value: unknown, index: number): AlertOption {
   if (!isRecord(value)) fail(`options[${index}] must be an object`);
   const id = oneLine(requiredString(value.id, `options[${index}].id`), `options[${index}].id`, 32);
@@ -77,6 +84,12 @@ export function validateCreateAlert(body: unknown): CreateAlertInput {
   if (!isPriority(priorityRaw)) fail("priority must be normal or urgent");
   const selectionRaw = requiredString(body.selectionMode, "selectionMode");
   if (!isSelectionMode(selectionRaw)) fail("selectionMode must be single or multi");
+  let presentation: Presentation = "choice";
+  if (body.presentation !== undefined && body.presentation !== null) {
+    const presentationRaw = requiredString(body.presentation, "presentation");
+    if (!isPresentation(presentationRaw)) fail("presentation must be choice or swipe");
+    presentation = presentationRaw;
+  }
   if (body.options === undefined) fail("options is required");
   if (!Array.isArray(body.options)) fail("options must be an array");
   if (body.options.length > MAX_OPTIONS) fail(`at most ${MAX_OPTIONS} options`);
@@ -85,6 +98,10 @@ export function validateCreateAlert(body: unknown): CreateAlertInput {
   for (const option of options) {
     if (ids.has(option.id)) fail(`duplicate option id ${option.id}`);
     ids.add(option.id);
+  }
+  if (presentation === "swipe") {
+    if (selectionRaw !== "single") fail("a swipe alert is a single choice");
+    if (options.length !== SWIPE_OPTION_COUNT) fail("a swipe alert needs exactly two options");
   }
   let scheduledFor: number | null = null;
   if (body.scheduledFor !== undefined && body.scheduledFor !== null) {
@@ -97,6 +114,7 @@ export function validateCreateAlert(body: unknown): CreateAlertInput {
     question,
     priority: priorityRaw,
     selectionMode: selectionRaw,
+    presentation,
     options,
     scheduledFor,
   };

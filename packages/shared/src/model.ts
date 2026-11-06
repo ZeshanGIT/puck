@@ -22,6 +22,19 @@ export const DEVICE_JWT_KID = "puck-device-1";
  */
 export const DEVICE_TOKEN_TTL_SECONDS = 60 * 60;
 
+/**
+ * Android notification channel for a heads-up alert.
+ * The app creates it before the first push. Importance cannot be changed later,
+ * so a new id is required if this channel is ever recreated at a lower level.
+ */
+export const PUSH_CHANNEL_ID = "puck-alerts";
+
+/** Notifee channel for an urgent alert. Separate from the shade channel so its sound can stay on. */
+export const PUSH_URGENT_CHANNEL_ID = "puck-urgent";
+
+/** FCM data flag. The phone draws this alert itself so it can cover the lock screen. */
+export const FULL_SCREEN_KIND = "fullscreen";
+
 /** True when another pending bot would pass the cap. */
 export function tooManyPendingBots(pendingCount: number): boolean {
   if (!Number.isInteger(pendingCount) || pendingCount < 0) {
@@ -47,6 +60,14 @@ export type Priority = (typeof PRIORITIES)[number];
 export const SELECTION_MODES = ["single", "multi"] as const;
 
 export type SelectionMode = (typeof SELECTION_MODES)[number];
+
+/** How the phone shows the alert. Swipe is still a single choice, not a third selection mode. */
+export const PRESENTATIONS = ["choice", "swipe"] as const;
+
+export type Presentation = (typeof PRESENTATIONS)[number];
+
+/** A swipe alert has the first option on the left and the second on the right. */
+export const SWIPE_OPTION_COUNT = 2;
 
 export const PAIRING_STATES = ["pending", "paired"] as const;
 
@@ -108,6 +129,7 @@ export interface CreateAlertInput {
   question: string;
   priority: Priority;
   selectionMode: SelectionMode;
+  presentation: Presentation;
   options: AlertOption[];
   scheduledFor: number | null;
 }
