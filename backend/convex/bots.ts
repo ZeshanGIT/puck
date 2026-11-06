@@ -8,7 +8,7 @@ import {
 } from "@puck/shared";
 import { internalMutationGeneric, internalQueryGeneric, mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { clerkIssuer, requireClient } from "./lib/clientAuth";
 import { clerkSubject } from "./lib/clientRules";
@@ -18,6 +18,7 @@ import { BUILT_IN_BOT_ID, BUILT_IN_BOT_NAME, botMayAuthenticate } from "./lib/bu
 import { TOO_MANY_PENDING_BOTS } from "./lib/deviceAuth";
 import { decryptHeader, encryptHeader, hashSecret, mutationRandomInt, newSecret, timingSafeEqual } from "./lib/crypto";
 import { countsTowardPendingCap, isOpenRequestFor, pairingStatusOf } from "./lib/pairingRules";
+import { tallyWaiting, validateBotColour, validateMutedUntil } from "./lib/botSettings";
 import { selectPushTargets } from "./lib/pushTargets";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
@@ -176,7 +177,9 @@ export const authenticate = internalQueryGeneric({
       .withIndex("by_publicId", (q) => q.eq("id", args.botId))
       .unique();
     const matches = timingSafeEqual(args.secretHash, bot?.secretHash ?? DUMMY_HASH);
-    if (!bot || !matches || !botMayAuthenticate(bot)) return { ok: false as const, reason: "unauthorized" as const };
+    if (!bot || !matches || !botMayAuthenticate(bot) || bot.removedAt !== undefined) {
+      return { ok: false as const, reason: "unauthorized" as const };
+    }
     if (bot.pairingState !== "paired") return { ok: false as const, reason: "not_paired" as const };
     return { ok: true as const, botDocId: bot._id };
   },
@@ -352,5 +355,170 @@ export const loadPairingPush = internalQueryGeneric({
       addedFrom: bot.addedFrom ?? null,
       targets: targets.map((target) => ({ pushToken: target.pushToken })),
     };
+  },
+});
+
+/* ------------------------------------------------------------ owner settings (B1, B2) */
+
+const LIST_SCAN = 200;
+const MAX_OWNED_BOTS = 50;
+const RECENT_PER_BOT = 1;
+
+/** A paired bot the caller owns. Anything else is "bot not found" (no hint that it exists). */
+async function ownedBot(ctx: MutationCtx, clientId: string, botId: string): Promise<Doc<"bots">> {
+  const client = await requireClient(ctx, clientId);
+  const bot = await ctx.db
+    .query("bots")
+    .withIndex("by_publicId", (q) => q.eq("id", botId))
+    .unique();
+  if (
+    !bot ||
+    bot.userId !== client.userId ||
+    bot.builtIn === true ||
+    bot.removedAt !== undefined ||
+    bot.pairingState !== "paired"
+  ) {
+    throw new Error("bot not found");
+  }
+  return bot;
+}
+
+const botListItem = v.object({
+  botId: v.string(),
+  name: v.string(),
+  colour: v.union(v.string(), v.null()),
+  mutedUntil: v.union(v.number(), v.null()),
+  createdAt: v.number(),
+  addedFrom: v.union(v.string(), v.null()),
+  lastAlertAt: v.union(v.number(), v.null()),
+  waitingCount: v.number(),
+});
+
+/**
+ * The signed-in user's paired bots, oldest first (B1; Home's "N bots can page you"). Bounded: at
+ * most LIST_SCAN paired bots are read and MAX_OWNED_BOTS returned. Waiting counts come from one
+ * read of the pending and snoozed alerts, so they are exact up to that many.
+ */
+export const list = queryGeneric({
+  args: { clientId: v.string() },
+  returns: v.array(botListItem),
+  handler: async (ctx, args) => {
+    const client = await requireClient(ctx, args.clientId);
+    const now = Date.now();
+    const scanned = await ctx.db
+      .query("bots")
+      .withIndex("by_pairingState", (q) => q.eq("pairingState", "paired"))
+      .take(LIST_SCAN);
+    const mine = scanned
+      .filter((bot) => bot.userId === client.userId && bot.builtIn !== true && bot.removedAt === undefined)
+      .slice(0, MAX_OWNED_BOTS);
+    const waiting = [
+      ...(await ctx.db
+        .query("alerts")
+        .withIndex("by_status", (q) => q.eq("status", "pending"))
+        .take(LIST_SCAN)),
+      ...(await ctx.db
+        .query("alerts")
+        .withIndex("by_status", (q) => q.eq("status", "snoozed"))
+        .take(LIST_SCAN)),
+    ];
+    const waitingCounts = tallyWaiting(
+      waiting.map((alert) => ({ botId: alert.botId as string, status: alert.status, expiresAt: alert.expiresAt })),
+      now,
+    );
+    const views = [];
+    for (const bot of mine) {
+      const latest = await ctx.db
+        .query("alerts")
+        .withIndex("by_bot", (q) => q.eq("botId", bot._id))
+        .order("desc")
+        .take(RECENT_PER_BOT);
+      views.push({
+        botId: bot.id,
+        name: bot.name,
+        colour: bot.colour ?? null,
+        mutedUntil: bot.mutedUntil ?? null,
+        createdAt: bot.createdAt,
+        addedFrom: bot.addedFrom ?? null,
+        lastAlertAt: latest[0]?.createdAt ?? null,
+        waitingCount: waitingCounts.get(bot._id as string) ?? 0,
+      });
+    }
+    return views.sort((a, b) => a.createdAt - b.createdAt);
+  },
+});
+
+/**
+ * Change a bot's colour and/or mute (B2). `mutedUntil`: a future epoch ms to mute until, null to
+ * unmute, or left out to keep it. Owner only.
+ */
+export const update = mutationGeneric({
+  args: {
+    clientId: v.string(),
+    botId: v.string(),
+    colour: v.optional(v.string()),
+    mutedUntil: v.optional(v.union(v.number(), v.null())),
+  },
+  returns: v.object({
+    botId: v.string(),
+    colour: v.union(v.string(), v.null()),
+    mutedUntil: v.union(v.number(), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    const bot = await ownedBot(ctx, args.clientId, args.botId);
+    const now = Date.now();
+    const patch: { colour?: string; mutedUntil?: number | undefined } = {};
+    if (args.colour !== undefined) {
+      try {
+        patch.colour = validateBotColour(args.colour);
+      } catch (error) {
+        throw new Error(error instanceof Error ? error.message : "colour is not valid");
+      }
+    }
+    if (args.mutedUntil !== undefined) {
+      try {
+        const until = validateMutedUntil(args.mutedUntil, now);
+        patch.mutedUntil = until === null ? undefined : until;
+      } catch (error) {
+        throw new Error(error instanceof Error ? error.message : "mutedUntil is not valid");
+      }
+    }
+    await ctx.db.patch(bot._id, patch);
+    const after = await ctx.db.get(bot._id);
+    return {
+      botId: bot.id,
+      colour: after?.colour ?? null,
+      mutedUntil: after?.mutedUntil ?? null,
+    };
+  },
+});
+
+/**
+ * Remove a paired bot (B2, tap twice). Its secret stops working (`authenticate` refuses it), it
+ * leaves bots.list, and its waiting alerts are cancelled, with a dismiss so phones drop them.
+ * The row and its answered alerts stay, so history still shows the bot's name. Owner only.
+ */
+export const remove = mutationGeneric({
+  args: { clientId: v.string(), botId: v.string() },
+  returns: v.object({ botId: v.string(), removed: v.literal(true) }),
+  handler: async (ctx, args) => {
+    const bot = await ownedBot(ctx, args.clientId, args.botId);
+    const now = Date.now();
+    await ctx.db.patch(bot._id, { removedAt: now, mutedUntil: undefined });
+    // Newest first, so a bot with a long history still has its waiting alerts in reach.
+    const alerts = await ctx.db
+      .query("alerts")
+      .withIndex("by_bot", (q) => q.eq("botId", bot._id))
+      .order("desc")
+      .take(500);
+    for (const alert of alerts) {
+      if (alert.status !== "pending" && alert.status !== "scheduled" && alert.status !== "snoozed") continue;
+      await ctx.db.patch(alert._id, { status: "cancelled", updatedAt: now });
+      // A scheduled alert was never pushed, so there is nothing on a phone to drop.
+      if (alert.status !== "scheduled") {
+        await ctx.scheduler.runAfter(0, internal.push.sendDismiss, { questionId: alert.questionId });
+      }
+    }
+    return { botId: bot.id, removed: true as const };
   },
 });

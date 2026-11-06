@@ -18,6 +18,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { answerReceipt, buildTimeline, historyOutcome, isWaiting } from "./lib/alertHistory";
+import { alertPushMode } from "./lib/botSettings";
 import { getOrCreateBuiltInBot } from "./bots";
 import { requireDevice } from "./device";
 import { TEST_PAGE_OPTIONS, TEST_PAGE_QUESTION, decideTestPage } from "./lib/builtInBot";
@@ -422,7 +423,7 @@ export const pending = queryGeneric({
       // An alert past its expiry can no longer be answered (Q8); the app shows A9 for one on screen.
       if (alert.expiresAt !== undefined && alert.expiresAt <= Date.now()) continue;
       const bot = await ctx.db.get(alert.botId);
-      if (!bot || bot.pairingState !== "paired") continue;
+      if (!bot || bot.pairingState !== "paired" || bot.removedAt !== undefined) continue;
       views.push({
         questionId: alert.questionId,
         question: alert.question,
@@ -447,7 +448,7 @@ export const loadForPush = internalQueryGeneric({
   returns: v.union(
     v.object({
       send: v.literal(false),
-      reason: v.union(v.literal("not pending"), v.literal("no device token")),
+      reason: v.union(v.literal("not pending"), v.literal("no device token"), v.literal("muted")),
     }),
     v.object({
       send: v.literal(true),
@@ -469,7 +470,11 @@ export const loadForPush = internalQueryGeneric({
     const alert = await ctx.db.get(args.alertId);
     if (!alert || alert.status !== "pending") return { send: false as const, reason: "not pending" as const };
     const bot = await ctx.db.get(alert.botId);
-    if (!bot || bot.pairingState !== "paired") return { send: false as const, reason: "not pending" as const };
+    if (!bot || bot.pairingState !== "paired" || bot.removedAt !== undefined) {
+      return { send: false as const, reason: "not pending" as const };
+    }
+    // A muted bot's alert still lands under Needs you (alerts.pending and waiting), with no push.
+    if (alertPushMode(bot, Date.now()) === "muted") return { send: false as const, reason: "muted" as const };
     // The app is single-user for now, so every client is a target. The bot's owner arrives with pairing.
     const clients = await ctx.db.query("clients").take(MAX_PUSH_CLIENTS);
     const device = await ctx.db.query("device").first();
@@ -614,7 +619,7 @@ export const waiting = queryGeneric({
         if (!alertIsForClient(alert.targetClientId, client._id)) continue;
         if (!isWaiting(alert.status, alert.expiresAt ?? null, now)) continue;
         const bot = await ctx.db.get(alert.botId);
-        if (!bot || bot.pairingState !== "paired") continue;
+        if (!bot || bot.pairingState !== "paired" || bot.removedAt !== undefined) continue;
         found.push({
           questionId: alert.questionId,
           question: alert.question,

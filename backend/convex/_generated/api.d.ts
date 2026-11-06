@@ -19,6 +19,7 @@ import type * as http from "../http.js";
 import type * as lib_alertFields from "../lib/alertFields.js";
 import type * as lib_alertHistory from "../lib/alertHistory.js";
 import type * as lib_attachments from "../lib/attachments.js";
+import type * as lib_botSettings from "../lib/botSettings.js";
 import type * as lib_builtInBot from "../lib/builtInBot.js";
 import type * as lib_clientAuth from "../lib/clientAuth.js";
 import type * as lib_clientRules from "../lib/clientRules.js";
@@ -48,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   "lib/alertFields": typeof lib_alertFields;
   "lib/alertHistory": typeof lib_alertHistory;
   "lib/attachments": typeof lib_attachments;
+  "lib/botSettings": typeof lib_botSettings;
   "lib/builtInBot": typeof lib_builtInBot;
   "lib/clientAuth": typeof lib_clientAuth;
   "lib/clientRules": typeof lib_clientRules;

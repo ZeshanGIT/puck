@@ -99,6 +99,11 @@ export default defineSchema({
     // The pairing code, encrypted, for a signed-in pairing only, so the owner's phone can show it
     // for comparing with the terminal. Cleared when the request is approved or rejected.
     pairingCodeCipher: v.optional(v.string()),
+    // Owner settings (B1, B2). Epoch ms: while it is in the future the bot's alerts land under Needs you
+    // with no push (no sound, heads-up or full screen).
+    mutedUntil: v.optional(v.number()),
+    // Set by bots.remove. A removed bot cannot authenticate, is left out of bots.list, and keeps its history.
+    removedAt: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_publicId", ["id"])
