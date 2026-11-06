@@ -32,7 +32,6 @@ import {
   groupByDay,
   healthBanners,
   HISTORY_PAGE,
-  isNoBotsYet,
   knownBots,
   needsTitle,
   goThroughLabel,
@@ -45,8 +44,10 @@ import {
   type NeedItem,
   type WaitingAlert,
 } from "../homeModel";
+import { flockBots } from "../botsModel";
 import { loadLocalSettings } from "../localSettings";
 import { formatCode, fromText, requestLook, type PairingRequest } from "../pairingModel";
+import { useBots } from "../useBots";
 import { usePairingRequests } from "../usePairingRequests";
 import { openDndAccessSettings } from "../onboarding/dndAccess";
 import { ensureNotificationPermission, readNotificationRowState } from "../onboarding/notificationSetup";
@@ -350,7 +351,8 @@ function Flock({ bots }: { bots: readonly KnownBot[] }) {
 
 function FlockBlob({ bot }: { bot: KnownBot }) {
   const { botId, botName } = bot;
-  const look = useMemo(() => botLook({ botId, botName }), [botId, botName]);
+  const { colour } = bot;
+  const look = useMemo(() => botLook({ botId, botName, ...(colour === undefined ? {} : { colour }) }), [botId, botName, colour]);
   return <Blob bot={look} size={26} />;
 }
 
@@ -494,7 +496,13 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
     return needsYou(waiting, { now, queuedIds });
   }, [waiting, clientId, now, queuedKey]);
 
-  const bots = useMemo(() => knownBots(waiting ?? [], history), [waiting, history]);
+  // The flock and "no bots yet" come from the paired bots (`bots.list`); the legacy path with no
+  // client id has no list and keeps the derived data.
+  const botList = useBots(clientId);
+  const bots = useMemo(
+    () => (botList ? flockBots(botList) : knownBots(waiting ?? [], history)),
+    [botList, waiting, history],
+  );
   const historyStatus: HistoryStatus = !clientId
     ? "exhausted"
     : status === "LoadingFirstPage"
@@ -506,13 +514,7 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
         : status === "LoadingMore"
           ? "loadingMore"
           : "exhausted";
-  const noBots =
-    Boolean(clientId) &&
-    isNoBotsYet({
-      waiting,
-      history: status === "LoadingFirstPage" ? undefined : history,
-      historyDone: status === "Exhausted",
-    });
+  const noBots = Boolean(clientId) && botList !== undefined && botList.length === 0;
 
   return (
     <H1Home

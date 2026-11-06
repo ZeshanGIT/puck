@@ -21,6 +21,9 @@ import { AStack, type StackAnswer, type StackGone } from "./src/screens/AStack";
 import { DevGallery } from "./src/screens/DevGallery";
 import { H1Home } from "./src/screens/H1Home";
 import { H4DetailView } from "./src/screens/H4Detail";
+import { BotsHost, type BotsSource } from "./src/screens/BotsHost";
+import type { BotListItem } from "./src/botsModel";
+import type { BotBypass } from "./src/localSettings";
 import { PairingHost, type PairingSource, type PairingStart } from "./src/screens/PairingHost";
 import type { PairingRequest } from "./src/pairingModel";
 import {
@@ -32,6 +35,9 @@ import {
   freshSample,
   isHomeSample,
   isPairingSample,
+  isBotsSample,
+  freshBots,
+  BOTS_SAMPLE_NAMES,
   freshPairing,
   PAIRING_SAMPLE_NAMES,
   HOME_SAMPLE_NAMES,
@@ -211,6 +217,61 @@ function DevPairingFlow({
   return <PairingHost source={source} start={start} onClose={onClose} />;
 }
 
+/** B1 and B2 on fake bots (`sample=bots`, `bots-empty`, `bot`, `bot-muted`): every change works on the fake data. */
+function DevBots({ name }: { name: string }) {
+  const toast = useToast();
+  const [round, setRound] = useState(() => Date.now());
+  const sample = useMemo(() => freshBots(name, round), [name, round]);
+  const [bots, setBots] = useState<BotListItem[]>(() => sample?.bots ?? []);
+  const [bypass, setBypass] = useState<Record<string, BotBypass>>(() => sample?.bypass ?? {});
+  const { show } = toast;
+  const source = useMemo<BotsSource>(
+    () => ({
+      bots,
+      bypass,
+      mute: async (botId, until) => setBots((all) => all.map((bot) => (bot.botId === botId ? { ...bot, mutedUntil: until } : bot))),
+      setColour: async (botId, colour) => setBots((all) => all.map((bot) => (bot.botId === botId ? { ...bot, colour } : bot))),
+      setBypass: async (botId, change) =>
+        setBypass((all) => {
+          const next: BotBypass = { ...all[botId] };
+          if (change.dnd === null) delete next.dnd;
+          else if (change.dnd !== undefined) next.dnd = change.dnd;
+          if (change.silent === null) delete next.silent;
+          else if (change.silent !== undefined) next.silent = change.silent;
+          return { ...all, [botId]: next };
+        }),
+      remove: async (botId) => setBots((all) => all.filter((bot) => bot.botId !== botId)),
+      openSound: async (kind) => {
+        show(`Would open Android's ${kind} sound settings`);
+        return true;
+      },
+    }),
+    [bots, bypass, show],
+  );
+  if (!sample) return null;
+  return (
+    <View style={styles.root}>
+      <BotsHost
+        key={round}
+        source={source}
+        start={sample.start}
+        onPair={() => show("Would open the pairing flow")}
+        onClose={() => {
+          show("Sample over. Starting again");
+          setTimeout(() => {
+            const next = Date.now();
+            const fresh = freshBots(name, next);
+            setBots(fresh?.bots ?? []);
+            setBypass(fresh?.bypass ?? {});
+            setRound(next);
+          }, 1200);
+        }}
+      />
+      <Toast message={toast.message} visible={toast.visible} />
+    </View>
+  );
+}
+
 /** B3, B4 or B5 on fake data (`sample=pair-code`, `pair-approve`, `pair-approve-nocolour`, `pair-meet`). */
 function DevPairing({ name }: { name: string }) {
   const toast = useToast();
@@ -308,7 +369,7 @@ function DevAlertSample({ name }: { name: string }) {
     return (
       <View style={styles.root}>
         <Text style={styles.devNote}>
-          Unknown sample: {name}. Known: {[...Object.keys(ALERT_SAMPLES), ...Object.keys(ALERT_SAMPLE_GROUPS), ...HOME_SAMPLE_NAMES, ...DETAIL_SAMPLE_NAMES, ...PAIRING_SAMPLE_NAMES].join(", ")}.
+          Unknown sample: {name}. Known: {[...Object.keys(ALERT_SAMPLES), ...Object.keys(ALERT_SAMPLE_GROUPS), ...HOME_SAMPLE_NAMES, ...DETAIL_SAMPLE_NAMES, ...PAIRING_SAMPLE_NAMES, ...BOTS_SAMPLE_NAMES].join(", ")}.
         </Text>
       </View>
     );
@@ -346,6 +407,8 @@ export default function App() {
         <ConvexProvider client={convex}>
           {isHomeSample(alertLink.sample) ? (
             <DevHome key={alertLink.sample} name={alertLink.sample} />
+          ) : isBotsSample(alertLink.sample) ? (
+            <DevBots key={alertLink.sample} name={alertLink.sample} />
           ) : isPairingSample(alertLink.sample) ? (
             <DevPairing key={alertLink.sample} name={alertLink.sample} />
           ) : isDetailSample(alertLink.sample) ? (

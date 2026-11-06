@@ -106,6 +106,49 @@ export async function saveLocalSettings(change: Partial<LocalSettings>): Promise
   return next;
 }
 
+/* ------------------------------------------------------- per-bot overrides */
+
+/** A change to one bot's overrides: a mode sets it, `null` goes back to the default, `undefined` leaves it. */
+export interface BotBypassChange {
+  dnd?: BypassMode | null;
+  silent?: BypassMode | null;
+}
+
+/**
+ * The settings with one bot's overrides changed (B2's "Through Do Not Disturb" and "Through silent
+ * mode" chips). A bot left with no override has no entry. Pure: returns new settings.
+ */
+export function withBotBypass(settings: LocalSettings, botId: string, change: BotBypassChange): LocalSettings {
+  const before = settings.bots[botId] ?? {};
+  const next: BotBypass = { ...before };
+  if (change.dnd === null) delete next.dnd;
+  else if (change.dnd !== undefined) next.dnd = change.dnd;
+  if (change.silent === null) delete next.silent;
+  else if (change.silent !== undefined) next.silent = change.silent;
+  const bots = { ...settings.bots };
+  if (next.dnd === undefined && next.silent === undefined) delete bots[botId];
+  else bots[botId] = next;
+  return { ...settings, bots };
+}
+
+/** The settings without one bot's overrides (the bot was removed). */
+export function withoutBot(settings: LocalSettings, botId: string): LocalSettings {
+  if (!(botId in settings.bots)) return settings;
+  const bots = { ...settings.bots };
+  delete bots[botId];
+  return { ...settings, bots };
+}
+
+/** Stores a change to one bot's overrides and returns the new settings. */
+export async function saveBotBypass(botId: string, change: BotBypassChange): Promise<LocalSettings> {
+  return saveLocalSettings({ bots: withBotBypass(await loadLocalSettings(), botId, change).bots });
+}
+
+/** Forgets a removed bot's overrides. */
+export async function forgetBotBypass(botId: string): Promise<LocalSettings> {
+  return saveLocalSettings({ bots: withoutBot(await loadLocalSettings(), botId).bots });
+}
+
 /* ------------------------------------------------------------------- bypass */
 
 function modeAllows(mode: BypassMode, priority: AlertPriority): boolean {

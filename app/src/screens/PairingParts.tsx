@@ -12,13 +12,14 @@ export const MAX_FONT_SCALE = 1.3;
 const BACK = "M15 5l-7 7 7 7";
 
 /** `.nav`: 56 dp high, the back button, and an optional `h2` (20 / 800). */
-export function NavBar({ title, onBack }: { title?: string; onBack: () => void }) {
+export function NavBar({ title, onBack, backTestID }: { title?: string; onBack: () => void; backTestID?: string }) {
   const t = useTheme().tokens;
   return (
     <View style={styles.nav}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Back"
+        testID={backTestID}
         onPress={onBack}
         style={({ pressed }) => [styles.back, pressed ? { backgroundColor: t.fill } : null]}
       >

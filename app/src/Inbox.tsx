@@ -3,16 +3,19 @@ import { useQuery } from "convex/react";
 import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, StyleSheet, View } from "react-native";
 import type { PendingAlert } from "./ChoiceScreen";
+import { mutedBotIds, nextMuteExpiry, takeoverAlerts } from "./botsModel";
 import { readClientId } from "./clientStore";
 import { openFullScreenSettings, useFullScreenAccess } from "./fullScreenAccess";
 import { clearOpenedPairing, useOpenedPairingBotId } from "./pairingOpen";
 import { useOpenedQuestionId } from "./push";
+import { useBots } from "./useBots";
 import { readableError } from "./session";
 import { PuckBody, PuckTextLink, PuckTitle } from "./components/PuckButton";
 import { PuckScreen } from "./components/PuckScreen";
 import type { NeedItem } from "./homeModel";
 import { AlertHost, useAlertDeck } from "./screens/AlertHost";
 import { ConnectedH1Home } from "./screens/H1Home";
+import { ConnectedBotsHost } from "./screens/BotsHost";
 import { ConnectedPairingHost, type PairingStart } from "./screens/PairingHost";
 import { H4Detail } from "./screens/H4Detail";
 import { StackHost } from "./screens/StackHost";
@@ -88,13 +91,31 @@ function InboxBody({
     });
     return () => subscription.remove();
   }, []);
-  const visible = useMemo(
-    () => (pending === undefined || left.size === 0 ? pending : pending.filter((item) => !left.has(item.questionId))),
-    [pending, left],
-  );
-  // The alert on screen stays while its receipt or its A9 card is up, after it has left `pending`.
   // The alert a tap on a "Needs you" card chose, ahead of the one a notification opened.
   const [chosenId, setChosenId] = useState<string | null>(null);
+  // A muted bot's alerts do not take over the screen (no alert, not in the stack): they wait under
+  // Needs you. The push is already silent; this keeps the open app quiet too. A chosen alert always shows.
+  const bots = useBots(clientId);
+  const [muteClock, setMuteClock] = useState(() => Date.now());
+  useEffect(() => {
+    const refresh = () => setMuteClock(Date.now());
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    const expiry = bots === undefined ? null : nextMuteExpiry(bots, Date.now());
+    // setTimeout cannot wait longer than about 24 days; a longer mute is looked at again on the next change.
+    const timer = expiry === null ? null : setTimeout(refresh, Math.min(expiry - Date.now() + 50, 2_000_000_000));
+    return () => {
+      subscription.remove();
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [bots]);
+  const muted = useMemo(() => mutedBotIds(bots ?? [], muteClock), [bots, muteClock]);
+  const visible = useMemo(() => {
+    const awake = takeoverAlerts(pending, muted, chosenId ?? openedId);
+    return awake === undefined || left.size === 0 ? awake : awake.filter((item) => !left.has(item.questionId));
+  }, [pending, left, muted, chosenId, openedId]);
+  // The alert on screen stays while its receipt or its A9 card is up, after it has left `pending`.
   const deck = useAlertDeck(visible, chosenId ?? openedId);
   useEffect(() => {
     if (chosenId !== null && !deck.live.some((item) => item.questionId === chosenId)) setChosenId(null);
@@ -159,6 +180,10 @@ function InboxBody({
     setPairFlow({ kind: "approve", botId: openedPairing });
     clearOpenedPairing();
   }, [openedPairing]);
+  // B1 and B2 (the Bots screens), opened from Home's Bots icon. Pairing from B1 returns to B1.
+  const [botsOpen, setBotsOpen] = useState(false);
+  const openBots = useCallback(() => setBotsOpen(true), []);
+  const closeBots = useCallback(() => setBotsOpen(false), []);
   const openPairing = useCallback((botId: string) => setPairFlow({ kind: "approve", botId }), []);
   const startPairing = useCallback(() => setPairFlow({ kind: "code" }), []);
   const closePairing = useCallback(
@@ -188,7 +213,8 @@ function InboxBody({
     await fullScreen.refresh();
   }
 
-  if (pending === undefined) {
+  // With a client id, wait for the bot list too: until it is here a muted bot's alert cannot be told apart.
+  if (pending === undefined || (clientId && bots === undefined)) {
     return (
       <PuckScreen center>
         <PuckBody>Looking for alerts…</PuckBody>
@@ -227,6 +253,13 @@ function InboxBody({
       </View>
     );
   }
+  if (!alert && botsOpen) {
+    return (
+      <View style={styles.stack}>
+        <ConnectedBotsHost clientId={clientId} onOpenPairing={openPairing} onPair={startPairing} onClose={closeBots} />
+      </View>
+    );
+  }
   if (!alert) {
     // Home stays mounted under the detail (H4), so Back shows the list that is already loaded. While
     // the detail is up Home is hidden, so it takes no touches and is not read by a screen reader.
@@ -245,7 +278,7 @@ function InboxBody({
             onOpenNeed={openNeed}
             onGoThroughAll={goThroughAll}
             onOpenAlert={openDetail}
-            onBots={comingLater}
+            onBots={openBots}
             onSettings={comingLater}
             onPairBot={startPairing}
             onOpenPairing={openPairing}

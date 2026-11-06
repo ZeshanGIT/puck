@@ -8,6 +8,7 @@
  * Shapes are those of `alerts.waiting` and `alerts.history` (all times epoch ms).
  */
 import type { LocalSettings } from "./localSettings";
+import type { PaletteName } from "./ui/botTheme";
 import { answerSummary, clockLabel } from "./receiptCopy";
 
 /* ------------------------------------------------------------------ query shapes */
@@ -294,6 +295,8 @@ export function isNoBotsYet(input: {
 export interface KnownBot {
   botId: string;
   botName: string;
+  /** The bot's own colour when known (from `bots.list`); otherwise the flock derives one. */
+  colour?: PaletteName;
 }
 
 /**
