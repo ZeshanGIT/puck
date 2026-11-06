@@ -48,7 +48,9 @@ export type { CancelStep, ReleaseStep } from "./schedule";
 export { buildAnswerPayload } from "./payload";
 export { AlertValidationError, validateAnswer, validateCreateAlert, validatePairingInput } from "./validate";
 export {
+  CONVEX_TOKEN_TEMPLATE,
   ClerkSignInError,
+  ClerkTokenError,
   DEV_CLERK_FRONTEND_API,
   beginGoogleSignIn,
   callbackProblem,
@@ -57,9 +59,10 @@ export {
   clerkPublishableKey,
   hasClerkReturn,
   endClerkSession,
+  fetchConvexToken,
   finishGoogleSignIn,
   nonceFromCallback,
   readClerkAccount,
   signInWithGoogleOneTap,
 } from "./clerk";
-export type { ClerkAccount, ClerkSignInCode, GoogleSignInAttempt } from "./clerk";
+export type { ClerkAccount, ClerkSignInCode, ClerkTokenCode, GoogleSignInAttempt } from "./clerk";

@@ -9,6 +9,7 @@ import {
 } from "@puck/shared";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { CLIENT_PLATFORMS } from "./lib/clientRules";
 
 // v0 tables. See the vault spec: bots, the alert, and the answer payload.
 // Timestamps are Unix epoch milliseconds. Convex also adds _id and _creationTime.
@@ -34,6 +35,8 @@ export const option = v.object({
   label: v.string(),
   icon: v.optional(v.string()),
 });
+
+export const clientPlatform = v.union(...literals(CLIENT_PLATFORMS));
 
 export const answerChoice = v.object({
   id: v.string(),
@@ -67,6 +70,21 @@ export default defineSchema({
     pushToken: v.optional(v.string()),
     fullScreenAllowed: v.optional(v.boolean()),
   }).index("by_secretHash", ["secretHash"]),
+
+  // A signed-in app or CLI install. `userId` is the Clerk user id (the identity `subject`).
+  // The client id is this document's _id as a string. pushToken is the FCM registration token. Logs must not print it.
+  clients: defineTable({
+    userId: v.string(),
+    name: v.string(),
+    platform: clientPlatform,
+    pushToken: v.optional(v.string()),
+    fullScreenAllowed: v.optional(v.boolean()),
+    dndAccess: v.optional(v.boolean()),
+    lastSeenAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_name", ["userId", "name"]),
 
   alerts: defineTable({
     questionId: v.string(),

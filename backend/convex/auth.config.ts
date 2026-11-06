@@ -1,5 +1,6 @@
-import { DEV_CLERK_FRONTEND_API, DEVICE_JWT_AUDIENCE } from "@puck/shared";
+import { DEVICE_JWT_AUDIENCE } from "@puck/shared";
 import type { AuthConfig } from "convex/server";
+import { clerkIssuer } from "./lib/clientAuth";
 import { deviceJwtIssuer } from "./lib/deviceAuth";
 
 // Convex fetches this JWKS from the deployment's `.convex.site` URL.
@@ -7,9 +8,8 @@ import { deviceJwtIssuer } from "./lib/deviceAuth";
 const issuer = deviceJwtIssuer();
 
 // Clerk session tokens for Convex use the `convex` JWT template (`aud` is `convex`).
-// The phone still sends the device JWT. This provider is ready for a signed-in client.
-const runtime = globalThis as { process?: { env?: Record<string, string | undefined> } };
-const clerkDomain = (runtime.process?.env?.CLERK_FRONTEND_API_URL || `https://${DEV_CLERK_FRONTEND_API}`).replace(/\/+$/u, "");
+// `requireUser` in lib/clientAuth.ts checks the same issuer.
+const clerkDomain = clerkIssuer();
 
 export default {
   providers: [

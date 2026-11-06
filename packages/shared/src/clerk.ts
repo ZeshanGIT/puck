@@ -5,21 +5,43 @@
 /** Dev instance Frontend API host. Override from the environment when it changes. */
 export const DEV_CLERK_FRONTEND_API = "in-lemming-9901.clerk.accounts.dev";
 
+/** Name of the Clerk JWT template that `auth.config.ts` trusts (`aud` is `convex`). */
+export const CONVEX_TOKEN_TEMPLATE = "convex";
+
 const FAPI_VERSION = "2026-08-20";
 const CLERK_JS_VERSION = "6.41.0";
 
 export type ClerkSignInCode = "unreachable" | "signed-out" | "rejected";
 
+export type ClerkTokenCode = "unreachable" | "signed-out" | "template-missing" | "rejected";
+
+/** A failed session-token request. `template-missing` means the JWT template does not exist on the Clerk instance (a dashboard step). */
+export class ClerkTokenError extends Error {
+  readonly code: ClerkTokenCode;
+  /** HTTP status Clerk answered with, when it answered. */
+  readonly status?: number;
+
+  constructor(message: string, code: ClerkTokenCode, status?: number) {
+    super(message);
+    this.name = "ClerkTokenError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
 export class ClerkSignInError extends Error {
   readonly code: ClerkSignInCode;
   /** Clerk API error code when the Frontend API rejected the request. */
   readonly clerkCode?: string;
+  /** HTTP status Clerk answered with, when it answered. */
+  readonly status?: number;
 
-  constructor(message: string, code: ClerkSignInCode, clerkCode?: string) {
+  constructor(message: string, code: ClerkSignInCode, clerkCode?: string, status?: number) {
     super(message);
     this.name = "ClerkSignInError";
     this.code = code;
     this.clerkCode = clerkCode;
+    this.status = status;
   }
 }
 
@@ -255,6 +277,42 @@ export async function readClerkAccount(options: {
   return account;
 }
 
+/**
+ * A short-lived Clerk session token for Convex, from the JWT template named `convex`.
+ * The token is a secret: the caller passes it to `setAuth` and never logs it.
+ */
+export async function fetchConvexToken(options: {
+  frontendApi: string;
+  account: Pick<ClerkAccount, "clientJwt" | "devBrowser" | "sessionId">;
+  fetchImpl?: typeof fetch;
+}): Promise<string> {
+  const frontendApi = clerkFrontendApi(options.frontendApi);
+  const sessionId = options.account.sessionId;
+  if (!sessionId.startsWith("sess_")) throw new ClerkTokenError("not signed in", "signed-out");
+  let result: FapiResult;
+  try {
+    result = await fapi({
+      frontendApi,
+      fetchImpl: options.fetchImpl ?? fetch,
+      method: "POST",
+      path: `/client/sessions/${encodeURIComponent(sessionId)}/tokens/${CONVEX_TOKEN_TEMPLATE}`,
+      ...credential(options.account.clientJwt, options.account.devBrowser?.trim() ?? ""),
+    });
+  } catch (error) {
+    if (!(error instanceof ClerkSignInError)) throw error;
+    if (error.status === 404) {
+      throw new ClerkTokenError(`the Clerk JWT template "${CONVEX_TOKEN_TEMPLATE}" does not exist`, "template-missing", 404);
+    }
+    if (error.status === 401 || error.status === 403) throw new ClerkTokenError("not signed in", "signed-out", error.status);
+    throw new ClerkTokenError(error.message, error.code === "unreachable" ? "unreachable" : "rejected", error.status);
+  }
+  const jwt = record(result.body)?.jwt;
+  if (typeof jwt !== "string" || !jwt.startsWith("eyJ")) {
+    throw new ClerkTokenError("Clerk did not return a token", "rejected");
+  }
+  return jwt;
+}
+
 /** Ends the Clerk session. A network failure still lets the caller delete the local copy. */
 export async function endClerkSession(options: {
   frontendApi: string;
@@ -360,6 +418,7 @@ async function fapi(options: {
       safeMessage(parsed, signedOut ? "not signed in" : "could not sign in"),
       signedOut ? "signed-out" : "rejected",
       clerkApiErrorCode(parsed) ?? undefined,
+      response.status,
     );
   }
   const next = jwtFromAuthorization(response.headers.get("authorization"));

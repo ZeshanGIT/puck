@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
   ClerkSignInError,
+  ClerkTokenError,
   DEV_CLERK_FRONTEND_API,
   beginGoogleSignIn,
   clerkFrontendApi,
   clerkPublishableKey,
   endClerkSession,
+  fetchConvexToken,
   callbackProblem,
   clerkCallbackQuery,
   finishGoogleSignIn,
@@ -335,5 +337,97 @@ describe("endClerkSession", () => {
         throw new Error("offline");
       },
     });
+  });
+});
+
+describe("fetchConvexToken", () => {
+  const account = { clientJwt: CLIENT_JWT, sessionId: "sess_test" };
+  const TOKEN = `eyJhbGciOiJub25lIn0.${btoa(JSON.stringify({ aud: "convex" }))}.sig`;
+
+  test("posts to the convex template route and returns the jwt", async () => {
+    let method = "";
+    let path = "";
+    let auth = "";
+    const token = await fetchConvexToken({
+      frontendApi: HOST,
+      account,
+      fetchImpl: async (url, init) => {
+        method = String(init?.method);
+        path = new URL(String(url)).pathname;
+        auth = new Headers(init?.headers).get("authorization") ?? "";
+        return json({ object: "token", jwt: TOKEN }, 200, NEXT_JWT);
+      },
+    });
+    expect(token).toBe(TOKEN);
+    expect(method).toBe("POST");
+    expect(path).toBe("/v1/client/sessions/sess_test/tokens/convex");
+    expect(auth).toBe(`Bearer ${CLIENT_JWT}`);
+  });
+
+  test("a dev browser goes in the query and not in Authorization", async () => {
+    let auth = "unset";
+    let browser = "";
+    await fetchConvexToken({
+      frontendApi: HOST,
+      account: { ...account, devBrowser: "dvb_test" },
+      fetchImpl: async (url, init) => {
+        auth = new Headers(init?.headers).get("authorization") ?? "";
+        browser = new URL(String(url)).searchParams.get("__clerk_db_jwt") ?? "";
+        return json({ jwt: TOKEN }, 200);
+      },
+    });
+    expect(auth).toBe("");
+    expect(browser).toBe("dvb_test");
+  });
+
+  test("a 404 means the template is missing", async () => {
+    const error = await fetchConvexToken({
+      frontendApi: HOST,
+      account,
+      fetchImpl: async () => json({ errors: [{ code: "resource_not_found", message: "not found" }] }, 404),
+    }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ClerkTokenError);
+    expect(error).toMatchObject({ code: "template-missing", status: 404 });
+  });
+
+  test("a 401 means signed out", async () => {
+    const error = await fetchConvexToken({
+      frontendApi: HOST,
+      account,
+      fetchImpl: async () => json({ errors: [{ code: "authentication_invalid", message: "no" }] }, 401),
+    }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ClerkTokenError);
+    expect(error).toMatchObject({ code: "signed-out", status: 401 });
+  });
+
+  test("an unreachable Clerk is not signed out, and a bad body is rejected", async () => {
+    const offline = await fetchConvexToken({
+      frontendApi: HOST,
+      account,
+      fetchImpl: async () => {
+        throw new Error("offline");
+      },
+    }).catch((caught: unknown) => caught);
+    expect(offline).toMatchObject({ name: "ClerkTokenError", code: "unreachable" });
+    const bad = await fetchConvexToken({
+      frontendApi: HOST,
+      account,
+      fetchImpl: async () => json({ object: "token" }, 200),
+    }).catch((caught: unknown) => caught);
+    expect(bad).toMatchObject({ name: "ClerkTokenError", code: "rejected" });
+  });
+
+  test("a session id that is not a session is signed out without calling Clerk", async () => {
+    let called = false;
+    const error = await fetchConvexToken({
+      frontendApi: HOST,
+      account: { clientJwt: CLIENT_JWT, sessionId: "nope" },
+      fetchImpl: async () => {
+        called = true;
+        return json({});
+      },
+    }).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ code: "signed-out" });
+    expect(called).toBe(false);
   });
 });
