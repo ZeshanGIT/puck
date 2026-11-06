@@ -1,9 +1,23 @@
-import { cancelStep, isQuestionId, isoUtc, releaseStep, snoozeReleaseStep, type AlertExtras } from "@puck/shared";
-import { internalMutationGeneric, internalQueryGeneric, mutationGeneric, queryGeneric } from "convex/server";
+import {
+  cancelStep,
+  isQuestionId,
+  isoUtc,
+  releaseStep,
+  snoozeReleaseStep,
+  type AlertExtras,
+} from "@puck/shared";
+import {
+  internalMutationGeneric,
+  internalQueryGeneric,
+  mutationGeneric,
+  paginationOptsValidator,
+  queryGeneric,
+} from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { answerReceipt, buildTimeline, historyOutcome, isWaiting } from "./lib/alertHistory";
 import { getOrCreateBuiltInBot } from "./bots";
 import { requireDevice } from "./device";
 import { TEST_PAGE_OPTIONS, TEST_PAGE_QUESTION, decideTestPage } from "./lib/builtInBot";
@@ -16,8 +30,10 @@ import {
   alertExtraFields,
   alertStatus,
   answerChoice,
+  attachmentType,
   deliveryStatus,
   option,
+  optionTone,
   presentation,
   priority,
   selectionMode,
@@ -548,6 +564,307 @@ export const getStatus = internalQueryGeneric({
             lastError: answer.lastError ?? null,
           }
         : null,
+    };
+  },
+});
+
+/* ------------------------------------------------------------ Needs you, Earlier, H4 */
+
+const receiptLiteral = v.union(v.literal("pending"), v.literal("sent"), v.literal("delivered"), v.literal("failed"));
+const timelineKind = v.union(
+  v.literal("created"),
+  v.literal("snoozed"),
+  v.literal("answered"),
+  v.literal("delivered"),
+  v.literal("failed"),
+  v.literal("cancelled"),
+  v.literal("missed"),
+);
+
+const waitingAlert = v.object({
+  questionId: v.string(),
+  question: v.string(),
+  botId: v.string(),
+  botName: v.string(),
+  priority,
+  status: v.union(v.literal("pending"), v.literal("snoozed")),
+  presentation,
+  selectionMode,
+  snoozedUntil: v.union(v.number(), v.null()),
+  expiresAt: v.union(v.number(), v.null()),
+  createdAt: v.number(),
+});
+
+const MAX_WAITING = 50;
+
+/**
+ * Everything waiting on this client (Needs you, H1): pending alerts oldest first, then snoozed
+ * ones oldest first. Only alerts sent to this client (or to every client) and not past expiry.
+ * Snoozed alerts show whoever snoozed them, since the snooze is shared. At most 50.
+ */
+export const waiting = queryGeneric({
+  args: { clientId: v.string() },
+  returns: v.array(waitingAlert),
+  handler: async (ctx, args) => {
+    const client = await requireClient(ctx, args.clientId);
+    const now = Date.now();
+    const views: Array<{ status: "pending" | "snoozed"; view: WaitingView }> = [];
+    for (const status of ["pending", "snoozed"] as const) {
+      const rows = await ctx.db
+        .query("alerts")
+        .withIndex("by_status", (q) => q.eq("status", status))
+        .take(100);
+      const found: WaitingView[] = [];
+      for (const alert of rows) {
+        if (!alertIsForClient(alert.targetClientId, client._id)) continue;
+        if (!isWaiting(alert.status, alert.expiresAt ?? null, now)) continue;
+        const bot = await ctx.db.get(alert.botId);
+        if (!bot || bot.pairingState !== "paired") continue;
+        found.push({
+          questionId: alert.questionId,
+          question: alert.question,
+          botId: bot.id,
+          botName: bot.name,
+          priority: alert.priority,
+          status,
+          presentation: alert.presentation ?? "choice",
+          selectionMode: alert.selectionMode,
+          snoozedUntil: alert.snoozedUntil ?? null,
+          expiresAt: alert.expiresAt ?? null,
+          createdAt: alert.createdAt,
+        });
+      }
+      found.sort((a, b) => a.createdAt - b.createdAt);
+      for (const view of found) views.push({ status, view });
+    }
+    return views.slice(0, MAX_WAITING).map((entry) => entry.view);
+  },
+});
+
+type WaitingView = {
+  questionId: string;
+  question: string;
+  botId: string;
+  botName: string;
+  priority: string;
+  status: "pending" | "snoozed";
+  presentation: string;
+  selectionMode: string;
+  snoozedUntil: number | null;
+  expiresAt: number | null;
+  createdAt: number;
+};
+
+const historyItem = v.object({
+  questionId: v.string(),
+  question: v.string(),
+  botName: v.string(),
+  outcome: v.union(v.literal("answered"), v.literal("cancelled"), v.literal("missed")),
+  picks: v.array(v.string()),
+  customReply: v.union(v.string(), v.null()),
+  hasAttachments: v.boolean(),
+  answeredAt: v.union(v.number(), v.null()),
+  answeredByClientName: v.union(v.string(), v.null()),
+  deliveryStatus: v.union(deliveryStatus, v.null()),
+  createdAt: v.number(),
+});
+
+/**
+ * Earlier (H1, H4 history), newest first, one page at a time. Answered, cancelled and missed
+ * alerts only (`historyOutcome`). Convex pages over every alert in creation order and this
+ * client's history is picked out of each page, so a page can hold fewer than `numItems` rows.
+ * Continue while `isDone` is false, even when a page is empty.
+ */
+export const history = queryGeneric({
+  args: { clientId: v.string(), paginationOpts: paginationOptsValidator },
+  returns: v.object({
+    page: v.array(historyItem),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const client = await requireClient(ctx, args.clientId);
+    const now = Date.now();
+    // Pages are picked out of creation order per client; a per-client index is needed for many users.
+    const result = await ctx.db.query("alerts").order("desc").paginate(args.paginationOpts);
+    const page = [];
+    for (const alert of result.page) {
+      if (!alertIsForClient(alert.targetClientId, client._id)) continue;
+      const outcome = historyOutcome({ status: alert.status, expiresAt: alert.expiresAt ?? null }, now);
+      if (outcome === null) continue;
+      const bot = await ctx.db.get(alert.botId);
+      const answer = await answerForQuestion(ctx, alert.questionId);
+      const answeredBy = alert.answeredByClientId ? await ctx.db.get(alert.answeredByClientId) : null;
+      page.push({
+        questionId: alert.questionId,
+        question: alert.question,
+        botName: bot?.name ?? "the bot",
+        outcome,
+        picks: answer ? answer.answers.map((choice) => choice.label) : [],
+        customReply: answer?.customReply ?? null,
+        hasAttachments: (answer?.attachments?.length ?? 0) > 0,
+        answeredAt: answer?.answeredAt ?? null,
+        answeredByClientName: answeredBy?.name ?? null,
+        deliveryStatus: answer?.deliveryStatus ?? null,
+        createdAt: alert.createdAt,
+      });
+    }
+    return { page, isDone: result.isDone, continueCursor: result.continueCursor };
+  },
+});
+
+async function answerForQuestion(ctx: QueryCtx, questionId: string) {
+  return await ctx.db
+    .query("answers")
+    .withIndex("by_questionId", (q) => q.eq("questionId", questionId))
+    .unique();
+}
+
+const optionView = v.object({
+  id: v.string(),
+  label: v.string(),
+  icon: v.union(v.string(), v.null()),
+  desc: v.union(v.string(), v.null()),
+  tone: v.union(optionTone, v.null()),
+  rec: v.boolean(),
+  chosen: v.boolean(),
+});
+
+/** Plain shapes only: no storage ids and no URLs for attachments. */
+const answerDetail = v.object({
+  answerId: v.string(),
+  picks: v.array(v.string()),
+  customReply: v.union(v.string(), v.null()),
+  attachments: v.array(v.object({ name: v.string(), type: attachmentType, size: v.number() })),
+  answeredAt: v.number(),
+  answeredByClientName: v.union(v.string(), v.null()),
+});
+
+const deliveryDetail = v.object({
+  state: receiptLiteral,
+  attempts: v.number(),
+  lastError: v.union(v.string(), v.null()),
+});
+
+const LAST_ERROR_MAX = 200;
+
+/**
+ * One alert for H4: the alert itself, the answer and its delivery, the snoozes and a timeline.
+ * Null when it does not exist or was not sent to this client. `delivery` is null until answered.
+ */
+export const get = queryGeneric({
+  args: { clientId: v.string(), questionId: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      questionId: v.string(),
+      question: v.string(),
+      message: v.union(v.string(), v.null()),
+      details: v.union(v.string(), v.null()),
+      link: v.union(v.object({ label: v.string(), url: v.string() }), v.null()),
+      priority,
+      presentation,
+      selectionMode,
+      status: alertStatus,
+      options: v.array(optionView),
+      expiresAt: v.union(v.number(), v.null()),
+      createdAt: v.number(),
+      botId: v.string(),
+      botName: v.string(),
+      answer: v.union(answerDetail, v.null()),
+      delivery: v.union(deliveryDetail, v.null()),
+      snoozes: v.array(v.object({ at: v.number(), until: v.union(v.number(), v.null()) })),
+      timeline: v.array(v.object({ kind: timelineKind, at: v.number(), text: v.string() })),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const client = await requireClient(ctx, args.clientId);
+    const alert = await ctx.db
+      .query("alerts")
+      .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))
+      .unique();
+    if (!alert || !alertIsForClient(alert.targetClientId, client._id)) return null;
+    const bot = await ctx.db.get(alert.botId);
+    if (!bot) return null;
+    const now = Date.now();
+    const answer = await answerForQuestion(ctx, alert.questionId);
+    const answeredBy = alert.answeredByClientId ? await ctx.db.get(alert.answeredByClientId) : null;
+    const snoozeRows = await ctx.db
+      .query("snoozeEvents")
+      .withIndex("by_alert", (q) => q.eq("alertId", alert._id))
+      .collect();
+    const snoozes = snoozeRows
+      .map((row) => ({ at: row.snoozedAt, until: row.snoozedUntil }))
+      .sort((a, b) => a.at - b.at);
+    const picked = new Set((answer?.answers ?? []).map((choice) => choice.id));
+    const answeredByClientName = answeredBy?.name ?? null;
+    const lastError = answer?.lastError ? answer.lastError.slice(0, LAST_ERROR_MAX) : null;
+    return {
+      questionId: alert.questionId,
+      question: alert.question,
+      message: alert.message ?? null,
+      details: alert.details ?? null,
+      link: alert.link ?? null,
+      priority: alert.priority,
+      presentation: alert.presentation ?? "choice",
+      selectionMode: alert.selectionMode,
+      status: alert.status,
+      options: alert.options.map((entry: StoredOptionInput) => ({
+        id: entry.id,
+        label: entry.label,
+        icon: entry.icon ?? null,
+        desc: entry.desc ?? null,
+        tone: entry.tone ?? null,
+        rec: entry.rec === true,
+        chosen: picked.has(entry.id),
+      })),
+      expiresAt: alert.expiresAt ?? null,
+      createdAt: alert.createdAt,
+      botId: bot.id,
+      botName: bot.name,
+      answer: answer
+        ? {
+            answerId: answer._id as string,
+            picks: answer.answers.map((choice) => choice.label),
+            customReply: answer.customReply,
+            attachments: (answer.attachments ?? []).map((file) => ({
+              name: file.name,
+              type: file.type,
+              size: file.size,
+            })),
+            answeredAt: answer.answeredAt,
+            answeredByClientName,
+          }
+        : null,
+      delivery: answer
+        ? {
+            state: answerReceipt(answer),
+            attempts: answer.deliveryAttempts,
+            lastError,
+          }
+        : null,
+      snoozes,
+      timeline: buildTimeline(
+        {
+          botName: bot.name,
+          createdAt: alert.createdAt,
+          status: alert.status,
+          expiresAt: alert.expiresAt ?? null,
+          updatedAt: alert.updatedAt,
+          answer: answer
+            ? {
+                answeredAt: answer.answeredAt,
+                answeredByClientName,
+                deliveredAt: answer.deliveredAt ?? null,
+                deliveryStatus: answer.deliveryStatus,
+                deliveryAttempts: answer.deliveryAttempts,
+                lastError,
+              }
+            : null,
+          snoozes: snoozes.map((snooze) => ({ snoozedAt: snooze.at, snoozedUntil: snooze.until })),
+        },
+        now,
+      ),
     };
   },
 });

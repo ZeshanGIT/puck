@@ -12,6 +12,8 @@ import { internal } from "./_generated/api";
 import { requireDevice } from "./device";
 import { assertDistinctStorageIds, reconcileAttachment } from "./lib/attachments";
 import { requireClient } from "./lib/clientAuth";
+import { decideRetry } from "./lib/deliveryRetry";
+import { alertIsForClient } from "./lib/pushTargets";
 import { storedAttachment } from "./schema";
 
 const RECEIPT_STATES = v.union(v.literal("pending"), v.literal("sent"), v.literal("delivered"), v.literal("failed"));
@@ -196,5 +198,38 @@ export const receipt = queryGeneric({
       botName: bot?.name ?? "the bot",
       attempts: answer?.deliveryAttempts ?? 0,
     };
+  },
+});
+
+/**
+ * H4 Try again. Only a failed delivery can be retried: a delivered answer needs nothing, and a
+ * pending one is already on its way. At most one retry per 10 seconds per answer (`decideRetry`).
+ * The attempt count starts again from zero, so the four tries and their backoff run once more.
+ * The caller must be a client the alert was sent to; otherwise the answer is "not found".
+ */
+export const retryDelivery = mutationGeneric({
+  args: { clientId: v.string(), answerId: v.id("answers") },
+  returns: v.object({ answerId: v.string(), deliveryStatus: v.literal("pending") }),
+  handler: async (ctx, args) => {
+    const client = await requireClient(ctx, args.clientId);
+    const answer = await ctx.db.get(args.answerId);
+    if (!answer) throw new Error("answer not found");
+    const alert = await ctx.db.get(answer.alertId);
+    if (!alert || !alertIsForClient(alert.targetClientId, client._id)) throw new Error("answer not found");
+    const now = Date.now();
+    const decision = decideRetry(
+      { deliveryStatus: answer.deliveryStatus, lastRetryAt: answer.lastRetryAt ?? null },
+      now,
+    );
+    if (decision.action === "refuse") throw new Error(decision.message);
+    await ctx.db.patch(answer._id, {
+      deliveryStatus: "pending",
+      deliveryAttempts: 0,
+      lastError: undefined,
+      deliveredAt: undefined,
+      lastRetryAt: now,
+    });
+    await ctx.scheduler.runAfter(0, internal.delivery.deliver, { answerId: answer._id });
+    return { answerId: answer._id as string, deliveryStatus: "pending" as const };
   },
 });

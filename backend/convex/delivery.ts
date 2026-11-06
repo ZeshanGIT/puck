@@ -86,7 +86,7 @@ export const complete = internalMutationGeneric({
     const answer = await ctx.db.get(args.answerId);
     if (!answer || answer.deliveryStatus !== "pending") return null;
     // Patch, not replace, so the answer keeps its attachments. Undefined clears `lastError`.
-    await ctx.db.patch(answer._id, { deliveryStatus: "delivered", lastError: undefined });
+    await ctx.db.patch(answer._id, { deliveryStatus: "delivered", lastError: undefined, deliveredAt: Date.now() });
     return null;
   },
 });

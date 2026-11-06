@@ -159,6 +159,10 @@ export default defineSchema({
     lastError: v.optional(v.string()),
     // Reply attachments (Protocol changes section 3). Absent on a reply without any.
     attachments: v.optional(v.array(storedAttachment)),
+    // When the last manual retry (H4 Try again) started. Limits retries to one per 10 seconds.
+    lastRetryAt: v.optional(v.number()),
+    // When the bot took the answer (set by delivery.complete). Absent on rows from before it existed.
+    deliveredAt: v.optional(v.number()),
   })
     .index("by_alert", ["alertId"])
     .index("by_questionId", ["questionId"]),
