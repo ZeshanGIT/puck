@@ -3,6 +3,7 @@ import { useConvex } from "convex/react";
 import { canUseFullScreenIntent } from "puck-full-screen";
 import { useCallback, useEffect, useState } from "react";
 import { AppState } from "react-native";
+import { readClientId } from "./clientStore";
 import { openFullScreenSettings } from "./onboarding/fullScreenSetup";
 import { readableError } from "./session";
 
@@ -16,7 +17,9 @@ export function useFullScreenAccess(): { allowed: boolean | null; refresh: () =>
     const next = canUseFullScreenIntent();
     setAllowed(next);
     try {
-      await client.mutation(anyApi.device.setFullScreenAllowed, { allowed: next });
+      const clientId = await readClientId();
+      if (clientId) await client.mutation(anyApi.clients.setFlags, { clientId, fullScreenAllowed: next });
+      else await client.mutation(anyApi.device.setFullScreenAllowed, { allowed: next });
     } catch (error) {
       console.error(readableError(error));
     }

@@ -1,9 +1,10 @@
 import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
-import { Component, type ReactNode, useState } from "react";
+import { Component, type ReactNode, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { ChoiceScreen, type PendingAlert } from "./ChoiceScreen";
 import { SwipeScreen } from "./SwipeScreen";
+import { readClientId } from "./clientStore";
 import { openFullScreenSettings, useFullScreenAccess } from "./fullScreenAccess";
 import { PairingScreen } from "./Pairing";
 import { useOpenedQuestionId } from "./push";
@@ -51,7 +52,17 @@ function InboxBody({
   onDevReplayOnboarding?: () => void;
   onDevDesignGallery?: () => void;
 }) {
-  const pending = useQuery(anyApi.alerts.pending) as PendingAlert[] | undefined;
+  // undefined while the stored client id loads; null when this install has none (legacy device path).
+  const [clientId, setClientId] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    readClientId()
+      .then(setClientId)
+      .catch(() => setClientId(null));
+  }, []);
+  const pending = useQuery(
+    anyApi.alerts.pending,
+    clientId === undefined ? "skip" : clientId ? { clientId } : {},
+  ) as PendingAlert[] | undefined;
   const openedId = useOpenedQuestionId();
   const fullScreen = useFullScreenAccess();
   const [pairing, setPairing] = useState(false);

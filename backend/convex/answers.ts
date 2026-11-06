@@ -3,20 +3,24 @@ import { mutationGeneric } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { requireDevice } from "./device";
+import { requireClient } from "./lib/clientAuth";
 
 /**
  * Records Seshan's reply and schedules the webhook POST.
- * The caller must be the claimed device. There is still no user account.
+ * With `clientId` the caller is that signed-in client (Clerk identity) and the alert stores it.
+ * Without it the caller must be the claimed device (the legacy path).
  */
 export const record = mutationGeneric({
   args: {
     questionId: v.string(),
     optionIds: v.array(v.string()),
     customReply: v.optional(v.string()),
+    clientId: v.optional(v.string()),
   },
   returns: v.object({ questionId: v.string() }),
   handler: async (ctx, args) => {
-    await requireDevice(ctx);
+    const client = args.clientId === undefined ? null : await requireClient(ctx, args.clientId);
+    if (!client) await requireDevice(ctx);
     const alert = await ctx.db
       .query("alerts")
       .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))
@@ -49,7 +53,11 @@ export const record = mutationGeneric({
       deliveryStatus: "pending",
       deliveryAttempts: 0,
     });
-    await ctx.db.patch(alert._id, { status: "answered", updatedAt: answeredAt });
+    await ctx.db.patch(alert._id, {
+      status: "answered",
+      updatedAt: answeredAt,
+      ...(client ? { answeredByClientId: client._id } : {}),
+    });
     await ctx.scheduler.runAfter(0, internal.delivery.deliver, { answerId });
     return { questionId: alert.questionId };
   },

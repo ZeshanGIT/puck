@@ -3,8 +3,12 @@ import { internalMutationGeneric, internalQueryGeneric, queryGeneric } from "con
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { requireDevice } from "./device";
+import { requireClient } from "./lib/clientAuth";
 import { newQuestionId } from "./lib/crypto";
+import { alertIsForClient, selectPushTargets } from "./lib/pushTargets";
 import { alertStatus, answerChoice, deliveryStatus, option, presentation, priority, selectionMode } from "./schema";
+
+const MAX_PUSH_CLIENTS = 50;
 
 function storedOptions(options: AlertOption[]) {
   return options.map((entry) =>
@@ -21,6 +25,7 @@ export const create = internalMutationGeneric({
     presentation,
     options: v.array(option),
     scheduledFor: v.union(v.number(), v.null()),
+    targetClientId: v.optional(v.string()),
   },
   returns: v.object({ questionId: v.string() }),
   handler: async (ctx, args) => {
@@ -55,6 +60,7 @@ export const create = internalMutationGeneric({
       options: storedOptions(args.options),
       status,
       ...(scheduledFor === undefined ? {} : { scheduledFor }),
+      ...(args.targetClientId ? { targetClientId: args.targetClientId } : {}),
       createdAt: now,
       updatedAt: now,
     });
@@ -155,18 +161,23 @@ const pendingAlert = v.object({
   createdAt: v.number(),
 });
 
-/** Pending alerts for the claimed phone, oldest first. */
+/**
+ * Pending alerts, oldest first. With `clientId` the caller is that signed-in client and alerts
+ * aimed at another client are left out. Without it the caller must be the claimed device.
+ */
 export const pending = queryGeneric({
-  args: {},
+  args: { clientId: v.optional(v.string()) },
   returns: v.array(pendingAlert),
-  handler: async (ctx) => {
-    await requireDevice(ctx);
+  handler: async (ctx, args) => {
+    const client = args.clientId === undefined ? null : await requireClient(ctx, args.clientId);
+    if (!client) await requireDevice(ctx);
     const rows = await ctx.db
       .query("alerts")
       .withIndex("by_status", (q) => q.eq("status", "pending"))
       .take(32);
     const views = [];
     for (const alert of rows) {
+      if (client && !alertIsForClient(alert.targetClientId, client._id)) continue;
       const bot = await ctx.db.get(alert.botId);
       if (!bot || bot.pairingState !== "paired") continue;
       views.push({
@@ -186,7 +197,7 @@ export const pending = queryGeneric({
   },
 });
 
-/** What a heads-up needs. The token stays out of logs in the action that calls this. */
+/** What a heads-up needs. The tokens stay out of logs in the action that calls this. */
 export const loadForPush = internalQueryGeneric({
   args: { alertId: v.id("alerts") },
   returns: v.union(
@@ -196,12 +207,11 @@ export const loadForPush = internalQueryGeneric({
     }),
     v.object({
       send: v.literal(true),
-      pushToken: v.string(),
+      targets: v.array(v.object({ pushToken: v.string(), fullScreenAllowed: v.boolean() })),
       questionId: v.string(),
       question: v.string(),
       botName: v.string(),
       priority,
-      fullScreenAllowed: v.boolean(),
     }),
   ),
   handler: async (ctx, args) => {
@@ -209,17 +219,26 @@ export const loadForPush = internalQueryGeneric({
     if (!alert || alert.status !== "pending") return { send: false as const, reason: "not pending" as const };
     const bot = await ctx.db.get(alert.botId);
     if (!bot || bot.pairingState !== "paired") return { send: false as const, reason: "not pending" as const };
+    // The app is single-user for now, so every client is a target. The bot's owner arrives with pairing.
+    const clients = await ctx.db.query("clients").take(MAX_PUSH_CLIENTS);
     const device = await ctx.db.query("device").first();
-    const pushToken = device?.pushToken ?? "";
-    if (!pushToken) return { send: false as const, reason: "no device token" as const };
+    const targets = selectPushTargets({
+      clients: clients.map((row) => ({
+        id: row._id as string,
+        pushToken: row.pushToken,
+        fullScreenAllowed: row.fullScreenAllowed,
+      })),
+      device,
+      targetClientId: alert.targetClientId,
+    });
+    if (targets.length === 0) return { send: false as const, reason: "no device token" as const };
     return {
       send: true as const,
-      pushToken,
+      targets,
       questionId: alert.questionId,
       question: alert.question,
       botName: bot.name,
       priority: alert.priority,
-      fullScreenAllowed: device?.fullScreenAllowed === true,
     };
   },
 });

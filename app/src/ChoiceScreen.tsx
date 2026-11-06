@@ -1,7 +1,8 @@
 import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { readClientId } from "./clientStore";
 import { emptyChoice, replyPayload, tapOption, toggleAll, type ChoiceState } from "./choice";
 import { leaveIfLocked } from "puck-full-screen";
 import { readableError } from "./session";
@@ -21,10 +22,19 @@ export interface PendingAlert {
 
 export function ChoiceScreen({ alert, waiting }: { alert: PendingAlert; waiting: number }) {
   const record = useMutation(anyApi.answers.record);
+  const clientIdRef = useRef<string | null>(null);
   const [choice, setChoice] = useState<ChoiceState>(emptyChoice);
   const [customReply, setCustomReply] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    readClientId()
+      .then((id) => {
+        clientIdRef.current = id;
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     setChoice(emptyChoice);
@@ -42,8 +52,10 @@ export function ChoiceScreen({ alert, waiting }: { alert: PendingAlert; waiting:
         confirmId,
         customReply,
       });
+      const clientId = clientIdRef.current ?? (await readClientId());
       await record({
         questionId: alert.questionId,
+        ...(clientId ? { clientId } : {}),
         optionIds: payload.optionIds,
         ...(payload.customReply ? { customReply: payload.customReply } : {}),
       });

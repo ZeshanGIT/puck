@@ -96,6 +96,10 @@ export default defineSchema({
     options: v.array(option),
     status: alertStatus,
     scheduledFor: v.optional(v.number()),
+    // A client id (a `clients` _id as a string). When set, only that client is pushed and sees the alert.
+    targetClientId: v.optional(v.string()),
+    // The client that answered, when it answered through a Clerk identity. Legacy device answers leave it unset.
+    answeredByClientId: v.optional(v.id("clients")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

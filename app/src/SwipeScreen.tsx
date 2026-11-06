@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
 import { leaveIfLocked } from "puck-full-screen";
 import type { PendingAlert } from "./ChoiceScreen";
+import { readClientId } from "./clientStore";
 import { readableError } from "./session";
 import { swipeCanBegin, swipeChoice } from "./swipe";
 import { clearDisplayedAlert } from "./urgentDisplay";
@@ -20,12 +21,21 @@ export function SwipeScreen({ alert, waiting }: { alert: PendingAlert; waiting: 
   const questionIdRef = useRef(alert.questionId);
   const waitingRef = useRef(waiting);
   const recordRef = useRef(record);
+  const clientIdRef = useRef<string | null>(null);
   const readyRef = useRef(false);
   const trackingRef = useRef(false);
   optionsRef.current = alert.options;
   questionIdRef.current = alert.questionId;
   waitingRef.current = waiting;
   recordRef.current = record;
+
+  useEffect(() => {
+    readClientId()
+      .then((id) => {
+        clientIdRef.current = id;
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     drag.setValue(0);
@@ -80,7 +90,12 @@ export function SwipeScreen({ alert, waiting }: { alert: PendingAlert; waiting: 
     setBusy(true);
     setError(null);
     try {
-      await recordRef.current({ questionId: questionIdRef.current, optionIds: [optionId] });
+      const clientId = clientIdRef.current ?? (await readClientId());
+      await recordRef.current({
+        questionId: questionIdRef.current,
+        optionIds: [optionId],
+        ...(clientId ? { clientId } : {}),
+      });
       await clearDisplayedAlert(questionIdRef.current);
       if (waitingRef.current <= 1) leaveIfLocked();
     } catch (caught) {

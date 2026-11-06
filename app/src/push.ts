@@ -1,6 +1,7 @@
 import { anyApi } from "convex/server";
 import { useConvex } from "convex/react";
 import { useEffect, useState } from "react";
+import { readClientId } from "./clientStore";
 import { questionIdFromNotificationData } from "./pushOpen";
 import { readableError } from "./session";
 import { loadNotificationsModule, registerPushTokenWithConvex } from "./onboarding/notificationSetup";
@@ -15,17 +16,22 @@ export function usePushRegistration(enabled: boolean): boolean | null {
     let cancelled = false;
     let remove = () => {};
 
+    // Signed-in installs register the token on their client row; old installs use the device row.
+    async function registerToken(token: string) {
+      const clientId = await readClientId();
+      if (clientId) await client.mutation(anyApi.clients.setPushToken, { clientId, token });
+      else await client.mutation(anyApi.device.registerPushToken, { token });
+    }
+
     async function run() {
       const Notifications = await loadNotificationsModule();
       if (!Notifications || cancelled) return;
-      const ok = await registerPushTokenWithConvex(Notifications, async (token) => {
-        await client.mutation(anyApi.device.registerPushToken, { token });
-      });
+      const ok = await registerPushTokenWithConvex(Notifications, registerToken);
       if (cancelled) return;
       setGranted(ok);
       const subscription = Notifications.addPushTokenListener((next) => {
         if (typeof next.data !== "string") return;
-        void client.mutation(anyApi.device.registerPushToken, { token: next.data }).catch((error: unknown) => {
+        registerToken(next.data).catch((error: unknown) => {
           console.error(readableError(error));
         });
       });

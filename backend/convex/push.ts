@@ -4,6 +4,7 @@ import { internalActionGeneric } from "convex/server";
 import { v } from "convex/values";
 import { importPKCS8, SignJWT } from "jose";
 import { internal } from "./_generated/api";
+import { pushSummary } from "./lib/pushTargets";
 import { fcmBody, fcmErrorStatus, readServiceAccount } from "./lib/fcm";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -42,9 +43,9 @@ async function googleAccessToken(clientEmail: string, privateKey: string): Promi
 }
 
 /**
- * Sends one heads-up for a pending alert.
- * Failures are logged without the service account or the device token.
- * The alert stays pending so the open app can still show it.
+ * Sends the heads-up for a pending alert to every target, one FCM message each.
+ * Failures are logged without the service account or any device token, and one failing
+ * target does not stop the others. The alert stays pending so the open app can still show it.
  */
 export const send = internalActionGeneric({
   args: { alertId: v.id("alerts") },
@@ -60,36 +61,44 @@ export const send = internalActionGeneric({
       console.log("push skipped: firebase is not configured");
       return null;
     }
+    let account;
+    let accessToken;
     try {
-      const account = readServiceAccount(raw);
-      const accessToken = await googleAccessToken(account.clientEmail, account.privateKey);
-      const response = await fetch(`https://fcm.googleapis.com/v1/projects/${account.projectId}/messages:send`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${accessToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(
-          fcmBody({
-            pushToken: target.pushToken,
-            questionId: target.questionId,
-            question: target.question,
-            botName: target.botName,
-            priority: target.priority,
-            fullScreen: target.fullScreenAllowed,
-          }),
-        ),
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!response.ok) {
-        console.log(`push failed: ${fcmErrorStatus(await response.text())}`);
-        return null;
-      }
-      console.log("push sent");
-      return null;
+      account = readServiceAccount(raw);
+      accessToken = await googleAccessToken(account.clientEmail, account.privateKey);
     } catch {
       console.log("push failed: request");
       return null;
     }
+    const url = `https://fcm.googleapis.com/v1/projects/${account.projectId}/messages:send`;
+    let sent = 0;
+    for (const entry of target.targets) {
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(
+            fcmBody({
+              pushToken: entry.pushToken,
+              questionId: target.questionId,
+              question: target.question,
+              botName: target.botName,
+              priority: target.priority,
+              fullScreen: entry.fullScreenAllowed,
+            }),
+          ),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (response.ok) sent += 1;
+        else console.log(`push failed: ${fcmErrorStatus(await response.text())}`);
+      } catch {
+        console.log("push failed: request");
+      }
+    }
+    console.log(pushSummary(sent, target.targets.length));
+    return null;
   },
 });
