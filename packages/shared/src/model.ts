@@ -66,8 +66,19 @@ export const PRESENTATIONS = ["choice", "swipe"] as const;
 
 export type Presentation = (typeof PRESENTATIONS)[number];
 
-/** A swipe alert has the first option on the left and the second on the right. */
-export const SWIPE_OPTION_COUNT = 2;
+/**
+ * A swipe alert takes one or two options. With two, the first is on the left and the second on
+ * the right. With one, the other side is Puck's Snooze (Q17).
+ */
+export const SWIPE_MAX_OPTIONS = 2;
+
+/** Old name for `SWIPE_MAX_OPTIONS`, kept so existing imports still compile. */
+export const SWIPE_OPTION_COUNT = SWIPE_MAX_OPTIONS;
+
+/** Option tones. `destructive` is shown red and needs an unlock on the lock screen (Q9, Q10). */
+export const OPTION_TONES = ["destructive"] as const;
+
+export type OptionTone = (typeof OPTION_TONES)[number];
 
 export const PAIRING_STATES = ["pending", "paired"] as const;
 
@@ -100,6 +111,37 @@ export interface AlertOption {
   id: string;
   label: string;
   icon?: string;
+  /** Description under the label. */
+  desc?: string;
+  tone?: OptionTone;
+  /** RECOMMENDED tag. At most one option per alert may have it. */
+  rec?: boolean;
+}
+
+/** "Open in ..." pill on an alert. */
+export interface AlertLink {
+  label: string;
+  url: string;
+}
+
+/**
+ * Optional alert fields added after v0. Each is omitted when absent, so old payloads and old
+ * stored alerts keep their shape.
+ */
+export interface AlertExtras {
+  /** Short text under the question. Basic formatting. */
+  message?: string;
+  /** Longer text behind Show more. */
+  details?: string;
+  link?: AlertLink;
+  /** Epoch ms. After this the alert is Missed and can't be answered. */
+  expiresAt?: number;
+  /** How long an urgent alert rings. The phone defaults to 60. */
+  ringSeconds?: number;
+  speak?: boolean;
+  bypassDnd?: boolean;
+  bypassSilent?: boolean;
+  requiresUnlock?: boolean;
 }
 
 /** One selected option inside an answer payload. Icons are not sent back. */
@@ -125,7 +167,7 @@ export interface AnswerPayload {
 }
 
 /** Body accepted by `POST /alerts`. */
-export interface CreateAlertInput {
+export interface CreateAlertInput extends AlertExtras {
   question: string;
   priority: Priority;
   selectionMode: SelectionMode;

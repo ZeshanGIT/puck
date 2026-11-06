@@ -1,17 +1,21 @@
 import {
   MAX_OPTIONS,
+  type AlertExtras,
+  type AlertLink,
   type AlertOption,
   type AnswerChoice,
   type CreateAlertInput,
+  type OptionTone,
   type PairingInput,
   type Priority,
   type RecordedAnswer,
   type Presentation,
   type SelectionMode,
+  OPTION_TONES,
   PRESENTATIONS,
   PRIORITIES,
   SELECTION_MODES,
-  SWIPE_OPTION_COUNT,
+  SWIPE_MAX_OPTIONS,
 } from "./model";
 
 export class AlertValidationError extends Error {
@@ -24,6 +28,18 @@ export class AlertValidationError extends Error {
 const OPTION_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 const NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
+/** Control characters except tab, newline and carriage return, for multi-line text. */
+const MULTILINE_CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
+const HTTP_URL_PREFIX = /^https?:\/\//i;
+const WHITESPACE = /\s/;
+
+const MESSAGE_MAX = 1_000;
+const DETAILS_MAX = 4_000;
+const OPTION_DESC_MAX = 200;
+const LINK_LABEL_MAX = 40;
+const LINK_URL_MAX = 2_048;
+const RING_SECONDS_MIN = 5;
+const RING_SECONDS_MAX = 600;
 
 function fail(message: string): never {
   throw new AlertValidationError(message);
@@ -58,6 +74,42 @@ function isPresentation(value: string): value is Presentation {
   return (PRESENTATIONS as readonly string[]).includes(value);
 }
 
+function isTone(value: string): value is OptionTone {
+  return (OPTION_TONES as readonly string[]).includes(value);
+}
+
+/** Undefined and null both mean absent. Anything else must be a real boolean. */
+function optionalBoolean(value: unknown, field: string): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "boolean") fail(`${field} must be true or false`);
+  return value;
+}
+
+/** Multi-line text, trimmed. Undefined and null mean absent. */
+function multilineText(value: unknown, field: string, max: number): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const text = requiredString(value, field).trim();
+  if (!text) fail(`${field} is required`);
+  if (text.length > max) fail(`${field} is too long`);
+  if (MULTILINE_CONTROL_CHARS.test(text)) fail(`${field} contains a control character`);
+  return text;
+}
+
+function parseLink(value: unknown): AlertLink {
+  if (!isRecord(value)) fail("link must be an object with label and url");
+  const label = oneLine(requiredString(value.label, "link.label"), "link.label", LINK_LABEL_MAX);
+  const url = requiredString(value.url, "link.url");
+  if (!HTTP_URL_PREFIX.test(url)) fail("link.url must start with https:// or http://");
+  if (url.length > LINK_URL_MAX) fail("link.url is too long");
+  if (WHITESPACE.test(url)) fail("link.url must not contain whitespace");
+  try {
+    new URL(url);
+  } catch {
+    fail("link.url must be a valid URL");
+  }
+  return { label, url };
+}
+
 function parseOption(value: unknown, index: number): AlertOption {
   if (!isRecord(value)) fail(`options[${index}] must be an object`);
   const id = oneLine(requiredString(value.id, `options[${index}].id`), `options[${index}].id`, 32);
@@ -69,11 +121,59 @@ function parseOption(value: unknown, index: number): AlertOption {
     `options[${index}].label`,
     80,
   );
-  if (value.icon === undefined || value.icon === null || value.icon === "") {
-    return { id, label };
+  const option: AlertOption = { id, label };
+  if (value.icon !== undefined && value.icon !== null && value.icon !== "") {
+    option.icon = oneLine(requiredString(value.icon, `options[${index}].icon`), `options[${index}].icon`, 32);
   }
-  const icon = oneLine(requiredString(value.icon, `options[${index}].icon`), `options[${index}].icon`, 32);
-  return { id, label, icon };
+  if (value.desc !== undefined && value.desc !== null) {
+    option.desc = oneLine(requiredString(value.desc, `options[${index}].desc`), `options[${index}].desc`, OPTION_DESC_MAX);
+  }
+  if (value.tone !== undefined && value.tone !== null) {
+    const toneRaw = requiredString(value.tone, `options[${index}].tone`);
+    if (!isTone(toneRaw)) fail(`options[${index}].tone must be destructive`);
+    option.tone = toneRaw;
+  }
+  const rec = optionalBoolean(value.rec, `options[${index}].rec`);
+  if (rec !== undefined) option.rec = rec;
+  return option;
+}
+
+/** The optional alert fields. Only the ones present in the body are set on the result. */
+function parseExtras(body: Record<string, unknown>): AlertExtras {
+  const extras: AlertExtras = {};
+  const message = multilineText(body.message, "message", MESSAGE_MAX);
+  if (message !== undefined) extras.message = message;
+  // Blank details are treated as absent, the same as a blank icon.
+  const blankDetails = typeof body.details === "string" && body.details.trim() === "";
+  const details = blankDetails ? undefined : multilineText(body.details, "details", DETAILS_MAX);
+  if (details !== undefined) extras.details = details;
+  if (body.link !== undefined && body.link !== null) extras.link = parseLink(body.link);
+  if (body.expiresAt !== undefined && body.expiresAt !== null) {
+    if (typeof body.expiresAt !== "number" || !Number.isInteger(body.expiresAt) || body.expiresAt <= 0) {
+      fail("expiresAt must be epoch milliseconds");
+    }
+    extras.expiresAt = body.expiresAt;
+  }
+  if (body.ringSeconds !== undefined && body.ringSeconds !== null) {
+    if (
+      typeof body.ringSeconds !== "number" ||
+      !Number.isInteger(body.ringSeconds) ||
+      body.ringSeconds < RING_SECONDS_MIN ||
+      body.ringSeconds > RING_SECONDS_MAX
+    ) {
+      fail(`ringSeconds must be a whole number from ${RING_SECONDS_MIN} to ${RING_SECONDS_MAX}`);
+    }
+    extras.ringSeconds = body.ringSeconds;
+  }
+  const speak = optionalBoolean(body.speak, "speak");
+  if (speak !== undefined) extras.speak = speak;
+  const bypassDnd = optionalBoolean(body.bypassDnd, "bypassDnd");
+  if (bypassDnd !== undefined) extras.bypassDnd = bypassDnd;
+  const bypassSilent = optionalBoolean(body.bypassSilent, "bypassSilent");
+  if (bypassSilent !== undefined) extras.bypassSilent = bypassSilent;
+  const requiresUnlock = optionalBoolean(body.requiresUnlock, "requiresUnlock");
+  if (requiresUnlock !== undefined) extras.requiresUnlock = requiresUnlock;
+  return extras;
 }
 
 /** Check a `POST /alerts` body. Priority and selection mode are required. */
@@ -99,9 +199,14 @@ export function validateCreateAlert(body: unknown): CreateAlertInput {
     if (ids.has(option.id)) fail(`duplicate option id ${option.id}`);
     ids.add(option.id);
   }
+  if (options.filter((option) => option.rec === true).length > 1) {
+    fail("at most one option can be recommended (rec)");
+  }
   if (presentation === "swipe") {
     if (selectionRaw !== "single") fail("a swipe alert is a single choice");
-    if (options.length !== SWIPE_OPTION_COUNT) fail("a swipe alert needs exactly two options");
+    if (options.length < 1 || options.length > SWIPE_MAX_OPTIONS) {
+      fail("a swipe alert needs one or two options");
+    }
   }
   let scheduledFor: number | null = null;
   if (body.scheduledFor !== undefined && body.scheduledFor !== null) {
@@ -117,7 +222,19 @@ export function validateCreateAlert(body: unknown): CreateAlertInput {
     presentation,
     options,
     scheduledFor,
+    ...parseExtras(body),
   };
+}
+
+/**
+ * Checks the alert's times against `now` (epoch ms). Only the create path calls it: an alert
+ * stored earlier may legitimately be past its expiry by the time it is read.
+ */
+export function validateAlertTiming(input: Pick<CreateAlertInput, "scheduledFor" | "expiresAt">, now: number): void {
+  if (input.expiresAt !== undefined && input.expiresAt <= now) fail("expiresAt must be in the future");
+  if (input.expiresAt !== undefined && input.scheduledFor !== null && input.expiresAt <= input.scheduledFor) {
+    fail("expiresAt must be after scheduledFor");
+  }
 }
 
 /**

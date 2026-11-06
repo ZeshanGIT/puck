@@ -8,6 +8,7 @@ export {
   DEVICE_JWT_KID,
   DEVICE_TOKEN_TTL_SECONDS,
   MAX_OPTIONS,
+  OPTION_TONES,
   PAIRING_CODE_PATTERN,
   PENDING_BOT_CAP,
   FULL_SCREEN_KIND,
@@ -18,6 +19,7 @@ export {
   PRIORITIES,
   QUESTION_ID_PATTERN,
   SELECTION_MODES,
+  SWIPE_MAX_OPTIONS,
   SWIPE_OPTION_COUNT,
   botPublicId,
   deliveryBackoffMs,
@@ -29,8 +31,11 @@ export {
   questionIdFromBytes,
 } from "./model";
 export type {
+  AlertExtras,
+  AlertLink,
   AlertOption,
   AlertStatus,
+  OptionTone,
   AnswerChoice,
   AnswerPayload,
   AnswerSource,
@@ -46,7 +51,13 @@ export type {
 export { cancelStep, releaseStep } from "./schedule";
 export type { CancelStep, ReleaseStep } from "./schedule";
 export { buildAnswerPayload } from "./payload";
-export { AlertValidationError, validateAnswer, validateCreateAlert, validatePairingInput } from "./validate";
+export {
+  AlertValidationError,
+  validateAlertTiming,
+  validateAnswer,
+  validateCreateAlert,
+  validatePairingInput,
+} from "./validate";
 export {
   CONVEX_TOKEN_TEMPLATE,
   ClerkSignInError,

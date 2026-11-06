@@ -1,4 +1,4 @@
-import { cancelStep, isQuestionId, isoUtc, releaseStep, type AlertOption } from "@puck/shared";
+import { cancelStep, isQuestionId, isoUtc, releaseStep, type AlertExtras } from "@puck/shared";
 import { internalMutationGeneric, internalQueryGeneric, mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -8,25 +8,33 @@ import { getOrCreateBuiltInBot } from "./bots";
 import { requireDevice } from "./device";
 import { TEST_PAGE_OPTIONS, TEST_PAGE_QUESTION, decideTestPage } from "./lib/builtInBot";
 import { requireClient } from "./lib/clientAuth";
+import { pickAlertExtras, storedOption, type StoredOptionInput } from "./lib/alertFields";
 import { newQuestionId } from "./lib/crypto";
 import { alertIsForClient, selectPushTargets } from "./lib/pushTargets";
-import { alertStatus, answerChoice, deliveryStatus, option, presentation, priority, selectionMode } from "./schema";
+import {
+  alertExtraFields,
+  alertStatus,
+  answerChoice,
+  deliveryStatus,
+  option,
+  presentation,
+  priority,
+  selectionMode,
+} from "./schema";
 
 const MAX_PUSH_CLIENTS = 50;
 
-function storedOptions(options: AlertOption[]) {
-  return options.map((entry) =>
-    entry.icon === undefined ? { id: entry.id, label: entry.label } : entry,
-  );
+function storedOptions(options: StoredOptionInput[]) {
+  return options.map((entry) => storedOption(entry));
 }
 
-interface NewAlert {
+interface NewAlert extends AlertExtras {
   question: string;
   // Same loose types the schema validators give (`literals()` widens to string).
   priority: string;
   selectionMode: string;
   presentation: string;
-  options: AlertOption[];
+  options: StoredOptionInput[];
   scheduledFor: number | null;
   targetClientId?: string;
 }
@@ -65,6 +73,7 @@ async function insertAlert(ctx: MutationCtx, botDocId: Id<"bots">, args: NewAler
     status,
     ...(scheduledFor === undefined ? {} : { scheduledFor }),
     ...(args.targetClientId ? { targetClientId: args.targetClientId } : {}),
+    ...pickAlertExtras(args),
     createdAt: now,
     updatedAt: now,
   });
@@ -86,6 +95,7 @@ export const create = internalMutationGeneric({
     options: v.array(option),
     scheduledFor: v.union(v.number(), v.null()),
     targetClientId: v.optional(v.string()),
+    ...alertExtraFields,
   },
   returns: v.object({ questionId: v.string() }),
   handler: async (ctx, args) => {
@@ -256,6 +266,7 @@ const pendingAlert = v.object({
   selectionMode,
   presentation,
   options: v.array(option),
+  ...alertExtraFields,
   createdAt: v.number(),
 });
 
@@ -287,6 +298,7 @@ export const pending = queryGeneric({
         selectionMode: alert.selectionMode,
         presentation: alert.presentation ?? "choice",
         options: alert.options,
+        ...pickAlertExtras(alert),
         createdAt: alert.createdAt,
       });
     }
@@ -365,6 +377,7 @@ export const getStatus = internalQueryGeneric({
       options: v.array(option),
       status: alertStatus,
       scheduledFor: v.union(v.number(), v.null()),
+      ...alertExtraFields,
       createdAt: v.number(),
       answer: v.union(answerView, v.null()),
     }),
@@ -391,6 +404,7 @@ export const getStatus = internalQueryGeneric({
       options: alert.options,
       status: alert.status,
       scheduledFor: alert.scheduledFor ?? null,
+      ...pickAlertExtras(alert),
       createdAt: alert.createdAt,
       answer: answer
         ? {

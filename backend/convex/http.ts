@@ -3,12 +3,14 @@ import {
   DEVICE_JWT_AUDIENCE,
   isBotId,
   isQuestionId,
+  validateAlertTiming,
   validateCreateAlert,
 } from "@puck/shared";
 import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { pickAlertExtras } from "./lib/alertFields";
 import { hashSecret } from "./lib/crypto";
 import {
   DeviceAuthError,
@@ -135,6 +137,7 @@ http.route({
     let input;
     try {
       input = validateCreateAlert(body);
+      validateAlertTiming(input, Date.now());
     } catch (error) {
       if (error instanceof AlertValidationError) return json({ error: error.message }, 400);
       throw error;
@@ -147,6 +150,7 @@ http.route({
       presentation: input.presentation,
       options: input.options,
       scheduledFor: input.scheduledFor,
+      ...pickAlertExtras(input),
     });
     return json({ questionId: created.questionId }, 201);
   }),

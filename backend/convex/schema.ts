@@ -2,6 +2,7 @@ import {
   ALERT_STATUSES,
   ANSWER_SOURCES,
   DELIVERY_STATUSES,
+  OPTION_TONES,
   PAIRING_STATES,
   PRESENTATIONS,
   PRIORITIES,
@@ -30,11 +31,31 @@ export const pairingState = v.union(...literals(PAIRING_STATES));
 export const answerSource = v.union(...literals(ANSWER_SOURCES));
 export const deliveryStatus = v.union(...literals(DELIVERY_STATUSES));
 
+export const optionTone = v.union(...literals(OPTION_TONES));
+
 export const option = v.object({
   id: v.string(),
   label: v.string(),
   icon: v.optional(v.string()),
+  desc: v.optional(v.string()),
+  tone: v.optional(optionTone),
+  rec: v.optional(v.boolean()),
 });
+
+export const alertLink = v.object({ label: v.string(), url: v.string() });
+
+/** The optional alert fields added after v0 (see `AlertExtras` in @puck/shared). All optional. */
+export const alertExtraFields = {
+  message: v.optional(v.string()),
+  details: v.optional(v.string()),
+  link: v.optional(alertLink),
+  expiresAt: v.optional(v.number()),
+  ringSeconds: v.optional(v.number()),
+  speak: v.optional(v.boolean()),
+  bypassDnd: v.optional(v.boolean()),
+  bypassSilent: v.optional(v.boolean()),
+  requiresUnlock: v.optional(v.boolean()),
+};
 
 export const clientPlatform = v.union(...literals(CLIENT_PLATFORMS));
 
@@ -102,6 +123,7 @@ export default defineSchema({
     targetClientId: v.optional(v.string()),
     // The client that answered, when it answered through a Clerk identity. Legacy device answers leave it unset.
     answeredByClientId: v.optional(v.id("clients")),
+    ...alertExtraFields,
     createdAt: v.number(),
     updatedAt: v.number(),
   })
