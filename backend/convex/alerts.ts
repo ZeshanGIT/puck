@@ -1,8 +1,10 @@
-import { isQuestionId, isoUtc, type AlertOption } from "@puck/shared";
-import { internalMutationGeneric, internalQueryGeneric } from "convex/server";
+import { cancelStep, isQuestionId, isoUtc, releaseStep, type AlertOption } from "@puck/shared";
+import { internalMutationGeneric, internalQueryGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
+import { requireDevice } from "./device";
 import { newQuestionId } from "./lib/crypto";
-import { alertStatus, answerChoice, deliveryStatus, option, priority, selectionMode } from "./schema";
+import { alertStatus, answerChoice, deliveryStatus, option, presentation, priority, selectionMode } from "./schema";
 
 function storedOptions(options: AlertOption[]) {
   return options.map((entry) =>
@@ -16,6 +18,7 @@ export const create = internalMutationGeneric({
     question: v.string(),
     priority,
     selectionMode,
+    presentation,
     options: v.array(option),
     scheduledFor: v.union(v.number(), v.null()),
   },
@@ -42,19 +45,182 @@ export const create = internalMutationGeneric({
     const now = Date.now();
     const scheduledFor = args.scheduledFor === null ? undefined : args.scheduledFor;
     const status = scheduledFor !== undefined && scheduledFor > now ? "scheduled" : "pending";
-    await ctx.db.insert("alerts", {
+    const alertId = await ctx.db.insert("alerts", {
       questionId,
       botId: args.botDocId,
       question: args.question,
       priority: args.priority,
       selectionMode: args.selectionMode,
+      presentation: args.presentation,
       options: storedOptions(args.options),
       status,
       ...(scheduledFor === undefined ? {} : { scheduledFor }),
       createdAt: now,
       updatedAt: now,
     });
+    if (status === "pending") {
+      await ctx.scheduler.runAfter(0, internal.push.send, { alertId });
+    } else if (scheduledFor !== undefined) {
+      await ctx.scheduler.runAt(scheduledFor, internal.alerts.release, { alertId });
+    }
     return { questionId };
+  },
+});
+
+/** Turns a scheduled alert into a pending one and sends the same push as a new alert. */
+export const release = internalMutationGeneric({
+  args: { alertId: v.id("alerts") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const alert = await ctx.db.get(args.alertId);
+    if (!alert) return null;
+    const now = Date.now();
+    const step = releaseStep(alert.status, alert.scheduledFor ?? null, now);
+    if (step === "skip") return null;
+    if (step === "wait" && alert.scheduledFor !== undefined) {
+      await ctx.scheduler.runAt(alert.scheduledFor, internal.alerts.release, { alertId: alert._id });
+      return null;
+    }
+    if (step !== "pending") return null;
+    await ctx.db.patch(alert._id, { status: "pending", updatedAt: now });
+    await ctx.scheduler.runAfter(0, internal.push.send, { alertId: alert._id });
+    return null;
+  },
+});
+
+/** Cancels a pending or scheduled alert owned by this bot. An answer stays stored. */
+export const cancel = internalMutationGeneric({
+  args: { botDocId: v.id("bots"), questionId: v.string() },
+  returns: v.object({ questionId: v.string(), status: v.literal("cancelled") }),
+  handler: async (ctx, args) => {
+    const alert = await ctx.db
+      .query("alerts")
+      .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))
+      .unique();
+    if (!alert || alert.botId !== args.botDocId) throw new Error("alert not found");
+    const step = cancelStep(alert.status);
+    if (step === "rejected") throw new Error("alert is already answered");
+    if (step === "cancelled") {
+      await ctx.db.patch(alert._id, { status: "cancelled", updatedAt: Date.now() });
+    }
+    return { questionId: alert.questionId, status: "cancelled" as const };
+  },
+});
+
+const listedAlert = v.object({
+  questionId: v.string(),
+  question: v.string(),
+  status: alertStatus,
+  priority,
+  scheduledFor: v.union(v.number(), v.null()),
+  createdAt: v.number(),
+});
+
+/** Pending and scheduled alerts for one bot, soonest first. */
+export const listForBot = internalQueryGeneric({
+  args: { botDocId: v.id("bots") },
+  returns: v.array(listedAlert),
+  handler: async (ctx, args) => {
+    const pending = await ctx.db
+      .query("alerts")
+      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .take(50);
+    const scheduled = await ctx.db
+      .query("alerts")
+      .withIndex("by_status", (q) => q.eq("status", "scheduled"))
+      .take(50);
+    return [...pending, ...scheduled]
+      .filter((alert) => alert.botId === args.botDocId)
+      .map((alert) => ({
+        questionId: alert.questionId,
+        question: alert.question,
+        status: alert.status,
+        priority: alert.priority,
+        scheduledFor: alert.scheduledFor ?? null,
+        createdAt: alert.createdAt,
+      }))
+      .sort((a, b) => (a.scheduledFor ?? a.createdAt) - (b.scheduledFor ?? b.createdAt));
+  },
+});
+
+const pendingAlert = v.object({
+  questionId: v.string(),
+  question: v.string(),
+  botId: v.string(),
+  botName: v.string(),
+  priority,
+  selectionMode,
+  presentation,
+  options: v.array(option),
+  createdAt: v.number(),
+});
+
+/** Pending alerts for the claimed phone, oldest first. */
+export const pending = queryGeneric({
+  args: {},
+  returns: v.array(pendingAlert),
+  handler: async (ctx) => {
+    await requireDevice(ctx);
+    const rows = await ctx.db
+      .query("alerts")
+      .withIndex("by_status", (q) => q.eq("status", "pending"))
+      .take(32);
+    const views = [];
+    for (const alert of rows) {
+      const bot = await ctx.db.get(alert.botId);
+      if (!bot || bot.pairingState !== "paired") continue;
+      views.push({
+        questionId: alert.questionId,
+        question: alert.question,
+        botId: bot.id,
+        botName: bot.name,
+        priority: alert.priority,
+        selectionMode: alert.selectionMode,
+        presentation: alert.presentation ?? "choice",
+        options: alert.options,
+        createdAt: alert.createdAt,
+      });
+    }
+    views.sort((a, b) => a.createdAt - b.createdAt);
+    return views;
+  },
+});
+
+/** What a heads-up needs. The token stays out of logs in the action that calls this. */
+export const loadForPush = internalQueryGeneric({
+  args: { alertId: v.id("alerts") },
+  returns: v.union(
+    v.object({
+      send: v.literal(false),
+      reason: v.union(v.literal("not pending"), v.literal("no device token")),
+    }),
+    v.object({
+      send: v.literal(true),
+      pushToken: v.string(),
+      questionId: v.string(),
+      question: v.string(),
+      botName: v.string(),
+      priority,
+      fullScreenAllowed: v.boolean(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const alert = await ctx.db.get(args.alertId);
+    if (!alert || alert.status !== "pending") return { send: false as const, reason: "not pending" as const };
+    const bot = await ctx.db.get(alert.botId);
+    if (!bot || bot.pairingState !== "paired") return { send: false as const, reason: "not pending" as const };
+    const device = await ctx.db.query("device").first();
+    const pushToken = device?.pushToken ?? "";
+    if (!pushToken) return { send: false as const, reason: "no device token" as const };
+    return {
+      send: true as const,
+      pushToken,
+      questionId: alert.questionId,
+      question: alert.question,
+      botName: bot.name,
+      priority: alert.priority,
+      fullScreenAllowed: device?.fullScreenAllowed === true,
+    };
   },
 });
 
@@ -78,6 +244,7 @@ export const getStatus = internalQueryGeneric({
       botId: v.string(),
       priority,
       selectionMode,
+      presentation,
       options: v.array(option),
       status: alertStatus,
       scheduledFor: v.union(v.number(), v.null()),
@@ -103,6 +270,7 @@ export const getStatus = internalQueryGeneric({
       botId: bot.id,
       priority: alert.priority,
       selectionMode: alert.selectionMode,
+      presentation: alert.presentation ?? "choice",
       options: alert.options,
       status: alert.status,
       scheduledFor: alert.scheduledFor ?? null,

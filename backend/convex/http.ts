@@ -144,10 +144,43 @@ http.route({
       question: input.question,
       priority: input.priority,
       selectionMode: input.selectionMode,
+      presentation: input.presentation,
       options: input.options,
       scheduledFor: input.scheduledFor,
     });
     return json({ questionId: created.questionId }, 201);
+  }),
+});
+
+http.route({
+  path: "/alerts",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const auth = await authenticate(ctx, request);
+    if (auth instanceof Response) return auth;
+    const alerts = await ctx.runQuery(internal.alerts.listForBot, { botDocId: auth.botDocId });
+    return json(alerts, 200);
+  }),
+});
+
+http.route({
+  pathPrefix: "/alerts/",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const auth = await authenticate(ctx, request);
+    if (auth instanceof Response) return auth;
+    const match = /^\/alerts\/([^/]+)\/cancel$/u.exec(new URL(request.url).pathname);
+    const questionId = match ? decodeURIComponent(match[1] ?? "") : "";
+    if (!isQuestionId(questionId)) return json({ error: "alert not found" }, 404);
+    try {
+      const cancelled = await ctx.runMutation(internal.alerts.cancel, {
+        botDocId: auth.botDocId,
+        questionId,
+      });
+      return json(cancelled, 200);
+    } catch (error) {
+      return alertFailure(error);
+    }
   }),
 });
 
@@ -170,6 +203,13 @@ http.route({
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function alertFailure(error: unknown): Response {
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("not found")) return json({ error: "alert not found" }, 404);
+  if (message.includes("already answered")) return json({ error: "alert is already answered" }, 409);
+  throw error;
 }
 
 function claimFailure(error: unknown): Response {

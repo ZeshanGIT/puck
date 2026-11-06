@@ -3,6 +3,7 @@ import {
   ANSWER_SOURCES,
   DELIVERY_STATUSES,
   PAIRING_STATES,
+  PRESENTATIONS,
   PRIORITIES,
   SELECTION_MODES,
 } from "@puck/shared";
@@ -22,6 +23,7 @@ function literals<const T extends readonly string[]>(values: T) {
 
 export const priority = v.union(...literals(PRIORITIES));
 export const selectionMode = v.union(...literals(SELECTION_MODES));
+export const presentation = v.union(...literals(PRESENTATIONS));
 export const alertStatus = v.union(...literals(ALERT_STATUSES));
 export const pairingState = v.union(...literals(PAIRING_STATES));
 export const answerSource = v.union(...literals(ANSWER_SOURCES));
@@ -56,11 +58,14 @@ export default defineSchema({
     .index("by_pairingState", ["pairingState"]),
 
   // One phone. The secret is stored only as a hash. A second claim is rejected.
+  // pushToken is the FCM registration token. Logs must not print it.
   device: defineTable({
     id: v.string(),
     secretHash: v.string(),
     tokenId: v.string(),
     claimedAt: v.number(),
+    pushToken: v.optional(v.string()),
+    fullScreenAllowed: v.optional(v.boolean()),
   }).index("by_secretHash", ["secretHash"]),
 
   alerts: defineTable({
@@ -69,6 +74,7 @@ export default defineSchema({
     question: v.string(),
     priority,
     selectionMode,
+    presentation: v.optional(presentation),
     options: v.array(option),
     status: alertStatus,
     scheduledFor: v.optional(v.number()),

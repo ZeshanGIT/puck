@@ -1,4 +1,4 @@
-import { internalMutationGeneric, queryGeneric } from "convex/server";
+import { internalMutationGeneric, mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
@@ -8,6 +8,7 @@ import {
   assertSetupCodeHash,
   deviceJwtIssuer,
 } from "./lib/deviceAuth";
+import { isPushToken } from "./lib/fcm";
 
 type DeviceReadCtx = MutationCtx | QueryCtx;
 
@@ -61,6 +62,40 @@ export const session = queryGeneric({
       if (error instanceof Error && error.message === "unauthorized") return null;
       throw error;
     }
+  },
+});
+
+/**
+ * Stores the FCM registration token for this phone.
+ * The argument is not written to logs.
+ */
+export const registerPushToken = mutationGeneric({
+  args: { token: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireDevice(ctx);
+    if (!isPushToken(args.token)) throw new Error("push token is not valid");
+    const device = await deviceRow(ctx);
+    if (!device) throw new Error("unauthorized");
+    if (device.pushToken === args.token) return null;
+    await ctx.db.patch(device._id, { pushToken: args.token });
+    console.log("push token registered");
+    return null;
+  },
+});
+
+/** Remembers whether this phone may cover the lock screen. The log does not include the token. */
+export const setFullScreenAllowed = mutationGeneric({
+  args: { allowed: v.boolean() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireDevice(ctx);
+    const device = await deviceRow(ctx);
+    if (!device) throw new Error("unauthorized");
+    if (device.fullScreenAllowed === args.allowed) return null;
+    await ctx.db.patch(device._id, { fullScreenAllowed: args.allowed });
+    console.log(args.allowed ? "full screen access on" : "full screen access off");
+    return null;
   },
 });
 

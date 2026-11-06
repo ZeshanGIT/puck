@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@puck/shared": "workspace:*",
-    "convex": "^1.48.0"
+    "convex": "^1.48.0",
+    "jose": "^6.2.14"
   },
   "devDependencies": {
     "typescript": "~6.0.3"

@@ -16,6 +16,8 @@ import type * as device from "../device.js";
 import type * as http from "../http.js";
 import type * as lib_crypto from "../lib/crypto.js";
 import type * as lib_deviceAuth from "../lib/deviceAuth.js";
+import type * as lib_fcm from "../lib/fcm.js";
+import type * as push from "../push.js";
 
 import type {
   ApiFromModules,
@@ -32,6 +34,8 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "lib/crypto": typeof lib_crypto;
   "lib/deviceAuth": typeof lib_deviceAuth;
+  "lib/fcm": typeof lib_fcm;
+  push: typeof push;
 }>;
 
 /**
