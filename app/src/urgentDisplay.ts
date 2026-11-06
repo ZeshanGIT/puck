@@ -14,6 +14,9 @@ import {
   type BypassDecision,
   type LocalSettings,
 } from "./localSettings";
+import { openPairingFromNotificationData } from "./pairingOpen";
+import { displayPairing } from "./pairingDisplay";
+import { pairingPush } from "./pairingPayload";
 import { speechText, startSpeaking } from "./speak";
 
 /**
@@ -272,6 +275,8 @@ export async function clearDisplayedAlert(questionId: string): Promise<void> {
 
 /** Notifee events for the urgent notification: swiping it away silences it, a tap keeps the voice. */
 export async function handleNotifeeEvent(event: Event): Promise<void> {
+  // A tap on a pairing request (N7) opens B4 for it (`pairingOpen.ts`).
+  if (event.type === EventType.PRESS && openPairingFromNotificationData(event.detail.notification?.data)) return;
   const questionId = event.detail.notification?.data?.questionId;
   if (typeof questionId !== "string") return;
   if (event.type === EventType.DISMISSED) {
@@ -289,6 +294,12 @@ export async function handleUrgentTask(data: unknown): Promise<void> {
   const dismissed = dismissedQuestionId(data);
   if (dismissed) {
     await clearDisplayedAlert(dismissed);
+    return;
+  }
+  // A bot asks to pair (N7): an ordinary shade notification, not a ring.
+  const pairing = pairingPush(data);
+  if (pairing) {
+    await displayPairing(pairing);
     return;
   }
   const alert = fullscreenAlert(data);

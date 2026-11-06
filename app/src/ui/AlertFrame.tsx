@@ -156,7 +156,7 @@ function parseRgba(colour: string): { rgb: string; alpha: number } {
  * `.alert .wash`: `radial-gradient(120% 60% at 50% 18%, wash 0%, transparent 62%)`; at night
  * `radial-gradient(90% 46% at 50% 34%, glow 0%, transparent 70%)`.
  */
-function Wash({ colour, night }: { colour: string; night: boolean }) {
+export function Wash({ colour, night }: { colour: string; night: boolean }) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;

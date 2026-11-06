@@ -13,7 +13,8 @@ export function dismissedQuestionId(payload: unknown): string | null {
   return typeof questionId === "string" && isQuestionId(questionId) ? questionId : null;
 }
 
-function notificationData(payload: unknown): Record<string, unknown> | null {
+/** The data object of a push, whichever shape it arrives in (Expo's `dataString`, nested `data`, or bare). */
+export function notificationData(payload: unknown): Record<string, unknown> | null {
   const record = asRecord(payload);
   if (!record) return null;
   const nested = asRecord(record.data);

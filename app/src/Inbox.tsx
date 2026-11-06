@@ -5,7 +5,7 @@ import { AppState, StyleSheet, View } from "react-native";
 import type { PendingAlert } from "./ChoiceScreen";
 import { readClientId } from "./clientStore";
 import { openFullScreenSettings, useFullScreenAccess } from "./fullScreenAccess";
-import { PairingScreen } from "./Pairing";
+import { clearOpenedPairing, useOpenedPairingBotId } from "./pairingOpen";
 import { useOpenedQuestionId } from "./push";
 import { readableError } from "./session";
 import { PuckBody, PuckTextLink, PuckTitle } from "./components/PuckButton";
@@ -13,6 +13,7 @@ import { PuckScreen } from "./components/PuckScreen";
 import type { NeedItem } from "./homeModel";
 import { AlertHost, useAlertDeck } from "./screens/AlertHost";
 import { ConnectedH1Home } from "./screens/H1Home";
+import { ConnectedPairingHost, type PairingStart } from "./screens/PairingHost";
 import { H4Detail } from "./screens/H4Detail";
 import { StackHost } from "./screens/StackHost";
 import { Toast, useToast } from "./ui/Toast";
@@ -149,7 +150,24 @@ function InboxBody({
     setStacking(false);
   }, []);
   const fullScreen = useFullScreenAccess();
-  const [pairing, setPairing] = useState(false);
+  // The pairing flow (B3, B4, B5): "Pair a bot" opens the keypad; a PAIRING card or a tap on the pairing
+  // notification opens B4 for that bot. It waits behind an alert that is on screen.
+  const [pairFlow, setPairFlow] = useState<PairingStart | null>(null);
+  const openedPairing = useOpenedPairingBotId();
+  useEffect(() => {
+    if (openedPairing === null) return;
+    setPairFlow({ kind: "approve", botId: openedPairing });
+    clearOpenedPairing();
+  }, [openedPairing]);
+  const openPairing = useCallback((botId: string) => setPairFlow({ kind: "approve", botId }), []);
+  const startPairing = useCallback(() => setPairFlow({ kind: "code" }), []);
+  const closePairing = useCallback(
+    (message?: string) => {
+      setPairFlow(null);
+      if (message) toast.show(message);
+    },
+    [toast.show],
+  );
   // A new alert on screen takes over from an open detail.
   const hasAlert = deck.alert !== null;
   useEffect(() => {
@@ -170,9 +188,6 @@ function InboxBody({
     await fullScreen.refresh();
   }
 
-  if (pairing) {
-    return <PairingScreen onClose={() => setPairing(false)} />;
-  }
   if (pending === undefined) {
     return (
       <PuckScreen center>
@@ -205,6 +220,13 @@ function InboxBody({
     );
   }
   const alert = deck.alert;
+  if (!alert && pairFlow) {
+    return (
+      <View style={styles.stack}>
+        <ConnectedPairingHost clientId={clientId} start={pairFlow} onClose={closePairing} />
+      </View>
+    );
+  }
   if (!alert) {
     // Home stays mounted under the detail (H4), so Back shows the list that is already loaded. While
     // the detail is up Home is hidden, so it takes no touches and is not read by a screen reader.
@@ -225,10 +247,11 @@ function InboxBody({
             onOpenAlert={openDetail}
             onBots={comingLater}
             onSettings={comingLater}
-            onPairBot={() => setPairing(true)}
+            onPairBot={startPairing}
+            onOpenPairing={openPairing}
             footer={
               <View style={styles.footer}>
-                <PuckTextLink label="Pair a bot" onPress={() => setPairing(true)} />
+                <PuckTextLink label="Pair a bot" onPress={startPairing} />
                 {email ? <PuckBody>Signed in as {email}.</PuckBody> : null}
                 {__DEV__ && onDevReplayOnboarding ? (
                   <PuckTextLink label="Dev: replay onboarding" onPress={onDevReplayOnboarding} />

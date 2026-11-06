@@ -3,12 +3,15 @@
  * waiting line, "Enter a code instead" (the old pairing screen as the fallback) and "I'll do it
  * later". Prototype: `SCREENS.firstbot` and the `.code` and `.cap` CSS.
  *
- * The pairing request showing up here by itself (B4) needs a pending-pairings query that the
- * backend does not have yet, so the waiting line stays a waiting line for now.
+ * The pairing request shows up here by itself: when `bots.pairingRequests` has one, B4 opens over
+ * this screen (a request he backed out of stays off it); approving it ends onboarding at B5's Done.
+ * "Enter a code instead" is B3, the typed-code fallback (a CLI that is not signed in).
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { PairingScreen } from "../Pairing";
+import { readClientId } from "../clientStore";
+import { ConnectedPairingHost, type PairingStart } from "./PairingHost";
+import { usePairingRequests } from "../usePairingRequests";
 import { Caption, CopyIcon, HeroText, OnboardingFrame, WaitingLine } from "../onboarding/parts";
 import { Btn } from "../ui/Btn";
 import { useTheme } from "../ui/theme";
@@ -17,9 +20,37 @@ const COMMAND = "puck add sheldon --colour coral";
 
 export function O4FirstBot({ onFinish }: { onFinish: () => void }) {
   const t = useTheme().tokens;
-  const [entering, setEntering] = useState(false);
+  // undefined while the stored client id loads; null when this install has none (typed codes only).
+  const [clientId, setClientId] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    readClientId()
+      .then(setClientId)
+      .catch(() => setClientId(null));
+  }, []);
+  const requests = usePairingRequests(clientId);
+  const [flow, setFlow] = useState<PairingStart | null>(null);
+  // Requests he has already looked at and backed out of, so they do not open again by themselves.
+  const dismissed = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (flow !== null || !requests) return;
+    const next = requests.find((request) => !dismissed.current.has(request.botId));
+    if (next) setFlow({ kind: "approve", botId: next.botId });
+  }, [flow, requests]);
 
-  if (entering) return <PairingScreen onClose={() => setEntering(false)} />;
+  if (flow) {
+    return (
+      <ConnectedPairingHost
+        clientId={clientId}
+        start={flow}
+        onPaired={onFinish}
+        onClose={() => {
+          if (flow.kind === "approve") dismissed.current.add(flow.botId);
+          else for (const request of requests ?? []) dismissed.current.add(request.botId);
+          setFlow(null);
+        }}
+      />
+    );
+  }
 
   return (
     <OnboardingFrame>
@@ -34,7 +65,7 @@ export function O4FirstBot({ onFinish }: { onFinish: () => void }) {
       <WaitingLine>Waiting for a bot…</WaitingLine>
       <View style={styles.spacer} />
       <View style={styles.bottom}>
-        <Btn label="Enter a code instead" variant="line" onPress={() => setEntering(true)} />
+        <Btn label="Enter a code instead" variant="line" onPress={() => setFlow({ kind: "code" })} />
         <Btn label="I'll do it later" variant="ghost" onPress={onFinish} />
       </View>
     </OnboardingFrame>

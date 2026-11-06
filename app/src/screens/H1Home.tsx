@@ -46,6 +46,8 @@ import {
   type WaitingAlert,
 } from "../homeModel";
 import { loadLocalSettings } from "../localSettings";
+import { formatCode, fromText, requestLook, type PairingRequest } from "../pairingModel";
+import { usePairingRequests } from "../usePairingRequests";
 import { openDndAccessSettings } from "../onboarding/dndAccess";
 import { ensureNotificationPermission, readNotificationRowState } from "../onboarding/notificationSetup";
 import { Caption, CopyIcon, HeroText, OnboardingFrame } from "../onboarding/parts";
@@ -96,18 +98,26 @@ export interface H1HomeProps {
   onBots: () => void;
   onSettings: () => void;
   onPairBot: () => void;
+  /** Open pairing requests (P6): PAIRING cards, first in "Needs you". */
+  pairings?: readonly PairingRequest[];
+  /** A tap on a PAIRING card: B4 for that bot. */
+  onOpenPairing?: (botId: string) => void;
   /** Under everything: sign out, the dev links. */
   footer?: ReactNode;
 }
 
 export function H1Home(props: H1HomeProps) {
-  const { banners, onBanner, needs, history, historyStatus, bots, noBots, now } = props;
+  const { banners, onBanner, needs, history, historyStatus, bots, now } = props;
+  const pairings = props.pairings ?? [];
+  // A waiting pairing request is the first bot coming in: H2's "run this command" has done its job.
+  const noBots = props.noBots && pairings.length === 0;
   const t = useTheme().tokens;
   const groups = useMemo(() => groupByDay(history ?? [], now), [history, now]);
   const idByName = useMemo(() => new Map(bots.map((bot) => [bot.botName, bot.botId])), [bots]);
   const stackable = needs ? stackableCount(needs) : 0;
   const live = false; // P8: becomes "a live activity is running".
-  const allClear = !noBots && needs !== undefined && needs.length === 0 && !live;
+  const allClear = !noBots && needs !== undefined && needs.length === 0 && pairings.length === 0 && !live;
+  const needCount = (needs?.length ?? 0) + pairings.length;
 
   return (
     <OnboardingFrame>
@@ -123,16 +133,19 @@ export function H1Home(props: H1HomeProps) {
 
         {noBots ? <NoBots onPairBot={props.onPairBot} /> : null}
 
-        {needs && needs.length > 0 ? (
+        {needCount > 0 ? (
           <>
-            <Section label={needsTitle(needs.length)} />
+            <Section label={needsTitle(needCount)} />
             <View style={styles.needs}>
-              {/* P6: pairing requests (PAIRING cards) go first in this list. */}
-              {needs.map((item) => (
+              {/* Pairing requests (PAIRING cards) go first in this list. */}
+              {pairings.map((request) => (
+                <PairingRow key={request.botId} request={request} onPress={() => props.onOpenPairing?.(request.botId)} />
+              ))}
+              {(needs ?? []).map((item) => (
                 <NeedRow key={item.questionId} item={item} now={now} onPress={() => props.onOpenNeed(item)} />
               ))}
             </View>
-            {stackable > 1 ? (
+            {needs && stackable > 1 ? (
               <View style={styles.all}>
                 <Btn label={goThroughLabel(stackable, needs.length)} variant="line" onPress={props.onGoThroughAll} />
               </View>
@@ -277,6 +290,22 @@ function NeedRow({ item, now, onPress }: { item: NeedItem; now: number; onPress:
   );
 }
 
+/** A PAIRING card: `needs.push(...)` for `S.pending` in the prototype's `SCREENS.home`. */
+function PairingRow({ request, onPress }: { request: PairingRequest; onPress: () => void }) {
+  const look = useMemo(() => requestLook(request), [request]);
+  return (
+    <NeedCard
+      bot={look}
+      name={request.name}
+      question="Wants to page you"
+      tag={{ label: "PAIRING" }}
+      meta={`From ${fromText(request.addedFrom)} · check code ${formatCode(request.pairingCode)}`}
+      leading={<Blob bot={look} size={44} />}
+      onPress={onPress}
+    />
+  );
+}
+
 function HistoryRow({ row, botId, onPress }: { row: HistoryRowModel; botId: string; onPress: () => void }) {
   const t = useTheme().tokens;
   const { botName } = row;
@@ -361,6 +390,8 @@ export interface ConnectedH1HomeProps {
   onBots: () => void;
   onSettings: () => void;
   onPairBot: () => void;
+  /** A tap on a PAIRING card: B4 for that bot. */
+  onOpenPairing?: (botId: string) => void;
   footer?: ReactNode;
 }
 
@@ -439,6 +470,7 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
   const { clientId } = props;
   const now = useNow();
   const health = useHealthBanners({ notifications: props.notifications, fullScreenAllowed: props.fullScreenAllowed });
+  const pairings = usePairingRequests(clientId);
 
   const waiting = useQuery(anyApi.alerts.waiting, clientId ? { clientId } : "skip") as WaitingAlert[] | undefined;
   const paged = usePaginatedQuery(anyApi.alerts.history, clientId ? { clientId } : "skip", {
@@ -499,6 +531,8 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
       onBots={props.onBots}
       onSettings={props.onSettings}
       onPairBot={props.onPairBot}
+      pairings={pairings ?? []}
+      onOpenPairing={props.onOpenPairing}
       footer={props.footer}
     />
   );

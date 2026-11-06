@@ -12,6 +12,7 @@ import { A7_SAMPLES } from "./a7";
 import { ALERT_SAMPLE_GROUPS, freshGroup } from "./a8";
 import { DETAIL_SAMPLE_NAMES, freshDetail, isDetailSample } from "./detail";
 import { freshHome, HOME_SAMPLE_NAMES, isHomeSample } from "./home";
+import { freshPairing, isPairingSample, PAIRING_SAMPLE_NAMES } from "./pairing";
 
 export const ALERT_SAMPLES: Record<string, PendingAlert> = {
   ...A1_SAMPLES,
@@ -43,3 +44,6 @@ export { freshHome, HOME_SAMPLE_NAMES, isHomeSample };
 
 /** The H4 Alert detail samples (`detail`, `detail-ok`); see `detail.ts`. */
 export { DETAIL_SAMPLE_NAMES, freshDetail, isDetailSample };
+
+/** The pairing samples (B3, B4, B5: `pair-code`, `pair-approve`, ...); see `pairing.ts`. */
+export { freshPairing, isPairingSample, PAIRING_SAMPLE_NAMES };

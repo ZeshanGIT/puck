@@ -21,6 +21,8 @@ import { AStack, type StackAnswer, type StackGone } from "./src/screens/AStack";
 import { DevGallery } from "./src/screens/DevGallery";
 import { H1Home } from "./src/screens/H1Home";
 import { H4DetailView } from "./src/screens/H4Detail";
+import { PairingHost, type PairingSource, type PairingStart } from "./src/screens/PairingHost";
+import type { PairingRequest } from "./src/pairingModel";
 import {
   DETAIL_SAMPLE_NAMES,
   freshDetail,
@@ -29,6 +31,9 @@ import {
   isDetailSample,
   freshSample,
   isHomeSample,
+  isPairingSample,
+  freshPairing,
+  PAIRING_SAMPLE_NAMES,
   HOME_SAMPLE_NAMES,
   ALERT_SAMPLE_GROUPS,
   ALERT_SAMPLES,
@@ -115,6 +120,8 @@ function DevDetail({ name, onClose }: { name: string; onClose: () => void }) {
 /** H1 Home with fake data (`sample=home`, `home-clear`, `home-empty`): no backend, Load more brings older rows. */
 function DevHome({ name }: { name: string }) {
   const toast = useToast();
+  // The PAIRING card (`home-pairing`) and Pair a bot open the pairing flow on the sample's fake requests.
+  const [pairing, setPairing] = useState<PairingStart | null>(null);
   const [round] = useState(() => Date.now());
   const sample = useMemo(() => freshHome(name, round), [name, round]);
   const [loaded, setLoaded] = useState(false);
@@ -127,6 +134,21 @@ function DevHome({ name }: { name: string }) {
   const history = loaded ? [...sample.history, ...sample.older] : sample.history;
   const needs = needsYou(sample.waiting, { now, queuedIds: new Set(sample.queuedIds) });
   const later = () => toast.show("Coming in a later step");
+  if (pairing) {
+    return (
+      <View style={styles.root}>
+        <DevPairingFlow
+          requests={sample.pairings ?? []}
+          start={pairing}
+          onClose={(message) => {
+            setPairing(null);
+            if (message) toast.show(message);
+          }}
+        />
+        <Toast message={toast.message} visible={toast.visible} />
+      </View>
+    );
+  }
   return (
     <View style={styles.root}>
       <H1Home
@@ -144,7 +166,72 @@ function DevHome({ name }: { name: string }) {
         onOpenAlert={later}
         onBots={later}
         onSettings={later}
-        onPairBot={later}
+        onPairBot={() => setPairing({ kind: "code" })}
+        pairings={sample.pairings}
+        onOpenPairing={(botId) => setPairing({ kind: "approve", botId })}
+      />
+      <Toast message={toast.message} visible={toast.visible} />
+    </View>
+  );
+}
+
+/** A pairing source on fake requests: approving takes a moment and then drops the request, as the backend does. */
+function useFakePairingSource(initial: PairingRequest[]): PairingSource {
+  const [requests, setRequests] = useState(initial);
+  return useMemo<PairingSource>(
+    () => ({
+      requests,
+      approve: async (code) => {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        const hit = requests.find((request) => request.pairingCode === code);
+        if (!hit) throw new Error("pairing code is not valid");
+        setRequests((all) => all.filter((request) => request !== hit));
+        return { botId: hit.botId };
+      },
+      reject: async (botId) => {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        setRequests((all) => all.filter((request) => request.botId !== botId));
+      },
+    }),
+    [requests],
+  );
+}
+
+/** The real pairing flow (B3, B4, B5) with no backend. */
+function DevPairingFlow({
+  requests,
+  start,
+  onClose,
+}: {
+  requests: PairingRequest[];
+  start: PairingStart;
+  onClose: (message?: string) => void;
+}) {
+  const source = useFakePairingSource(requests);
+  return <PairingHost source={source} start={start} onClose={onClose} />;
+}
+
+/** B3, B4 or B5 on fake data (`sample=pair-code`, `pair-approve`, `pair-approve-nocolour`, `pair-meet`). */
+function DevPairing({ name }: { name: string }) {
+  const toast = useToast();
+  // A new `round` starts the sample over after the flow closes.
+  const [round, setRound] = useState(() => Date.now());
+  const sample = useMemo(() => freshPairing(name, round), [name, round]);
+  const { show } = toast;
+  useEffect(() => {
+    if (sample) show(sample.hint);
+  }, [sample, show]);
+  if (!sample) return null;
+  return (
+    <View style={styles.root}>
+      <DevPairingFlow
+        key={`${name}-${round}`}
+        requests={sample.requests}
+        start={sample.start}
+        onClose={(message) => {
+          show(message ?? "Sample over. Starting again");
+          setTimeout(() => setRound(Date.now()), 1500);
+        }}
       />
       <Toast message={toast.message} visible={toast.visible} />
     </View>
@@ -221,7 +308,7 @@ function DevAlertSample({ name }: { name: string }) {
     return (
       <View style={styles.root}>
         <Text style={styles.devNote}>
-          Unknown sample: {name}. Known: {[...Object.keys(ALERT_SAMPLES), ...Object.keys(ALERT_SAMPLE_GROUPS), ...HOME_SAMPLE_NAMES, ...DETAIL_SAMPLE_NAMES].join(", ")}.
+          Unknown sample: {name}. Known: {[...Object.keys(ALERT_SAMPLES), ...Object.keys(ALERT_SAMPLE_GROUPS), ...HOME_SAMPLE_NAMES, ...DETAIL_SAMPLE_NAMES, ...PAIRING_SAMPLE_NAMES].join(", ")}.
         </Text>
       </View>
     );
@@ -258,7 +345,9 @@ export default function App() {
       <GestureHandlerRootView style={styles.root}>
         <ConvexProvider client={convex}>
           {isHomeSample(alertLink.sample) ? (
-            <DevHome name={alertLink.sample} />
+            <DevHome key={alertLink.sample} name={alertLink.sample} />
+          ) : isPairingSample(alertLink.sample) ? (
+            <DevPairing key={alertLink.sample} name={alertLink.sample} />
           ) : isDetailSample(alertLink.sample) ? (
             <DevDetail name={alertLink.sample} onClose={alertLink.closeSample} />
           ) : (

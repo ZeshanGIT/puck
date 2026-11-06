@@ -12,6 +12,8 @@
  * Times are relative to the moment a sample is opened; `freshHome` turns them into real times.
  */
 import type { BannerId, HistoryItem, WaitingAlert } from "../../../homeModel";
+import type { PairingRequest } from "../../../pairingModel";
+import { cortanaRequest } from "./pairing";
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
@@ -26,9 +28,11 @@ export interface HomeSample {
   /** What "Load more" adds. */
   older: HistoryItem[];
   noBots: boolean;
+  /** Open pairing requests: PAIRING cards first in "Needs you". */
+  pairings?: PairingRequest[];
 }
 
-export const HOME_SAMPLE_NAMES = ["home", "home-clear", "home-empty"] as const;
+export const HOME_SAMPLE_NAMES = ["home", "home-clear", "home-empty", "home-pairing"] as const;
 
 export function isHomeSample(name: string): boolean {
   return (HOME_SAMPLE_NAMES as readonly string[]).includes(name);
@@ -141,6 +145,16 @@ export function freshHome(name: string, now: number = Date.now()): HomeSample | 
       };
     case "home-clear":
       return { banners: [], waiting: [], queuedIds: [], history: earlier(now), older: olderOnes(now), noBots: false };
+    case "home-pairing":
+      return {
+        banners: [],
+        waiting: [waiting(now, "W2", "Sheldon", "Ship the 0.3 build tonight?", 12 * MINUTE)],
+        queuedIds: [],
+        history: earlier(now),
+        older: olderOnes(now),
+        noBots: false,
+        pairings: [cortanaRequest(now)],
+      };
     case "home-empty":
       return { banners: [], waiting: [], queuedIds: [], history: [], older: [], noBots: true };
     default:
