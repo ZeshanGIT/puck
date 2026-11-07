@@ -1,6 +1,14 @@
 import { hostname as osHostname } from "node:os";
 import type { Readable } from "node:stream";
-import { AlertValidationError, isBotId, isQuestionId, validateCreateAlert, validatePairingInput, type PairingInput } from "@puck/shared";
+import {
+  AlertValidationError,
+  isBotId,
+  isQuestionId,
+  validateAlertTiming,
+  validateCreateAlert,
+  validatePairingInput,
+  type PairingInput,
+} from "@puck/shared";
 import type { AlertBody, Backend, ListedAlert, PairingStatus } from "./backend";
 import { loadConfig } from "./config";
 import { CliError } from "./errors";
@@ -146,15 +154,17 @@ export async function sendAlert(
     if (scheduledFor !== null && scheduledFor !== clock) throw new CliError("pass the time once");
     scheduledFor = clock;
   }
+  // The same checks the backend makes on the final time, so a bad expiry is a short message here.
+  try {
+    validateAlertTiming({ scheduledFor, expiresAt: alert.expiresAt }, Date.now());
+  } catch (error) {
+    if (error instanceof AlertValidationError) throw new CliError(error.message);
+    throw error;
+  }
   const { config, botId, secret } = await openBot(input.bot, runtime);
-  const body: AlertBody = {
-    question: alert.question,
-    priority: alert.priority,
-    selectionMode: alert.selectionMode,
-    presentation: alert.presentation,
-    options: alert.options,
-    ...(scheduledFor === null ? {} : { scheduledFor }),
-  };
+  // Everything validateCreateAlert returned goes in; only the scheduled time is replaced by the
+  // one worked out above (absent when the alert is not scheduled).
+  const body: AlertBody = { ...alert, scheduledFor: scheduledFor ?? undefined };
   const posted = await runtime.backend.postAlert(config.siteUrl, botId, secret, body);
   return `${posted.questionId}\n`;
 }

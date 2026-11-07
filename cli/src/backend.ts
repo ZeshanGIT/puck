@@ -1,6 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi, type FunctionReference } from "convex/server";
-import type { PairingInput } from "@puck/shared";
+import type { AlertExtras, AlertOption, PairingInput } from "@puck/shared";
 import { isQuestionId } from "@puck/shared";
 import { CliError, publicError, redact } from "./errors";
 
@@ -13,12 +13,16 @@ export interface PairingResult {
 /** What the CLI sees while it waits for the phone (`bots.pairingStatus`). */
 export type PairingStatus = "pending" | "paired" | "rejected" | "expired" | "not_found";
 
-export interface AlertBody {
+/**
+ * The body `POST /alerts` takes: everything `validateCreateAlert` accepts (the options with their
+ * desc, tone and rec, and the optional alert fields), so the CLI forwards exactly what the file held.
+ */
+export interface AlertBody extends AlertExtras {
   question: string;
   priority: "normal" | "urgent";
   selectionMode: "single" | "multi";
   presentation: "choice" | "swipe";
-  options: { id: string; label: string; icon?: string }[];
+  options: AlertOption[];
   scheduledFor?: number;
 }
 
