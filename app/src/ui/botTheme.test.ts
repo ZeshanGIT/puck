@@ -64,14 +64,14 @@ describe("botTheme with the black bot", () => {
     expect(t.botTint).toBe("rgba(255, 255, 255, 0.07)");
     expect(t.botDeep).toBe("#000");
     expect(t.sendBg).toBe("#2A2826");
-    expect(t.blobOutline).toBe("#3A3836");
+    expect(t.blobOutline).toBe("#8E8984");
   });
 
   test("night mode matches dark mode for the black bot", () => {
     const t = botTheme(black, { night: true });
     expect(t.botWash).toBe("rgba(255, 255, 255, 0.07)");
     expect(t.botTint).toBe("rgba(255, 255, 255, 0.07)");
-    expect(t.blobOutline).toBe("#3A3836");
+    expect(t.blobOutline).toBe("#8E8984");
   });
 });
 

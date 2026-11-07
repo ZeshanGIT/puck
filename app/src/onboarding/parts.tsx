@@ -4,8 +4,10 @@
  * and its `ICON` paths. Colours come from `useTheme()` only.
  */
 import { type ReactNode, useEffect, useRef } from "react";
-import { Animated, Easing, StatusBar, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, StatusBar, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import Svg, { Path, Rect } from "react-native-svg";
+import { useReducedMotion } from "react-native-reanimated";
 import { useTheme } from "../ui/theme";
 import { fontFamily } from "../ui/tokens";
 
@@ -75,13 +77,16 @@ export function HeroText({
 export function Spinner({ size = 14 }: { size?: number }) {
   const t = useTheme().tokens;
   const turn = useRef(new Animated.Value(0)).current;
+  const reduced = useReducedMotion();
   useEffect(() => {
+    // Reduced motion: no loop, the ring stays still (the status line next to it says what is happening).
+    if (reduced) return undefined;
     const loop = Animated.loop(
       Animated.timing(turn, { toValue: 1, duration: 700, easing: Easing.linear, useNativeDriver: true }),
     );
     loop.start();
     return () => loop.stop();
-  }, [turn]);
+  }, [turn, reduced]);
   return (
     <Animated.View
       style={{

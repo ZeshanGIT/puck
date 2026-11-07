@@ -10,7 +10,8 @@
  * `pairingModel.ts` (`pressKey`).
  */
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import Svg, { Path } from "react-native-svg";
 import { codeBoxes, cursorIndex, isComplete, PAD_LAYOUT, padCellKeys, pressKey, type PadKey } from "../pairingModel";
 import { useTheme } from "../ui/theme";
@@ -63,7 +64,7 @@ export function B3PairCode({ error, busy = false, onSubmit, onEdit, onBack }: B3
       key={index}
       style={[
         styles.box,
-        { backgroundColor: t.fill, borderColor: index === cursor ? t.ink : t.line },
+        { backgroundColor: t.fill, borderColor: index === cursor ? t.ink : t.outline },
       ]}
     >
       <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.boxText, { color: t.ink }]}>

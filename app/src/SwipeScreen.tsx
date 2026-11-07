@@ -1,7 +1,8 @@
 import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
 import { useEffect, useRef, useState } from "react";
-import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
+import { Animated, PanResponder, StyleSheet, View } from "react-native";
+import { Text } from "./ui/Text";
 import { leaveIfLocked } from "puck-full-screen";
 import type { PendingAlert } from "./ChoiceScreen";
 import { readClientId } from "./clientStore";

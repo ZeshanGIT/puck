@@ -19,7 +19,8 @@
  * the white tick, which the prototype hard-codes.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text } from "./Text";
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -89,12 +90,12 @@ export function CheckOption({
   if (destructive) borderColor = t.dangeredge;
   if (checked) {
     background = destructive ? t.dangerbg : bt.botTint;
-    borderColor = destructive ? t.danger : bt.bot;
+    borderColor = destructive ? t.danger : bt.mark;
   }
   if (rec) borderColor = t.ink2;
   const borderWidth = rec ? 2 : 1.5;
   const labelColour = destructive ? t.danger : t.ink;
-  const boxFill = destructive ? t.danger : bt.bot;
+  const boxFill = destructive ? t.danger : bt.mark;
 
   const down = pressed && !disabled;
   const edgeHeight = down ? 1 : 4;
@@ -193,7 +194,7 @@ export function CheckOption({
             styles.box,
             checked
               ? { backgroundColor: boxFill, borderColor: boxFill }
-              : { backgroundColor: "transparent", borderColor: t.edge },
+              : { backgroundColor: "transparent", borderColor: t.outline },
           ]}
         >
           <Animated.View style={tickStyle}>

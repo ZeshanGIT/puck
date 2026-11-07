@@ -9,7 +9,8 @@
  * typed the code himself (B3), since matching a code he just typed proves nothing.
  */
 import { useLayoutEffect, useMemo, useRef } from "react";
-import { ScrollView, StatusBar, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StatusBar, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import {
   colourRow,
   expiryText,

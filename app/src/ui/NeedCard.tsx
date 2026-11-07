@@ -4,7 +4,8 @@
  * card's bottom edge is a 3 dp shadow, which goes to 1 dp when pressed.
  */
 import { type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text, useLines } from "./Text";
 import Svg, { Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 import { Tag } from "./Pill";
 import { useBotTheme, useTheme } from "./theme";
@@ -52,6 +53,7 @@ export function NeedCard({
 }: NeedCardProps) {
   const t = useTheme().tokens;
   const { botWash } = useBotTheme(bot);
+  const questionLines = useLines(2);
   const metaColour = metaWarn ? t.warn : t.ink3;
 
   return (
@@ -70,7 +72,7 @@ export function NeedCard({
         },
       ]}
     >
-      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none" accessible={false}>
         <Defs>
           <RadialGradient id="needWash" cx="0%" cy="50%" rx="70%" ry="130%" fx="0%" fy="50%">
             <Stop offset="0" stopColor={botWash} stopOpacity="1" />
@@ -87,7 +89,7 @@ export function NeedCard({
           {tag ? <Tag urgent={tag.urgent}>{tag.label}</Tag> : null}
           {time ? <Text style={[styles.time, { color: t.ink3 }]}>{time}</Text> : null}
         </View>
-        <Text numberOfLines={2} style={[styles.question, { color: t.ink }]}>
+        <Text numberOfLines={questionLines} style={[styles.question, { color: t.ink }]}>
           {question}
         </Text>
         {meta ? (
@@ -126,8 +128,10 @@ const styles = StyleSheet.create({
   },
   topLine: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    gap: 8,
+    columnGap: 8,
+    rowGap: 2,
   },
   name: {
     fontFamily: fontFamily.extraBold,

@@ -9,7 +9,8 @@
  * The parser is pure so it can be tested without React Native.
  */
 import { useMemo } from "react";
-import { Text, type TextStyle } from "react-native";
+import { type TextStyle } from "react-native";
+import { Text } from "./Text";
 import { useTheme } from "./theme";
 import { fontFamily } from "./tokens";
 

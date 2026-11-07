@@ -33,6 +33,8 @@ import { replyPayload } from "../choice";
 import { readClientId } from "../clientStore";
 import { shouldGoBack, type ReceiptViewState } from "../receiptCopy";
 import { useReadingAloud } from "../speak";
+import { useAnnounceNewAlerts } from "../ui/announce";
+import { useTheme } from "../ui/theme";
 import { botLook } from "../ui/botLook";
 import { ensureUnlockedFor } from "../unlock";
 import { clearDisplayedAlert, useUrgentLook } from "../urgentDisplay";
@@ -70,6 +72,8 @@ export interface AlertHostProps {
 }
 
 export function AlertHost({ alert, waiting, onAnswer, onSnooze, launchedByAlert, stale, onRelease }: AlertHostProps) {
+  // A screen reader hears each new alert once (the screen is otherwise silent until it is explored).
+  useAnnounceNewAlerts(stale ? [] : [{ id: alert.questionId, botName: alert.botName, question: alert.question, priority: alert.priority }]);
   // Keyed by the question so the next alert starts fresh (blob arrives, nothing armed, no receipt).
   return onAnswer ? (
     <SampleAlertHost key={alert.questionId} alert={alert} waiting={waiting} onAnswer={onAnswer} onSnooze={onSnooze} />
@@ -588,8 +592,12 @@ function AlertBody({
 }) {
   // Urgent over the lock screen: the clock, and the night look from 10 PM to 7 AM (card T34).
   const look = useUrgentLook(alert.priority);
+  // Dev only: `puck://dev-alert?sample=...&theme=night` forces the night look. Nothing outside that
+  // dev link puts a night theme above an alert screen, so this changes nothing in production.
+  const themeNight = useTheme().night;
+  const night = look.night || (__DEV__ && themeNight);
   const readingAloud = useReadingAloud(alert.questionId);
-  const frame = { night: look.night, clock: look.clock, readingAloud, receipt, gone };
+  const frame = { night, clock: look.clock, readingAloud, receipt, gone };
   if (alert.selectionMode === "single" && alert.presentation === "choice") {
     return <A1ChoiceSingle alert={alert} waiting={waiting} onAnswer={onAnswer} onReply={onReply} onSnooze={onSnooze} {...frame} />;
   }

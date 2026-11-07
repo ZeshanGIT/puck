@@ -20,7 +20,8 @@
  * live regions.
  */
 import { type ReactNode, useMemo } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import type { PendingAlert } from "../ChoiceScreen";
 import { Spinner } from "../onboarding/parts";
 import { answerSummary, attachmentSummary, receiptLine, type StatusTone } from "../receiptCopy";

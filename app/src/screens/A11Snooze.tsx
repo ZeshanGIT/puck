@@ -11,7 +11,8 @@
 import { anyApi } from "convex/server";
 import { useConvex } from "convex/react";
 import { useEffect, useState } from "react";
-import { AppState, StyleSheet, Text } from "react-native";
+import { AppState, StyleSheet } from "react-native";
+import { Text } from "../ui/Text";
 import { readableError } from "../session";
 import { SNOOZE_CHOICES, snoozeSheetText, snoozeUntil, type SnoozeChoice } from "../receiptCopy";
 import { ICON } from "../ui/AlertFrame";

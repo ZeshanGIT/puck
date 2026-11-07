@@ -23,11 +23,11 @@ import {
   KeyboardAvoidingView,
   Pressable,
   StyleSheet,
-  Text,
   TextInput,
   View,
   type ViewStyle,
 } from "react-native";
+import { Text } from "../ui/Text";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -360,7 +360,7 @@ function A5ReplySheet({
         <SheetText>Type, dictate, or add a photo or file.</SheetText>
 
         {withLabel ? (
-          <View style={[styles.with, { backgroundColor: bt.botTint, borderColor: bt.bot }]}>
+          <View style={[styles.with, { backgroundColor: bt.botTint, borderColor: bt.mark }]}>
             <Text style={[styles.withText, { color: t.ink }]}>{`with: ${withLabel}`}</Text>
           </View>
         ) : null}
@@ -375,6 +375,7 @@ function A5ReplySheet({
 
         <View>
           <TextInput
+            maxFontSizeMultiplier={1.3}
             ref={inputRef}
             value={text}
             onChangeText={setText}

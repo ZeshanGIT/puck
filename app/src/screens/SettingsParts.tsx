@@ -4,7 +4,8 @@
  * `useTheme()`. The nav bar and the `.kv` rows are `PairingParts`.
  */
 import { type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text, useLines } from "../ui/Text";
 import Svg, { Path } from "react-native-svg";
 import { Glyph } from "../ui/AlertFrame";
 import { useTheme } from "../ui/theme";
@@ -60,14 +61,15 @@ export function SettingsRow({
 }) {
   const t = useTheme().tokens;
   const colour = tone === "ok" ? t.ok : tone === "warn" ? t.warn : t.ink2;
+  const lines = useLines(1);
   const content = (
     <>
       <IconTile icon={icon} />
-      <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.label, { color: t.ink }]}>
+      <Text numberOfLines={lines} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.label, { color: t.ink }]}>
         {label}
       </Text>
       {value ? (
-        <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.value, { color: colour }]}>
+        <Text numberOfLines={lines} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.value, { color: colour }]}>
           {value}
         </Text>
       ) : null}

@@ -3,7 +3,8 @@
  * "Connecting…". Prototype: `SCREENS.splash` (a 96 dp live Puck blob with the `arrive` reaction).
  */
 import { useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import { Blob, type BlobHandle } from "../ui/Blob";
 import { SAMPLE_BOTS } from "../ui/blobShapes";
 import { useTheme } from "../ui/theme";

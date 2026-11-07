@@ -14,7 +14,8 @@
 import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler, StyleSheet, Text, View } from "react-native";
+import { BackHandler, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import { OnboardingFrame } from "../onboarding/parts";
 import { clearPairingNotification } from "../pairingDisplay";
 import {

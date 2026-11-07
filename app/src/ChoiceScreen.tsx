@@ -2,7 +2,8 @@ import type { AlertExtras, AlertOption } from "@puck/shared";
 import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Text } from "./ui/Text";
 import { readClientId } from "./clientStore";
 import { emptyChoice, replyPayload, tapOption, toggleAll, type ChoiceState } from "./choice";
 import { leaveIfLocked } from "puck-full-screen";
@@ -86,12 +87,14 @@ export function ChoiceScreen({ alert, waiting }: { alert: PendingAlert; waiting:
         {alert.priority === "urgent" ? " · Urgent" : ""}
         {waiting > 1 ? ` · 1 of ${waiting}` : ""}
       </Text>
-      <Text style={styles.title}>{alert.question}</Text>
+      <Text accessibilityRole="header" style={styles.title}>{alert.question}</Text>
       <Text style={styles.body}>
         {alert.selectionMode === "single" ? "Tap an option twice to send it." : "Choose any options, then send."}
       </Text>
       {alert.selectionMode === "multi" ? (
         <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: busy }}
           onPress={() => {
             setChoice(toggleAll(choice, alert.options.map((option) => option.id)));
             setError(null);
@@ -106,6 +109,13 @@ export function ChoiceScreen({ alert, waiting }: { alert: PendingAlert; waiting:
         return (
           <Pressable
             key={option.id}
+            accessibilityRole={alert.selectionMode === "multi" ? "checkbox" : "button"}
+            accessibilityState={
+              alert.selectionMode === "multi"
+                ? { checked: armed, disabled: busy }
+                : { selected: armed, disabled: busy }
+            }
+            accessibilityHint={alert.selectionMode === "single" ? (armed ? "Tap again to send" : "Tap twice to send") : undefined}
             onPress={() => onOption(option.id)}
             disabled={busy}
             style={({ pressed }) => [styles.option, armed ? styles.optionArmed : null, pressed || busy ? styles.pressed : null]}
@@ -119,11 +129,13 @@ export function ChoiceScreen({ alert, waiting }: { alert: PendingAlert; waiting:
         );
       })}
       <TextInput
+        maxFontSizeMultiplier={1.3}
         value={customReply}
         onChangeText={(value) => {
           setCustomReply(value);
           setError(null);
         }}
+        accessibilityLabel="Type a reply"
         placeholder="Or type a reply"
         placeholderTextColor="#a08b80"
         autoCorrect
@@ -131,6 +143,8 @@ export function ChoiceScreen({ alert, waiting }: { alert: PendingAlert; waiting:
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ disabled: busy }}
         onPress={() => void send(null, choice)}
         disabled={busy}
         style={({ pressed }) => [styles.button, pressed || busy ? styles.pressed : null]}

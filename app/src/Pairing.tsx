@@ -1,7 +1,8 @@
 import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Text } from "./ui/Text";
 import { readClientId } from "./clientStore";
 import { readableError } from "./session";
 
@@ -46,6 +47,7 @@ export function PairingScreen({ onClose }: { onClose?: () => void }) {
       <Text style={styles.title}>Pair a bot</Text>
       <Text style={styles.body}>Enter the six-digit code from puck add.</Text>
       <TextInput
+        maxFontSizeMultiplier={1.3}
         value={code}
         onChangeText={(value) => {
           setCode(value.replace(/\D/g, "").slice(0, 6));

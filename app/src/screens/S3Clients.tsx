@@ -8,7 +8,8 @@
  * removal (its failure is the host's to show).
  */
 import { useMemo } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Text, useLines } from "../ui/Text";
 import { botTestId } from "../botsModel";
 import { clientRows, type ClientItem, type ClientRowModel } from "../settingsModel";
 import { OnboardingFrame } from "../onboarding/parts";
@@ -58,14 +59,15 @@ export function S3Clients({ clients, thisClientId, now, onRemove, removingId = n
 function ClientRow({ row, busy, onRemove }: { row: ClientRowModel; busy: boolean; onRemove: () => void }) {
   const t = useTheme().tokens;
   const arm = useTapTwice({ onConfirm: onRemove });
+  const lines = useLines(1);
   return (
     <View style={styles.row} testID={botTestId("client-row", row.name)}>
       <IconTile icon={row.platform === "cli" ? "laptop" : "phone"} />
       <View style={styles.main}>
-        <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.name, { color: t.ink }]}>
+        <Text numberOfLines={lines} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.name, { color: t.ink }]}>
           {row.name}
         </Text>
-        <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.sub, { color: t.ink2 }]}>
+        <Text numberOfLines={lines} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.sub, { color: t.ink2 }]}>
           {row.subtitle}
         </Text>
       </View>

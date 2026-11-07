@@ -13,6 +13,8 @@ Maestro logs and per-run artifacts go under `.shots/maestro/` (gitignored with `
 - `smoke-home.yaml`: launches, asserts the real Home ("Puck" header, "Settings" icon).
 - `dev-sample.yaml`: opens `puck://dev-alert?sample=${SAMPLE}`, waits for the Home header when SAMPLE=home, saves `.shots/maestro/dev-sample-<SAMPLE>.png`, checks no crash dialog, ends with stopApp.
 
+Dark and night check (dev only, no rebuild): add `&theme=dark|night|light` to the dev-alert link, e.g. `puck://dev-alert?sample=sheldon&theme=night`; it wraps the sample in that theme (`night` also turns on the night alert look).
+
 ## Writing a flow for a screen
 1. Start with `- runFlow: launch-app.yaml`.
 2. Navigate with `tapOn` (text, or `id:` for list rows).

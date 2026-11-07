@@ -28,7 +28,8 @@
  * Reply, Snooze and the sending itself are the caller's (card T41, `StackHost`).
  */
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import type { PendingAlert } from "../ChoiceScreen";
 import { receiptLine } from "../receiptCopy";
 import { readableError } from "../session";

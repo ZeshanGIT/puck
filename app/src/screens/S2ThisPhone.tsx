@@ -7,7 +7,8 @@
  * callbacks; `onRename` resolves with an error message, or null when the name was saved.
  */
 import { useEffect, useState } from "react";
-import { KeyboardAvoidingView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Text } from "../ui/Text";
 import { checkClientName, pushRow, registeredText, type ClientItem } from "../settingsModel";
 import { OnboardingFrame } from "../onboarding/parts";
 import { Btn } from "../ui/Btn";
@@ -123,6 +124,7 @@ function RenameSheet({
         <SheetTitle>Rename this phone</SheetTitle>
         <SheetText>Other clients and the alert details show this name.</SheetText>
         <TextInput
+          maxFontSizeMultiplier={1.3}
           testID="rename-input"
           value={text}
           onChangeText={(next) => {
@@ -156,7 +158,7 @@ const styles = StyleSheet.create({
   buttons: { paddingTop: 20, paddingHorizontal: 20 },
   note: { fontFamily: fontFamily.semiBold, fontSize: 13.5, textAlign: "center", paddingTop: 10 },
   input: {
-    height: 56,
+    minHeight: 56,
     borderRadius: 18,
     borderWidth: 1.5,
     paddingHorizontal: 16,

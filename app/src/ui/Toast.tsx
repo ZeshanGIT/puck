@@ -3,7 +3,8 @@
  * the top, fading in and out, hidden after 2.2 s when driven by `useToast`.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { Text } from "./Text";
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,

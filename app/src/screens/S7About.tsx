@@ -3,7 +3,8 @@
  * their own rows (`devInfo`). Prototype: `SCREENS.about` (`vault/Projects/Puck/mockups/Puck
  * prototype.html`); `App screens.md` S7.
  */
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import { OnboardingFrame } from "../onboarding/parts";
 import { Blob } from "../ui/Blob";
 import { SAMPLE_BOTS } from "../ui/blobShapes";

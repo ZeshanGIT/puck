@@ -4,7 +4,8 @@
  * the sheet on tap. With reduced motion on it fades instead of sliding.
  */
 import { type ReactNode, useEffect, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import { Modal, Pressable, StyleSheet, View, type ViewStyle } from "react-native";
+import { Text } from "./Text";
 import Animated, {
   interpolate,
   runOnJS,
@@ -207,7 +208,8 @@ const styles = {
     alignItems: "center",
     gap: 14,
     width: "100%",
-    height: 60,
+    minHeight: 60,
+    paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 18,
     marginBottom: 10,

@@ -20,7 +20,8 @@ import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
 import type { ReceiptState } from "@puck/shared";
 import { useCallback, useEffect, useRef } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import Svg, { Path } from "react-native-svg";
 import { Spinner } from "../onboarding/parts";
 import {

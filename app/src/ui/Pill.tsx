@@ -2,7 +2,8 @@
  * Pill and tag, from the prototype's `.pill`, `.pill.urgent` and `.tag`.
  */
 import { type ReactNode } from "react";
-import { Text, View } from "react-native";
+import { View } from "react-native";
+import { Text } from "./Text";
 import { useTheme } from "./theme";
 import { fontFamily } from "./tokens";
 
@@ -24,7 +25,8 @@ export function Pill({ children, icon, urgent = false }: PillProps) {
         alignItems: "center",
         alignSelf: "flex-start",
         gap: 6,
-        height: 26,
+        minHeight: 26,
+        paddingVertical: 3,
         paddingHorizontal: 11,
         borderRadius: 13,
         backgroundColor: urgent ? t.dangerbg : t.fill,
@@ -49,7 +51,7 @@ export function Tag({ children, urgent = false }: TagProps) {
       style={{
         alignSelf: "center",
         justifyContent: "center",
-        height: 20,
+        minHeight: 20,
         paddingHorizontal: 7,
         borderRadius: 10,
         backgroundColor: urgent ? t.dangerbg : t.fill2,

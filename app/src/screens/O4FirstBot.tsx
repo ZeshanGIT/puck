@@ -8,7 +8,8 @@
  * "Enter a code instead" is B3, the typed-code fallback (a CLI that is not signed in).
  */
 import { useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import { readClientId } from "../clientStore";
 import { ConnectedPairingHost, type PairingStart } from "./PairingHost";
 import { usePairingRequests } from "../usePairingRequests";

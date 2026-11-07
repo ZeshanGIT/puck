@@ -3,7 +3,8 @@
  * and `.kv` CSS (`vault/Projects/Puck/mockups/Puck prototype.html`). Colours come from `useTheme()`.
  */
 import { type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text, useLines } from "../ui/Text";
 import Svg, { Path } from "react-native-svg";
 import { useTheme } from "../ui/theme";
 import { fontFamily } from "../ui/tokens";
@@ -52,11 +53,12 @@ export function KvRow({ label, children, first = false }: { label: string; child
 /** The text of a `.kv` value. */
 export function KvText({ children, mono = false }: { children: string; mono?: boolean }) {
   const t = useTheme().tokens;
+  const lines = useLines(1);
   return (
     <Text
       maxFontSizeMultiplier={MAX_FONT_SCALE}
       style={[styles.kvText, { color: t.ink2 }, mono ? styles.mono : null]}
-      numberOfLines={1}
+      numberOfLines={lines}
     >
       {children}
     </Text>
@@ -64,7 +66,7 @@ export function KvText({ children, mono = false }: { children: string; mono?: bo
 }
 
 const styles = StyleSheet.create({
-  nav: { flexDirection: "row", alignItems: "center", paddingLeft: 8, paddingRight: 14, height: 56 },
+  nav: { flexDirection: "row", alignItems: "center", paddingLeft: 8, paddingRight: 14, minHeight: 56 },
   back: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   title: { fontFamily: fontFamily.extraBold, fontSize: 20, fontWeight: "800", marginLeft: 4 },
   kv: {

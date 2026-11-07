@@ -15,7 +15,8 @@ import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
 import { goneReason, type AlertStatus } from "@puck/shared";
 import { useEffect, useRef, type ReactNode } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import { goneCopy, type GoneViewReason } from "../receiptCopy";
 import { Btn } from "../ui/Btn";
 import type { BlobBot } from "../ui/blobShapes";
@@ -73,7 +74,7 @@ export function A9Gone({ bot, reason, clientName, answerLabels, expiredAt, autoC
       style={[styles.gone, { backgroundColor: t.card, borderColor: t.line }]}
     >
       <View accessible accessibilityLabel={copy.sub ? `${copy.title}. ${copy.sub}` : copy.title}>
-        <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.title, { color: t.ink }]}>
+        <Text accessibilityRole="header" maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.title, { color: t.ink }]}>
           {copy.title}
         </Text>
         {copy.sub ? (

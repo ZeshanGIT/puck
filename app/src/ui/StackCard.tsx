@@ -28,13 +28,14 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Text, useLines } from "./Text";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, {
   cancelAnimation,
   Easing,
+  FadeIn,
   FadeInDown,
   useAnimatedStyle,
   useReducedMotion,
@@ -59,7 +60,7 @@ import { OptionButton } from "./OptionButton";
 import { RichText } from "./RichText";
 import type { StackStatus } from "./Stack";
 import { SwipeTrack, type SwipeSide, type SwipeSideSpec, type SwipeTrackHandle } from "./SwipeTrack";
-import { useBotTheme, useTheme } from "./theme";
+import { useBotTheme, useOnWash, useTheme } from "./theme";
 import { fontFamily, radii } from "./tokens";
 import { haptics, TapTwiceGroup } from "./useTapTwice";
 
@@ -205,6 +206,9 @@ function MiddleColumn({
 }) {
   const { tokens: t, dark, night } = useTheme();
   const bt = useBotTheme(bot);
+  const onWash = useOnWash(bt.botWash, t.bg);
+  const whoLines = useLines(1);
+  const reduced = useReducedMotion();
   const answered = status !== "waiting";
   const [expanded, setExpanded] = useState(false);
   const dotRing = night || (dark && bot.colour === "black") ? "#5A5754" : null;
@@ -227,7 +231,7 @@ function MiddleColumn({
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.ablob}>
-        {urgent && !answered ? <UrgentRings colour={bt.bot} /> : null}
+        {urgent && !answered ? <UrgentRings colour={bt.mark} /> : null}
         <Blob
           ref={blobRef}
           bot={bot}
@@ -241,15 +245,15 @@ function MiddleColumn({
         <View
           style={[
             styles.dot,
-            { backgroundColor: bt.bot },
+            { backgroundColor: bt.mark },
             dotRing ? styles.dotRing : null,
             dotRing ? { borderColor: dotRing } : null,
           ]}
         />
-        <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.whoName, { color: t.ink }]}>
+        <Text numberOfLines={whoLines} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.whoName, { color: t.ink }]}>
           {bot.name}
         </Text>
-        <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.whoAge, { color: t.ink3 }]}>
+        <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.whoAge, { color: onWash.ink3 }]}>
           · {ageLabel(alert.createdAt, now)}
         </Text>
       </View>
@@ -274,7 +278,7 @@ function MiddleColumn({
               fontWeight: "600",
               lineHeight: 16 * 1.45,
               textAlign: "center",
-              color: t.ink2,
+              color: onWash.ink2,
             }}
           />
         </View>
@@ -297,7 +301,7 @@ function MiddleColumn({
             </Text>
           </Pressable>
           {expanded ? (
-            <Animated.View entering={FadeInDown.duration(200)} style={[styles.details, { backgroundColor: t.fill }]}>
+            <Animated.View entering={reduced ? FadeIn.duration(200) : FadeInDown.duration(200)} style={[styles.details, { backgroundColor: t.fill }]}>
               <Text
                 selectable
                 maxFontSizeMultiplier={MAX_FONT_SCALE}
@@ -699,7 +703,7 @@ function AnsweredBlock({
                 styles.ansRow,
                 { backgroundColor: pick ? bt.botTint : t.fill },
                 pick
-                  ? { boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 0, spreadDistance: 1.5, color: bt.bot, inset: true }] }
+                  ? { boxShadow: [{ offsetX: 0, offsetY: 0, blurRadius: 0, spreadDistance: 1.5, color: bt.mark, inset: true }] }
                   : null,
               ]}
             >
@@ -715,7 +719,7 @@ function AnsweredBlock({
         })}
       </View>
       {answer?.customReply ? (
-        <View style={[styles.quote, { backgroundColor: t.fill, borderLeftColor: bt.bot }]}>
+        <View style={[styles.quote, { backgroundColor: t.fill, borderLeftColor: bt.mark }]}>
           <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.quoteText, { color: t.ink2 }]}>
             {`“${answer.customReply}”`}
           </Text>
@@ -763,7 +767,13 @@ function StackWash({ colour }: { colour: string }) {
   }, []);
   const { rgb, alpha } = parseRgba(colour);
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill} onLayout={onLayout}>
+    <View
+      pointerEvents="none"
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      style={StyleSheet.absoluteFill}
+      onLayout={onLayout}
+    >
       {size ? (
         <Svg width={size.w} height={size.h} accessible={false}>
           <Defs>
@@ -809,7 +819,14 @@ function Ring({ colour, delay }: { colour: string; delay: number }) {
     opacity: 0.45 * (1 - progress.value),
     transform: [{ scale: 0.9 + 0.75 * progress.value }],
   }));
-  return <Animated.View pointerEvents="none" style={[styles.ring, { borderColor: colour }, style]} />;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      style={[styles.ring, { borderColor: colour }, style]}
+    />
+  );
 }
 
 /** Two rings, 0.7 s apart. Not drawn with reduced motion. */
@@ -883,7 +900,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 7,
     marginTop: 10,
-    height: 28,
+    minHeight: 28,
+    paddingVertical: 3,
     paddingHorizontal: 12,
     borderRadius: 14,
   },

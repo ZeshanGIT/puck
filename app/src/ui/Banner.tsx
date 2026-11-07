@@ -4,7 +4,8 @@
  * (the default) and `quiet`. There are no danger, ok or info variants.
  */
 import { type ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
+import { Text } from "./Text";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useTheme } from "./theme";
 import { fontFamily } from "./tokens";

@@ -36,6 +36,7 @@ import { isQueuedLocally } from "../answerQueue";
 import type { UploadedAttachment } from "../attachments";
 import { readClientId } from "../clientStore";
 import { goneCopy, shouldGoBack, type ReceiptViewState } from "../receiptCopy";
+import { useAnnounceNewAlerts } from "../ui/announce";
 import { botLook } from "../ui/botLook";
 import type { StackAnswer, StackGone } from "../ui/StackCard";
 import { ensureUnlockedFor } from "../unlock";
@@ -111,6 +112,10 @@ export function StackHost({ alerts, launchedByAlert, onClose }: StackHostProps) 
       return fresh.length > 0 ? [...before, ...fresh] : before;
     });
   }, [alerts]);
+  useAnnounceNewAlerts(
+    held.map((alert) => ({ id: alert.questionId, botName: alert.botName, question: alert.question, priority: alert.priority })),
+    held.length,
+  );
   const drop = useCallback((questionId: string) => {
     dropped.current.add(questionId);
     setHeld((before) => before.filter((alert) => alert.questionId !== questionId));

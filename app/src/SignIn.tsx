@@ -1,6 +1,7 @@
 import { ClerkSignInError, beginGoogleSignIn, callbackProblem, finishGoogleSignIn, nonceFromCallback } from "@puck/shared";
 import { useEffect, useRef, useState } from "react";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, StyleSheet, View } from "react-native";
+import { Text } from "./ui/Text";
 import { StatusBar } from "expo-status-bar";
 import { clearPendingSignIn, clerkHost, readPendingSignIn, savePendingSignIn } from "./clerkAccount";
 

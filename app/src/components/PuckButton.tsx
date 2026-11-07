@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, View, type ViewStyle } from "react-native";
+import { Text } from "../ui/Text";
 import { puckColors, puckFonts } from "../theme/puckTheme";
 
 type Variant = "coral" | "ink" | "ghost";
@@ -19,6 +20,8 @@ export function PuckButton({
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled) }}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
@@ -47,7 +50,7 @@ export function PuckButton({
 
 export function PuckTextLink({ label, onPress }: { label: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={styles.linkWrap}>
+    <Pressable accessibilityRole="link" onPress={onPress} style={styles.linkWrap}>
       <Text style={styles.link}>{label}</Text>
     </Pressable>
   );
@@ -58,7 +61,7 @@ export function PuckKicker({ children }: { children: string }) {
 }
 
 export function PuckTitle({ children }: { children: string }) {
-  return <Text style={styles.title}>{children}</Text>;
+  return <Text accessibilityRole="header" style={styles.title}>{children}</Text>;
 }
 
 export function PuckBody({ children }: { children: ReactNode }) {

@@ -69,6 +69,7 @@ function DevSetupCode({ onBack }: { onBack: () => void }) {
       <HeroText left title="Setup code" body="The old claim: paste the setup code from your Mac." />
       <View style={styles.list}>
         <TextInput
+          maxFontSizeMultiplier={1.3}
           value={code}
           onChangeText={(value) => {
             setCode(value);

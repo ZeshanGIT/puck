@@ -19,7 +19,8 @@
  * for destructive options on the lock screen (Q10), and the stack of several alerts (A8).
  */
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Linking, StyleSheet, Text, View } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import type { PendingAlert } from "../ChoiceScreen";
 import { readableError } from "../session";
 import { AlertFrame, AlertSecondaryRow, useExpiry } from "../ui/AlertFrame";

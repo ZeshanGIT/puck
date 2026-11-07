@@ -3,7 +3,8 @@
  * there are none. It sits below Needs you (a running task needs nothing from him). Prototype:
  * `S.live ? <div class="sect">Working now</div>...` in `SCREENS.home`.
  */
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import type { LiveActivity } from "../liveCardModel";
 import { LiveCard } from "../ui/LiveCard";
 import { useTheme } from "../ui/theme";

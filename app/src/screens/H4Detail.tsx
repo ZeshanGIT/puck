@@ -11,7 +11,8 @@
 import { anyApi } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { BackHandler, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import Svg, { Path } from "react-native-svg";
 import {
   type AlertDetail,
@@ -181,7 +182,7 @@ function AlertBody({
       ) : null}
 
       {quote ? (
-        <View style={[styles.quote, { borderLeftColor: bot.bot, backgroundColor: t.fill }]}>
+        <View style={[styles.quote, { borderLeftColor: bot.mark, backgroundColor: t.fill }]}>
           <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.quoteText, { color: t.ink2 }]}>
             “{quote}”
           </Text>
@@ -236,7 +237,7 @@ function OptionView({ option, bot }: { option: OptionRow; bot: BotTheme }) {
   const t = useTheme().tokens;
   const picked = option.picked;
   const destructive = option.destructive;
-  const edge = destructive ? (picked ? t.danger : t.dangeredge) : picked ? bot.bot : t.line;
+  const edge = destructive ? (picked ? t.danger : t.dangeredge) : picked ? bot.mark : t.line;
   const fill = picked ? (destructive ? t.dangerbg : bot.botTint) : t.card;
   const labelColour = destructive ? t.danger : t.ink;
   return (
@@ -256,7 +257,7 @@ function OptionView({ option, bot }: { option: OptionRow; bot: BotTheme }) {
           </Text>
         ) : null}
       </View>
-      {picked ? <Glyph d={ICON.check} size={20} colour={destructive ? t.danger : bot.bot} width={2.8} /> : null}
+      {picked ? <Glyph d={ICON.check} size={20} colour={destructive ? t.danger : bot.mark} width={2.8} /> : null}
     </View>
   );
 }
@@ -327,7 +328,7 @@ export function H4Detail({ questionId, onBack }: H4DetailProps) {
 }
 
 const styles = StyleSheet.create({
-  nav: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, height: 56 },
+  nav: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, minHeight: 56 },
   back: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   navTitle: { fontFamily: fontFamily.black, fontSize: 18, fontWeight: "900", marginLeft: 6 },
   scroll: { paddingBottom: 28 },

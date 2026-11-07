@@ -7,7 +7,8 @@
  * `B1Bots` only draws: it is given the list and callbacks. `bots` is undefined while it loads.
  */
 import { useMemo } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import {
   botBlob,
   botTestId,

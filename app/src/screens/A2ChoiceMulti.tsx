@@ -21,7 +21,8 @@
  * and the stack of several alerts (A8).
  */
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AccessibilityInfo, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, Linking, Pressable, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -280,7 +281,6 @@ function withAlpha(hex: string, alpha: number): string {
 
 const SEND_HEIGHT = 62;
 const SEND_LIFT = 3;
-const SEND_DISABLED_OPACITY = 0.32;
 const SEND_SPRING = { damping: 14, stiffness: 200, mass: 1 } as const;
 
 /**
@@ -303,6 +303,7 @@ function SendButton({
   onConfirm: () => void;
 }) {
   const bt = useBotTheme(bot);
+  const t = useTheme().tokens;
   const reducedMotion = useReducedMotion();
   const twice = useTapTwice({ onConfirm });
   const { armed, disarm } = twice;
@@ -339,22 +340,23 @@ function SendButton({
       onPress={twice.press}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}
-      style={[styles.sendOuter, disabled ? { opacity: SEND_DISABLED_OPACITY } : null]}
+      style={styles.sendOuter}
     >
       <Animated.View
         style={[
           styles.send,
           {
-            backgroundColor: bt.sendBg,
-            boxShadow: [{ offsetX: 0, offsetY: edge, blurRadius: 0, spreadDistance: 0, color: bt.botDeep }],
+            // Nothing chosen: a neutral button with a readable label (ink2 on fill2: 4.9:1 light,
+            // 6.1:1 dark), not the bot colour faded to a third.
+            backgroundColor: disabled ? t.fill2 : bt.sendBg,
+            boxShadow: [{ offsetX: 0, offsetY: edge, blurRadius: 0, spreadDistance: 0, color: disabled ? t.line : bt.botDeep }],
           },
           moved,
         ]}
       >
         <Text
-          numberOfLines={1}
           maxFontSizeMultiplier={MAX_FONT_SCALE}
-          style={[styles.sendText, { color: bt.onBot }]}
+          style={[styles.sendText, { color: disabled ? t.ink2 : bt.onBot }]}
         >
           {label}
         </Text>
@@ -373,11 +375,13 @@ const styles = StyleSheet.create({
   opts: { gap: 12 },
   sendOuter: { alignSelf: "stretch", marginTop: 14 },
   send: {
-    height: SEND_HEIGHT,
+    // minHeight, not height: a long label wraps and the button grows (text scaled up to 130%).
+    minHeight: SEND_HEIGHT,
     borderRadius: radii.option,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 20,
+    paddingVertical: 12,
   },
-  sendText: { fontFamily: fontFamily.black, fontSize: 18, fontWeight: "900" },
+  sendText: { fontFamily: fontFamily.black, fontSize: 18, fontWeight: "900", textAlign: "center" },
 });

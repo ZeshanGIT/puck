@@ -12,7 +12,8 @@
  * The numbers and words come from `liveCardModel.ts`.
  */
 import { useEffect, useMemo } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text, useLines } from "./Text";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -35,7 +36,7 @@ import {
 import { botTestId } from "../botsModel";
 import { Blob } from "./Blob";
 import { CURVES } from "./blobShapes";
-import { useBotTheme, useTheme } from "./theme";
+import { useBotTheme, useOnWash, useTheme } from "./theme";
 import { fontFamily } from "./tokens";
 
 const MAX_FONT_SCALE = 1.3;
@@ -56,6 +57,7 @@ export function LiveCard({ activity, now, onPress }: LiveCardProps) {
   const t = useTheme().tokens;
   const look = useMemo(() => liveLook(activity), [activity]);
   const bt = useBotTheme(look);
+  const onWash = useOnWash(bt.botWash, t.card);
   const done = activity.state === "done";
   const running = activity.state === "running";
   const slug = botTestId("live-card", activity.botName);
@@ -63,7 +65,7 @@ export function LiveCard({ activity, now, onPress }: LiveCardProps) {
 
   const body = (
     <>
-      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none" accessible={false}>
         <Defs>
           <RadialGradient id="liveWash" cx="0%" cy="0%" rx="90%" ry="140%" fx="0%" fy="0%">
             <Stop offset="0" stopColor={bt.botWash} stopOpacity="1" />
@@ -79,7 +81,7 @@ export function LiveCard({ activity, now, onPress }: LiveCardProps) {
           <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.nameText, { color: t.ink }]}>
             {activity.botName}
           </Text>
-          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.status, { color: t.ink3 }]}>
+          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.status, { color: onWash.ink3 }]}>
             {status}
           </Text>
         </View>
@@ -135,6 +137,7 @@ function Track({
   const t = useTheme().tokens;
   const look = useMemo(() => liveLook(activity), [activity]);
   const bt = useBotTheme(look);
+  const stepLines = useLines(1);
   const reduced = useReducedMotion();
   const stops = stopFractions(activity.steps.length);
   const filled = doneStops(activity);
@@ -154,7 +157,7 @@ function Track({
     <View testID={testID}>
       <View style={styles.track}>
         <View style={[styles.rail, { backgroundColor: t.fill2 }]} />
-        <Animated.View style={[styles.fill, { backgroundColor: bt.bot }, fill]} />
+        <Animated.View style={[styles.fill, { backgroundColor: bt.mark }, fill]} />
         {stops.map((fraction, j) => (
           <View
             key={j}
@@ -162,7 +165,7 @@ function Track({
             style={[
               styles.stop,
               { left: `${fraction * 100}%` },
-              j < filled ? { backgroundColor: bt.bot, borderColor: bt.bot } : { backgroundColor: t.card, borderColor: t.edge },
+              j < filled ? { backgroundColor: bt.mark, borderColor: bt.mark } : { backgroundColor: t.card, borderColor: t.outline },
             ]}
           />
         ))}
@@ -171,7 +174,7 @@ function Track({
         </Animated.View>
       </View>
       <View style={styles.meta}>
-        <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.step, { color: t.ink }]}>
+        <Text numberOfLines={stepLines} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.step, { color: t.ink }]}>
           {summary.step}
         </Text>
         {summary.toGo ? (
@@ -188,6 +191,8 @@ function Track({
 function Log({ activity, testID }: { activity: LiveActivity; testID: string }) {
   const t = useTheme().tokens;
   const lines = logLines(activity);
+  const pastLines = useLines(1);
+  const currentLines = useLines(2);
   const done = activity.state === "done";
   const tick = (colour: string) => (
     <Svg width={14} height={14} viewBox="0 0 24 24">
@@ -199,7 +204,7 @@ function Log({ activity, testID }: { activity: LiveActivity; testID: string }) {
       {lines.finished.map((line, i) => (
         <View key={`${i}-${line}`} style={styles.logRow}>
           {tick(t.ink3)}
-          <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.past, { color: t.ink3 }]}>
+          <Text numberOfLines={pastLines} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.past, { color: t.ink3 }]}>
             {line}
           </Text>
         </View>
@@ -208,7 +213,7 @@ function Log({ activity, testID }: { activity: LiveActivity; testID: string }) {
         <View style={styles.logRow}>
           {done ? tick(t.ok) : null}
           <Text
-            numberOfLines={2}
+            numberOfLines={currentLines}
             maxFontSizeMultiplier={MAX_FONT_SCALE}
             style={[styles.current, { color: done ? t.ok : t.ink }]}
           >

@@ -27,12 +27,14 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { Text, useLines } from "./Text";
 import Animated, {
   cancelAnimation,
   Easing,
+  FadeIn,
   FadeInDown,
   useAnimatedStyle,
   useReducedMotion,
@@ -47,7 +49,7 @@ import { Blob, type BlobHandle } from "./Blob";
 import type { BlobBot, Offset } from "./blobShapes";
 import { Pill } from "./Pill";
 import { RichText } from "./RichText";
-import { ThemeProvider, useBotTheme, useTheme } from "./theme";
+import { ThemeProvider, useBotTheme, useOnWash, useTheme } from "./theme";
 import { clockDateText, clockText } from "../localSettings";
 import { fontFamily, radii } from "./tokens";
 
@@ -84,6 +86,8 @@ export function Glyph({
 const NIGHT_BG = "#100F0E";
 const MAX_FONT_SCALE = 1.3;
 const EXPIRY_LOW_SECONDS = 300;
+/** Above this phone font scale the options flow with the message in one scroll instead of being pinned. */
+const FLOW_FONT_SCALE = 1.05;
 
 /* ------------------------------------------------------------------ time */
 
@@ -167,7 +171,13 @@ export function Wash({ colour, night }: { colour: string; night: boolean }) {
     ? { cx: 0.5, cy: 0.34, rx: 0.9, ry: 0.46, stop: 0.7 }
     : { cx: 0.5, cy: 0.18, rx: 1.2, ry: 0.6, stop: 0.62 };
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill} onLayout={onLayout}>
+    <View
+      pointerEvents="none"
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      style={StyleSheet.absoluteFill}
+      onLayout={onLayout}
+    >
       {size ? (
         <Svg width={size.w} height={size.h} accessible={false}>
           <Defs>
@@ -218,6 +228,8 @@ function Ring({ colour, delay }: { colour: string; delay: number }) {
   return (
     <Animated.View
       pointerEvents="none"
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
       style={[
         styles.ring,
         { borderColor: colour },
@@ -398,8 +410,14 @@ function AlertFrameBody({
 }: AlertFrameProps) {
   const { tokens: t, dark, night: nightMode } = useTheme();
   const bt = useBotTheme(bot);
+  const whoLines = useLines(1);
   const now = useNow(15000);
   const [expanded, setExpanded] = useState(false);
+  const reduced = useReducedMotion();
+  // Text scaled up: the options no longer stay pinned. They follow the message inside the one
+  // scroll, at the screen's bottom when everything fits, so nothing is pushed out of reach.
+  const { fontScale } = useWindowDimensions();
+  const flow = fontScale > FLOW_FONT_SCALE;
   const urgent = priority === "urgent";
   const ownBlob = useRef<BlobHandle>(null);
   const blob = blobRef ?? ownBlob;
@@ -411,6 +429,8 @@ function AlertFrameBody({
   }, []);
 
   const showMore = Boolean(details) && !answered;
+  // Text on the wash (the glow at night) must reach 4.5:1 on its strongest colour.
+  const onWash = useOnWash(nightMode ? bt.glow : bt.botWash, nightMode ? NIGHT_BG : t.bg);
   const dotRing = nightMode || (dark && bot.colour === "black") ? "#5A5754" : null;
   const top = (StatusBar.currentHeight ?? 24) + 8;
 
@@ -426,7 +446,7 @@ function AlertFrameBody({
             {queue && queue.total > 1 ? (
               <Text
                 maxFontSizeMultiplier={MAX_FONT_SCALE}
-                style={{ color: t.ink2, fontFamily: fontFamily.extraBold, fontSize: 13 }}
+                style={{ color: onWash.ink2, fontFamily: fontFamily.extraBold, fontSize: 13 }}
               >
                 {queue.position} of {queue.total}
               </Text>
@@ -449,7 +469,7 @@ function AlertFrameBody({
           {clock ? <LockClock now={now} /> : null}
 
           <View style={styles.ablob}>
-            {urgent && !answered ? <UrgentRings colour={nightMode ? bt.glowRing : bt.bot} /> : null}
+            {urgent && !answered ? <UrgentRings colour={nightMode ? bt.glowRing : bt.mark} /> : null}
             <Blob ref={blob} bot={bot} size={blobSize} live look={look} />
           </View>
 
@@ -457,19 +477,19 @@ function AlertFrameBody({
             <View
               style={[
                 styles.dot,
-                { backgroundColor: bt.bot },
+                { backgroundColor: bt.mark },
                 dotRing ? styles.dotRing : null,
                 dotRing ? { borderColor: dotRing } : null,
               ]}
             />
             <Text
-              numberOfLines={1}
+              numberOfLines={whoLines}
               maxFontSizeMultiplier={MAX_FONT_SCALE}
               style={[styles.whoName, { color: t.ink }]}
             >
               {bot.name}
             </Text>
-            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.whoAge, { color: t.ink3 }]}>
+            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.whoAge, { color: onWash.ink3 }]}>
               · {ageLabel(createdAt, now)}
             </Text>
           </View>
@@ -494,7 +514,7 @@ function AlertFrameBody({
                   fontWeight: "600",
                   lineHeight: 16 * 1.45,
                   textAlign: "center",
-                  color: t.ink2,
+                  color: onWash.ink2,
                 }}
               />
             </View>
@@ -521,7 +541,7 @@ function AlertFrameBody({
               </Pressable>
               {expanded ? (
                 <Animated.View
-                  entering={FadeInDown.duration(200)}
+                  entering={reduced ? FadeIn.duration(200) : FadeInDown.duration(200)}
                   style={[styles.details, { backgroundColor: t.fill }]}
                 >
                   <Text
@@ -552,14 +572,23 @@ function AlertFrameBody({
           ) : null}
 
           <View style={styles.spacer} />
+          {flow ? (
+            <View
+              style={styles.abottomFlow}
+              pointerEvents={dimmed ? "none" : "auto"}
+              importantForAccessibility={dimmed ? "no-hide-descendants" : "auto"}
+            >
+              {bottom}
+            </View>
+          ) : null}
         </ScrollView>
 
         <View
-          style={[styles.abottom, dimmed ? styles.dim : null]}
+          style={[flow ? styles.abottomEmpty : styles.abottom, dimmed ? styles.dim : null]}
           pointerEvents={dimmed ? "none" : "auto"}
           importantForAccessibility={dimmed ? "no-hide-descendants" : "auto"}
         >
-          {bottom}
+          {flow ? null : bottom}
         </View>
       </View>
       {overlay}
@@ -573,7 +602,7 @@ const styles = StyleSheet.create({
   dim: { opacity: 0.35, filter: [{ grayscale: 0.4 }] },
   content: { flex: 1 },
   atop: {
-    height: 34,
+    minHeight: 34,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -606,7 +635,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 7,
     marginTop: 10,
-    height: 28,
+    minHeight: 28,
+    paddingVertical: 3,
     paddingHorizontal: 12,
     borderRadius: 14,
   },
@@ -645,12 +675,15 @@ const styles = StyleSheet.create({
   linkText: { fontFamily: fontFamily.extraBold, fontSize: 14, fontWeight: "800" },
   spacer: { flex: 1, minHeight: 14 },
   abottom: { paddingTop: 8, paddingHorizontal: 20, paddingBottom: 22 },
+  abottomEmpty: {},
+  /** The bottom inside the scroll (font scaled up): `abottom`'s padding, undoing the scroll's 28 dp side padding. */
+  abottomFlow: { alignSelf: "stretch", marginHorizontal: -8, paddingTop: 8, paddingHorizontal: 20, paddingBottom: 22 },
   secRow: { flexDirection: "row", justifyContent: "space-between", paddingTop: 14, paddingHorizontal: 6, paddingBottom: 8 },
   secButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    height: 40,
+    minHeight: 40,
     paddingHorizontal: 8,
     borderRadius: radii.row,
   },

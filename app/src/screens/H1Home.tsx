@@ -22,7 +22,8 @@ import { anyApi } from "convex/server";
 import { useQuery, usePaginatedQuery } from "convex/react";
 import { hasDndAccess } from "puck-full-screen";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import Svg, { Circle, Path } from "react-native-svg";
 import { isQueuedLocally } from "../answerQueue";
 import {
@@ -556,7 +557,7 @@ const styles = StyleSheet.create({
   scroll: { paddingBottom: 28 },
   /** `.hdr{height:56px; padding:0 14px 0 22px}` */
   header: {
-    height: 56,
+    minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",

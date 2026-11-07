@@ -9,7 +9,8 @@
 import { anyApi } from "convex/server";
 import { useConvex } from "convex/react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, Linking, Pressable, StyleSheet, View } from "react-native";
+import { Text } from "../ui/Text";
 import { canUseFullScreenIntent, hasDndAccess } from "puck-full-screen";
 import { syncClientFullScreen, syncClientPushToken } from "../clientAuth";
 import { openDndAccessSettings } from "../onboarding/dndAccess";
@@ -215,7 +216,7 @@ const styles = StyleSheet.create({
   title: { fontFamily: fontFamily.extraBold, fontSize: 16 },
   body: { fontFamily: fontFamily.semiBold, fontSize: 14, lineHeight: 14 * 1.35, marginTop: 3 },
   pill: {
-    height: 36,
+    minHeight: 36,
     paddingHorizontal: 14,
     borderRadius: 18,
     alignSelf: "center",

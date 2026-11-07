@@ -206,9 +206,9 @@ function SideContent({
     <View style={[styles.sideRow, side === "left" ? styles.sideRowLeft : styles.sideRowRight]}>
       {side === "left" ? icon : null}
       <Animated.Text
-        numberOfLines={1}
+        numberOfLines={2}
         maxFontSizeMultiplier={MAX_FONT_SCALE}
-        style={[styles.sideText, textStyle]}
+        style={[styles.sideText, side === "left" ? styles.sideTextLeft : styles.sideTextRight, textStyle]}
       >
         {spec.label}
       </Animated.Text>
@@ -244,7 +244,7 @@ function KnobBlob({
           <AnimatedPath
             d={SHAPES[bot.shape]}
             stroke={bt.blobOutline ?? undefined}
-            strokeWidth={bt.blobOutline ? 2 : undefined}
+            strokeWidth={bt.blobOutline ? 3 : undefined}
             animatedProps={fill}
           />
         </G>
@@ -471,8 +471,8 @@ function TrackBody({
   // Look.
   const leftDanger = left.tone === "destructive";
   const rightDanger = right.tone === "destructive";
-  const blendFrom = bot.colour === "black" ? BLACK_BLEND_START : bt.bot;
-  const baseFill = bt.bot;
+  const blendFrom = bot.colour === "black" && !dark ? BLACK_BLEND_START : bt.blobFill;
+  const baseFill = bt.blobFill;
 
   const knobStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: x.value }, { rotate: `${swipeRotation(x.value, max.value)}deg` }],
@@ -584,12 +584,16 @@ const styles = StyleSheet.create({
   tintLeft: { left: 0 },
   tintRight: { right: 0 },
   side: { position: "absolute", top: 0, bottom: 0, width: "50%", justifyContent: "center" },
-  sideLeft: { left: 0, paddingLeft: 24 },
-  sideRight: { right: 0, paddingRight: 24 },
+  // The inner edge of each half stays clear of the knob (half of it is 33 dp) so a label never sits
+  // under it; a long label wraps to a second line instead (text scaled up to 130%).
+  sideLeft: { left: 0, paddingLeft: 24, paddingRight: 36 },
+  sideRight: { right: 0, paddingRight: 24, paddingLeft: 36 },
   sideRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   sideRowLeft: { justifyContent: "flex-start" },
   sideRowRight: { justifyContent: "flex-end" },
   sideText: { fontFamily: fontFamily.extraBold, fontSize: 17, fontWeight: "800", flexShrink: 1 },
+  sideTextLeft: { textAlign: "left" },
+  sideTextRight: { textAlign: "right" },
   // The bar clears the knob: the half's inner edge next to the middle is kept 36 dp free.
   armBox: { position: "absolute", top: 0, bottom: 0 },
   armBoxLeft: { left: 4, right: 36 },

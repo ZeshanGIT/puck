@@ -15,7 +15,8 @@
  * which the prototype hard-codes (`.night .opt`).
  */
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text } from "./Text";
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -121,12 +122,12 @@ export function OptionButton({
   if (rec) borderColor = t.ink2;
   if (armed) {
     background = destructive ? t.dangerbg : bt.botTint;
-    borderColor = rec ? bt.bot : destructive ? t.danger : bt.bot;
+    borderColor = rec ? bt.mark : destructive ? t.danger : bt.mark;
     edge = destructive ? t.danger : bt.botDeep;
   }
   const borderWidth = rec ? 2 : 1.5;
   const labelColour = destructive ? t.danger : t.ink;
-  const hintColour = destructive ? t.danger : dark ? bt.botLight : bt.botDeep;
+  const hintColour = destructive ? t.danger : bt.botInk;
   const barColour = destructive ? t.danger : dark ? bt.botLight : bt.bot;
 
   // `.opt:active` presses down 3 dp and shrinks the edge to 1 dp; armed presses to 2 dp.

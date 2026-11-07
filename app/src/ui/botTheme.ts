@@ -2,6 +2,7 @@
  * Bot colour theme, ported from the prototype's `PALETTE` and `botVars()` in
  * `vault/Projects/Puck/mockups/Puck prototype.html`. Plain TypeScript, no React.
  */
+import { ensureContrast, over } from "./contrast";
 
 export type PaletteName =
   | "black"
@@ -77,12 +78,26 @@ export interface BotTheme {
   onBot: string;
   /** `--botlight`: text colour on dark surfaces. */
   botLight: string;
+  /**
+   * Bot-coloured text (the "Tap again" hint): `botDeep` in light mode; in dark and night the
+   * brand colour mixed toward white until it reaches 4.5:1 on the armed option face (the tint
+   * over the dark card, screen and night surfaces). Not a brand colour: use `bot` or `botLight`
+   * for glyphs, bars and ticks.
+   */
+  botInk: string;
   /** `--glow`: radial glow behind alert screens. */
   glow: string;
   /** `--glowring`: urgent ring colour. */
   glowRing: string;
   /** `--sendbg`: send button fill. */
   sendBg: string;
+  /** The blob's body fill: the base colour, or a dark grey for the black bot in dark and night. */
+  blobFill: string;
+  /**
+   * The bot's colour for non-text marks (status dot, progress, armed border, ticks): the base
+   * colour, or a light grey for the black bot in dark and night, where black would vanish (3:1).
+   */
+  mark: string;
   /**
    * Stroke colour for the blob outline, set only for the black bot in dark or
    * night mode. The prototype draws it at stroke-width 2 in the 100-unit SVG viewBox.
@@ -93,6 +108,13 @@ export interface BotTheme {
 function rgba(rgb: readonly [number, number, number], alpha: number): string {
   return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
 }
+
+/** The black bot on dark surfaces: a dark body with a light rim, so it stays the black bot and is seen. */
+const BLACK_DARK_BODY = "#2A2826";
+const BLACK_DARK_RIM = "#8E8984";
+
+/** Dark surfaces an armed option face can sit on: `bg`, `card`, the night face and the night screen. */
+const DARK_FACE_BASES = ["#141312", "#1F1D1B", "#1C1A18", "#100F0E"] as const;
 
 function findPalette(name: PaletteName): PaletteEntry {
   const entry = PALETTE.find((p) => p.name === name);
@@ -130,7 +152,12 @@ export function botTheme(bot: ThemeBot, mode: BotThemeMode = {}): BotTheme {
   }
 
   const botDeep = isBlack && darkish ? "#000" : entry.deep;
-  const bodyColour = isBlack && darkish ? "#2A2826" : entry.base;
+  const bodyColour = isBlack && darkish ? BLACK_DARK_BODY : entry.base;
+
+  const botLight = isBlack ? "#D8D4CF" : `rgb(${entry.rgb[0]}, ${entry.rgb[1]}, ${entry.rgb[2]})`;
+  const botInk = darkish
+    ? ensureContrast(botLight, DARK_FACE_BASES.map((base) => over(tint, base)), 4.5, "lighten")
+    : botDeep;
 
   return {
     bot: entry.base,
@@ -138,10 +165,13 @@ export function botTheme(bot: ThemeBot, mode: BotThemeMode = {}): BotTheme {
     botWash: wash,
     botTint: tint,
     onBot: INK_ON_BOT.has(bot.colour) ? "#1E1B19" : "#fff",
-    botLight: isBlack ? "#D8D4CF" : `rgb(${entry.rgb[0]}, ${entry.rgb[1]}, ${entry.rgb[2]})`,
+    botLight,
+    botInk,
     glow: isBlack ? "rgba(255, 255, 255, 0.10)" : rgba(entry.rgb, 0.34),
     glowRing: isBlack ? "#6E6A66" : entry.base,
     sendBg: bodyColour,
-    blobOutline: isBlack && darkish ? "#3A3836" : null,
+    blobFill: bodyColour,
+    mark: isBlack && darkish ? BLACK_DARK_RIM : entry.base,
+    blobOutline: isBlack && darkish ? BLACK_DARK_RIM : null,
   };
 }

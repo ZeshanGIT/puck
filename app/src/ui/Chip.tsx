@@ -3,7 +3,8 @@
  * state changes the border and text as well as the fill, so it is not
  * shown by colour alone.
  */
-import { Pressable, Text } from "react-native";
+import { Pressable } from "react-native";
+import { Text } from "./Text";
 import { useTheme } from "./theme";
 import { fontFamily } from "./tokens";
 
@@ -25,7 +26,8 @@ export function Chip({ label, selected, onPress, testID }: ChipProps) {
       onPress={onPress}
       testID={testID}
       style={{
-        height: 36,
+        minHeight: 36,
+        paddingVertical: 4,
         justifyContent: "center",
         paddingHorizontal: 14,
         borderRadius: 18,

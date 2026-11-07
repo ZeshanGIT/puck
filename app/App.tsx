@@ -3,7 +3,8 @@ import { ConvexProvider, useConvex } from "convex/react";
 import { anyApi } from "convex/server";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Linking, StyleSheet, Text, View } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
+import { Text } from "./src/ui/Text";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { appGate, nextStep, type OnboardingStatus, type OnboardingStep } from "./src/accountGate";
 import { useClerkAccount } from "./src/clerkAccount";
@@ -59,6 +60,7 @@ import { O4FirstBot } from "./src/screens/O4FirstBot";
 import { knownBots, needsYou } from "./src/homeModel";
 import { goneCopy } from "./src/receiptCopy";
 import { readableError } from "./src/session";
+import { ThemeProvider, type ThemeMode } from "./src/ui/theme";
 import { Toast, useToast } from "./src/ui/Toast";
 import { useAppFonts } from "./src/ui/useAppFonts";
 
@@ -90,6 +92,11 @@ function useDevLinks() {
   return { galleryOpen, setGalleryOpen, section, menuOpen, setMenuOpen } as const;
 }
 
+/** The `theme` query value of a dev-alert link: `dark`, `night` or `light`; anything else follows the system. */
+function parseDevTheme(value: string | undefined): ThemeMode | undefined {
+  return value === "dark" || value === "night" || value === "light" ? value : undefined;
+}
+
 /**
  * Dev only: `adb shell am start -a android.intent.action.VIEW -d "puck://dev-alert?sample=sheldon"`
  * opens an alert screen with a sample alert (`src/screens/gallery/samples`; `fyi` is the other
@@ -98,18 +105,22 @@ function useDevLinks() {
  */
 function useDevAlertLink() {
   const [sample, setSample] = useState<string | null>(null);
+  // `&theme=dark|night|light` wraps the sample in that mode (the app itself follows the system
+  // setting; this lets a sample be checked in dark or night without changing the phone).
+  const [theme, setTheme] = useState<ThemeMode | undefined>(undefined);
   useEffect(() => {
     if (!__DEV__) return;
     const check = (url: string | null | undefined) => {
       if (!url?.startsWith("puck://dev-alert")) return;
       const match = /[?&]sample=([^&#]+)/u.exec(url);
       setSample(match?.[1] ? decodeURIComponent(match[1]) : "sheldon");
+      setTheme(parseDevTheme(/[?&]theme=([^&#]+)/u.exec(url)?.[1]));
     };
     void Linking.getInitialURL().then(check);
     const subscription = Linking.addEventListener("url", ({ url }) => check(url));
     return () => subscription.remove();
   }, []);
-  return { sample, closeSample: () => setSample(null) } as const;
+  return { sample, theme, closeSample: () => setSample(null) } as const;
 }
 
 /** H4 Alert detail with fake data (`sample=detail`, `detail-ok`): no backend; Try again just shows a Toast. */
@@ -424,6 +435,7 @@ export default function App() {
     return (
       <GestureHandlerRootView style={styles.root}>
         <ConvexProvider client={convex}>
+          <ThemeProvider mode={alertLink.theme}>
           {isHomeSample(alertLink.sample) ? (
             <DevHome key={alertLink.sample} name={alertLink.sample} />
           ) : isBotsSample(alertLink.sample) ? (
@@ -437,8 +449,9 @@ export default function App() {
           ) : (
             <DevAlertSample name={alertLink.sample} />
           )}
+          </ThemeProvider>
         </ConvexProvider>
-        <StatusBar style="dark" />
+        <StatusBar style={alertLink.theme === "dark" || alertLink.theme === "night" ? "light" : "dark"} />
       </GestureHandlerRootView>
     );
   }

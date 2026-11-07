@@ -5,7 +5,8 @@
  * supplies it, so this file never imports the blob.
  */
 import { type ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
+import { Text, useLines } from "./Text";
 import Svg, { Path } from "react-native-svg";
 import { Tag } from "./Pill";
 import { useInGroup } from "./Group";
@@ -53,6 +54,7 @@ export function Row({
 }: RowProps) {
   const t = useTheme().tokens;
   const inGroup = useInGroup();
+  const subtitleLines = useLines(1);
   const detailColour = {
     neutral: t.ink2,
     ok: t.ok,
@@ -79,7 +81,7 @@ export function Row({
         </View>
         {subtitle ? (
           <Text
-            numberOfLines={1}
+            numberOfLines={subtitleLines}
             style={{ color: t.ink, fontFamily: fontFamily.semiBold, fontSize: 15, marginTop: 1 }}
           >
             {subtitle}

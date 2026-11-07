@@ -66,7 +66,7 @@ export interface BlobProps {
 }
 
 const EYE_FILL = "#fff";
-const OUTLINE_WIDTH = 2;
+const OUTLINE_WIDTH = 3;
 
 const EASINGS: Record<CurveName, ReturnType<typeof Easing.bezier>> = {
   spring: Easing.bezier(...CURVES.spring),
@@ -82,7 +82,7 @@ const EASINGS: Record<CurveName, ReturnType<typeof Easing.bezier>> = {
  */
 function useBody(bot: BlobBot) {
   const t = useBotTheme(bot);
-  return { fill: t.bot, outline: t.blobOutline };
+  return { fill: t.blobFill, outline: t.blobOutline };
 }
 
 function Body({ bot, fill, outline }: { bot: BlobBot; fill: string; outline: string | null }) {
@@ -215,6 +215,8 @@ const LiveBlob = forwardRef<BlobHandle, Omit<BlobProps, "live" | "still">>(funct
   return (
     <Animated.View
       pointerEvents="none"
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
       style={[
         {
           width: size,

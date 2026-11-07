@@ -7,7 +7,8 @@
  * Colours come from `useTheme()` and `useBotTheme(bot)` only.
  */
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from "react-native";
+import { Text } from "./Text";
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -97,7 +98,7 @@ function BtnFace({
   style,
   testID,
 }: Omit<BtnProps, "tapTwice"> & { twice?: boolean }) {
-  const { tokens: t } = useTheme();
+  const { tokens: t, dark } = useTheme();
   const bt = useBotTheme(bot);
   const reducedMotion = useReducedMotion();
   const [pressed, setPressed] = useState(false);
@@ -130,17 +131,20 @@ function BtnFace({
         barColor: t.ink,
       };
       break;
-    case "danger":
+    case "danger": {
+      // White on the light danger red is 6.5:1; on the dark theme's softer red it is 2.5:1, so the
+      // dark theme's own background colour is the label (7.5:1).
+      const armedLabel = dark ? t.bg : "#fff";
       look = armed
         ? {
             background: t.danger,
-            color: "#fff",
+            color: armedLabel,
             edge: DANGER_ARMED_EDGE,
             edgeRest: 6,
             edgeArmed: 6,
             lifts: true,
             height: 58,
-            barColor: withAlpha("#fff", ARMED_BAR_ALPHA),
+            barColor: withAlpha(armedLabel, ARMED_BAR_ALPHA),
           }
         : {
             background: t.dangerbg,
@@ -153,6 +157,7 @@ function BtnFace({
             barColor: withAlpha("#fff", ARMED_BAR_ALPHA),
           };
       break;
+    }
     case "ghost":
       look = {
         background: "transparent",
@@ -212,7 +217,7 @@ function BtnFace({
         style={[
           styles.face,
           {
-            height: look.height,
+            minHeight: look.height,
             backgroundColor: look.background,
             borderColor: look.borderColor,
             borderWidth: look.borderColor ? 1.5 : 0,
@@ -224,7 +229,6 @@ function BtnFace({
         ]}
       >
         <Text
-          numberOfLines={1}
           maxFontSizeMultiplier={1.3}
           style={[styles.label, { color: look.color }]}
         >
@@ -279,8 +283,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
     borderRadius: RADIUS,
+    // minHeight, not height: a long label wraps and the button grows (font scale up to 130%).
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   label: {
+    flexShrink: 1,
+    textAlign: "center",
     fontFamily: fontFamily.black,
     fontSize: 17,
     fontWeight: "900",
