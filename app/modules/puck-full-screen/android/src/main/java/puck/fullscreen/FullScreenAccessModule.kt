@@ -6,6 +6,8 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
+import android.graphics.Color
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.RingtoneManager
@@ -35,7 +37,7 @@ class FullScreenAccessModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("PuckFullScreenAccess")
 
-    Events("onVolumeKey")
+    Events("onVolumeKey", "onOverlayOpen")
 
     Function("canUse") {
       val context = appContext.reactContext ?: return@Function false
@@ -168,6 +170,60 @@ class FullScreenAccessModule : Module() {
 
     OnActivityEntersForeground {
       appContext.currentActivity?.let { watchVolumeKeys(it) }
+    }
+
+    // A tap on the compact card while the app is already running: JavaScript opens that alert.
+    OnNewIntent { intent: Intent ->
+      intent.getStringExtra(OverlayCard.EXTRA_QUESTION_ID)?.let { id ->
+        sendEvent("onOverlayOpen", mapOf("questionId" to id))
+      }
+    }
+
+    // True when Puck may draw the compact alert card over other apps (the person grants it).
+    Function("canDrawOverlay") {
+      val context = appContext.reactContext ?: return@Function false
+      OverlayCard.canDraw(context)
+    }
+
+    // Shows the compact card for one alert, replacing any card already up. False without the permission.
+    Function("showOverlayCard") {
+        questionId: String,
+        label: String,
+        title: String,
+        body: String,
+        background: String,
+        ink: String,
+        ink2: String,
+        accent: String ->
+      val context = appContext.reactContext ?: return@Function false
+      try {
+        OverlayCard.show(
+          context,
+          OverlayCard.Spec(
+            questionId = questionId,
+            label = label,
+            title = title,
+            body = body,
+            background = Color.parseColor(background),
+            ink = Color.parseColor(ink),
+            ink2 = Color.parseColor(ink2),
+            accent = Color.parseColor(accent),
+          ),
+        )
+      } catch (error: IllegalArgumentException) {
+        false
+      }
+    }
+
+    // Removes the compact card when it shows this alert (or whichever card, with an empty id).
+    Function("hideOverlayCard") { questionId: String ->
+      OverlayCard.hide(questionId.ifEmpty { null })
+      true
+    }
+
+    // The alert a tap on the compact card opened on a cold start; taken once.
+    Function("takeOverlayOpen") {
+      OverlayCard.takeOpenedQuestionId(appContext.currentActivity?.intent)
     }
   }
 

@@ -10,7 +10,23 @@ type FullScreenNative = {
   createAlarmChannel?: (id: string, name: string, bypassDnd: boolean) => boolean;
   watchVolumeKeys?: () => boolean;
   requestUnlock?: () => Promise<string>;
-  addListener?: (eventName: "onVolumeKey", listener: () => void) => { remove: () => void };
+  canDrawOverlay?: () => boolean;
+  showOverlayCard?: (
+    questionId: string,
+    label: string,
+    title: string,
+    body: string,
+    background: string,
+    ink: string,
+    ink2: string,
+    accent: string,
+  ) => boolean;
+  hideOverlayCard?: (questionId: string) => boolean;
+  takeOverlayOpen?: () => string | null;
+  addListener?: (
+    eventName: "onVolumeKey" | "onOverlayOpen",
+    listener: (event?: { questionId: string }) => void,
+  ) => { remove: () => void };
 };
 
 function nativeModule(): FullScreenNative | null {
@@ -151,5 +167,77 @@ export async function requestUnlock(): Promise<UnlockResult> {
     return result === "unlocked" || result === "cancelled" ? result : "error";
   } catch {
     return "error";
+  }
+}
+
+/** True when Puck may draw the compact alert card over other apps (the person grants it in Android). */
+export function canDrawOverlay(): boolean {
+  try {
+    return nativeModule()?.canDrawOverlay?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+export interface OverlayCardContent {
+  questionId: string;
+  label: string;
+  title: string;
+  body: string;
+  background: string;
+  ink: string;
+  ink2: string;
+  accent: string;
+}
+
+/** Shows the compact card for an alert, replacing one already up. False without the permission. Never throws. */
+export function showOverlayCard(card: OverlayCardContent): boolean {
+  try {
+    return (
+      nativeModule()?.showOverlayCard?.(
+        card.questionId,
+        card.label,
+        card.title,
+        card.body,
+        card.background,
+        card.ink,
+        card.ink2,
+        card.accent,
+      ) === true
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Removes the card when it is showing this alert. Never throws. */
+export function hideOverlayCard(questionId: string): void {
+  try {
+    nativeModule()?.hideOverlayCard?.(questionId);
+  } catch {
+    // No card is drawn, or it is already gone.
+  }
+}
+
+/** The alert a tap on the compact card opened on a cold start, taken once; null otherwise. */
+export function takeOverlayOpen(): string | null {
+  try {
+    return nativeModule()?.takeOverlayOpen?.() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Calls `listener` with the alert id when a tap on the card arrives while the app is running. */
+export function subscribeOverlayOpen(listener: (questionId: string) => void): () => void {
+  try {
+    const native = nativeModule();
+    if (!native?.addListener) return () => {};
+    const subscription = native.addListener("onOverlayOpen", (event) => {
+      if (event) listener(event.questionId);
+    });
+    return () => subscription.remove();
+  } catch {
+    return () => {};
   }
 }

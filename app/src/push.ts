@@ -1,7 +1,9 @@
 import { anyApi } from "convex/server";
 import { useConvex } from "convex/react";
+import { AppState } from "react-native";
 import { useEffect, useState } from "react";
 import { readClientId } from "./clientStore";
+import { subscribeOverlayOpen, takeOverlayOpen } from "puck-full-screen";
 import { questionIdFromNotificationData } from "./pushOpen";
 import { readableError } from "./session";
 import { loadNotificationsModule, registerPushTokenWithConvex } from "./onboarding/notificationSetup";
@@ -50,9 +52,25 @@ export function usePushRegistration(enabled: boolean): boolean | null {
   return granted;
 }
 
-/** Question opened from a notification tap, including a cold start. */
+/** Question opened from a notification tap, including a cold start, or from the compact card. */
 export function useOpenedQuestionId(): string | null {
   const [opened, setOpened] = useState<string | null>(null);
+
+  useEffect(() => {
+    const apply = () => {
+      const id = takeOverlayOpen();
+      if (id) setOpened(id);
+    };
+    apply();
+    const unsubscribe = subscribeOverlayOpen(setOpened);
+    const app = AppState.addEventListener("change", (state) => {
+      if (state === "active") apply();
+    });
+    return () => {
+      unsubscribe();
+      app.remove();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

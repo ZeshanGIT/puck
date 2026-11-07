@@ -1,7 +1,16 @@
 import notifee, { AndroidImportance, AndroidVisibility, EventType, type Event } from "@notifee/react-native";
 import { PUSH_CHANNEL_ID, PUSH_URGENT_CHANNEL_ID } from "@puck/shared";
 import { alertRingingPlan } from "./alertRinging";
-import { canCreateAlarmChannel, createAlarmChannel, hasDndAccess, isInCall, isLocked } from "puck-full-screen";
+import {
+  canCreateAlarmChannel,
+  canDrawOverlay,
+  createAlarmChannel,
+  hideOverlayCard,
+  hasDndAccess,
+  isInCall,
+  isLocked,
+  showOverlayCard,
+} from "puck-full-screen";
 import { useEffect, useState } from "react";
 import { dismissedQuestionId } from "./dismissPayload";
 import { fullscreenAlert, type FullScreenAlert } from "./fullscreenPayload";
@@ -15,11 +24,14 @@ import {
   type LocalSettings,
 } from "./localSettings";
 import { handleLivePush } from "./liveNotification";
+import { systemIsDark } from "./overlayCard";
+import { overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
 import { livePush } from "./livePayload";
 import { openPairingFromNotificationData } from "./pairingOpen";
 import { displayPairing } from "./pairingDisplay";
 import { pairingPush } from "./pairingPayload";
 import { speechText, startSpeaking } from "./speak";
+import { themeIsDark } from "./ui/themePreference";
 
 /**
  * A full-screen alert on the phone (A4). Urgent alerts ring insistently; normal alerts use the
@@ -164,6 +176,7 @@ async function postQuiet(alert: FullScreenAlert, channelId: string): Promise<voi
 /* ------------------------------------------------------------------ ringing */
 
 function forget(questionId: string): void {
+  hideOverlayCard(questionId);
   const ring = rings.get(questionId);
   if (!ring) return;
   clearTimeout(ring.timer);
@@ -215,7 +228,10 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings): Pr
   const ring: Ring = {
     alert,
     state: "ringing",
-    timer: setTimeout(() => void settle(alert.questionId), seconds * 1000 + QUIET_DELAY_MS),
+    timer: setTimeout(() => {
+      hideOverlayCard(alert.questionId);
+      void settle(alert.questionId);
+    }, seconds * 1000 + QUIET_DELAY_MS),
     stopSpeech:
       alert.priority === "urgent" && alert.speak
         ? startSpeaking(alert.questionId, speechText(alert.question, alert.message), seconds)
@@ -223,6 +239,14 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings): Pr
   };
   rings.set(alert.questionId, ring);
   await postRinging(alert, channelId, plan);
+  await showCard(alert, settings);
+}
+
+/** On an unlocked phone the alert also shows as a compact card over other apps (when allowed). */
+async function showCard(alert: FullScreenAlert, settings: LocalSettings): Promise<void> {
+  if (!shouldShowOverlayCard({ locked: isLocked(), allowed: canDrawOverlay(), inCall: false })) return;
+  const dark = themeIsDark(settings.theme, await systemIsDark());
+  showOverlayCard({ questionId: alert.questionId, ...overlayCardText(alert), ...overlayPalette(dark, alert.priority) });
 }
 
 /** Volume key: silence every ringing alert (and its voice) without answering. */

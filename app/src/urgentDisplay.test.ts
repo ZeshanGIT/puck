@@ -12,6 +12,9 @@ const store = new Map<string, string>();
 const channels: { id: string; bypassDnd?: boolean }[] = [];
 const alarmChannels: { id: string; bypassDnd: boolean }[] = [];
 const notifications: { channelId: string; timeoutAfter?: number }[] = [];
+const cards: { questionId: string; title: string; label: string; background: string }[] = [];
+const hidden: string[] = [];
+const overlay = { allowed: false, locked: false };
 
 mock.module("expo-secure-store", () => ({
   getItemAsync: async (key: string) => store.get(key) ?? null,
@@ -45,7 +48,17 @@ mock.module("puck-full-screen", () => ({
   },
   hasDndAccess: () => true,
   isInCall: () => false,
-  isLocked: () => false,
+  isLocked: () => overlay.locked,
+  canDrawOverlay: () => overlay.allowed,
+  showOverlayCard: (card: { questionId: string; title: string; label: string; background: string }) => {
+    cards.push(card);
+    return true;
+  },
+  hideOverlayCard: (questionId: string) => {
+    hidden.push(questionId);
+  },
+  takeOverlayOpen: () => null,
+  subscribeOverlayOpen: () => () => {},
 }));
 
 type UrgentModule = typeof import("./urgentDisplay");
@@ -63,6 +76,10 @@ beforeEach(() => {
   channels.length = 0;
   alarmChannels.length = 0;
   notifications.length = 0;
+  cards.length = 0;
+  hidden.length = 0;
+  overlay.allowed = false;
+  overlay.locked = false;
 });
 
 let counter = 0;
@@ -94,6 +111,32 @@ describe("normal full-screen presentation", () => {
     expect(note.timeoutAfter).toBe(60_000);
     const insistent = notifications.some((n) => n.channelId === PUSH_CHANNEL_ID);
     expect(insistent).toBe(true);
+  });
+});
+
+describe("the compact card over other apps", () => {
+  test("an unlocked phone with the permission shows the card, and clearing the alert hides it", async () => {
+    overlay.allowed = true;
+    const alert = asking({ priority: "normal", question: "Lunch?", botName: "Cortana" });
+    await urgent.displayUrgent(alert);
+    expect(cards.map((card) => card.questionId)).toEqual([alert.questionId]);
+    expect(cards[0]!.title).toBe("Cortana");
+    expect(cards[0]!.label).toBe("Alert");
+    await urgent.clearDisplayedAlert(alert.questionId);
+    expect(hidden).toContain(alert.questionId);
+  });
+
+  test("a locked phone keeps the full-screen alert: no card", async () => {
+    overlay.allowed = true;
+    overlay.locked = true;
+    await urgent.displayUrgent(asking());
+    expect(cards).toEqual([]);
+  });
+
+  test("without the permission the notification alone carries the alert", async () => {
+    await urgent.displayUrgent(asking());
+    expect(cards).toEqual([]);
+    expect(notifications.length).toBeGreaterThan(0);
   });
 });
 
