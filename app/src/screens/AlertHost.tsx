@@ -46,6 +46,7 @@ import { useOnline } from "./A10Offline";
 import { A7Receipt, useAnswerReceipt } from "./A7Receipt";
 import { A9Gone, useAlertGone, type AlertGoneState } from "./A9Gone";
 import { A11Snooze } from "./A11Snooze";
+import { pickDeckAlert } from "../alertLaunchRouting";
 
 export type AnswerHandler = (optionIds: string[], customReply?: string, attachments?: UploadedAttachment[]) => Promise<void>;
 
@@ -117,7 +118,7 @@ export function useAlertDeck(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pending, version],
   );
-  const next = live.find((item) => item.questionId === openedId) ?? live[0] ?? null;
+  const next = pickDeckAlert(live, openedId);
   const [held, setHeld] = useState<PendingAlert | null>(null);
   const heldGone = held !== null && !live.some((item) => item.questionId === held.questionId);
   useEffect(() => {

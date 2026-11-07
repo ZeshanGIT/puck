@@ -10,6 +10,7 @@ import { clearOpenedPairing, useOpenedPairingBotId } from "./pairingOpen";
 import { useOpenedQuestionId } from "./push";
 import { useBots } from "./useBots";
 import { readableError } from "./session";
+import { alertLaunchSettled, inboxShowsHome } from "./alertLaunchRouting";
 import { inboxReady } from "./startupGate";
 import { useHistory } from "./useHistory";
 import { Text } from "./ui/Text";
@@ -240,7 +241,15 @@ function InboxBody({
   // The opening screen stays over the app until Home has what it draws (see `startupGate.ts`): the
   // first page of history is read here too (Convex shares the one subscription with Home and Archive).
   const firstHistory = useHistory(clientId);
-  const ready = inboxReady({ clientId, pending, bots, waiting, historyLoading: firstHistory.loading });
+  const launchId = chosenId ?? openedId;
+  const dataReady = inboxReady({ clientId, pending, bots, waiting, historyLoading: firstHistory.loading });
+  const launchSettled = alertLaunchSettled(
+    launchId,
+    pending,
+    visible,
+    deck.alert?.questionId ?? null,
+  );
+  const ready = dataReady && launchSettled;
   useEffect(() => {
     if (ready) onReady?.();
   }, [ready, onReady]);
@@ -272,6 +281,9 @@ function InboxBody({
     );
   }
   const alert = deck.alert;
+  if (!alert && !inboxShowsHome({ deckAlert: alert, launchId, pending, visible })) {
+    return <Blank />;
+  }
   if (!alert && pairFlow) {
     return (
       <View style={styles.stack}>
