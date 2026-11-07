@@ -7,7 +7,7 @@
  * callbacks; `onRename` resolves with an error message, or null when the name was saved.
  */
 import { useEffect, useState } from "react";
-import { KeyboardAvoidingView, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Text } from "../ui/Text";
 import { checkClientName, pushRow, registeredText, type ClientItem } from "../settingsModel";
 import { OnboardingFrame } from "../onboarding/parts";
@@ -119,8 +119,8 @@ function RenameSheet({
   }
 
   return (
-    <Sheet visible={visible} onClose={onClose} testID="rename-sheet">
-      <KeyboardAvoidingView behavior="padding">
+    <Sheet visible={visible} onClose={onClose} testID="rename-sheet" keyboardAvoiding>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <SheetTitle>Rename this phone</SheetTitle>
         <SheetText>Other clients and the alert details show this name.</SheetText>
         <TextInput
