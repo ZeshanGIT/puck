@@ -63,10 +63,17 @@ export interface BlobProps {
   still?: boolean;
   /** Eyes look toward this offset (viewBox units, about +-4 x, +-4 y); glancing pauses. */
   look?: Offset | null;
+  /**
+   * A thin ring in this colour around the body, for a blob that sits on a wash of its own colour (the
+   * avatar on a Home card). Left out for the black bot in dark and night, whose own rim already does the job.
+   */
+  ring?: string;
 }
 
 const EYE_FILL = "#fff";
 const OUTLINE_WIDTH = 3;
+/** The ring is a stroke drawn under the body, so half of it shows: 4 viewBox units out. */
+const RING_STROKE = 8;
 
 const EASINGS: Record<CurveName, ReturnType<typeof Easing.bezier>> = {
   spring: Easing.bezier(...CURVES.spring),
@@ -85,9 +92,22 @@ function useBody(bot: BlobBot) {
   return { fill: t.blobFill, outline: t.blobOutline };
 }
 
-function Body({ bot, fill, outline }: { bot: BlobBot; fill: string; outline: string | null }) {
+function Body({
+  bot,
+  fill,
+  outline,
+  ring,
+}: {
+  bot: BlobBot;
+  fill: string;
+  outline: string | null;
+  ring?: string | undefined;
+}) {
   return (
     <G transform={`rotate(${bot.tilt} 50 50)`}>
+      {ring && !outline ? (
+        <Path d={SHAPES[bot.shape]} fill={ring} stroke={ring} strokeWidth={RING_STROKE} strokeLinejoin="round" />
+      ) : null}
       <Path
         d={SHAPES[bot.shape]}
         fill={fill}
@@ -109,7 +129,7 @@ const NOOP_HANDLE: BlobHandle = {
 };
 
 const StillBlob = forwardRef<BlobHandle, Omit<BlobProps, "live" | "still">>(function StillBlob(
-  { bot, size, look },
+  { bot, size, look, ring },
   ref,
 ) {
   useImperativeHandle(ref, () => NOOP_HANDLE, []);
@@ -119,7 +139,7 @@ const StillBlob = forwardRef<BlobHandle, Omit<BlobProps, "live" | "still">>(func
   return (
     <View style={{ width: size, height: size }} pointerEvents="none">
       <Svg width={size} height={size} viewBox="0 0 100 100" style={styles.overflow}>
-        <Body bot={bot} fill={fill} outline={outline} />
+        <Body bot={bot} fill={fill} outline={outline} ring={ring} />
         <G transform={`translate(${ex} ${ey})`}>
           <G transform={`rotate(${EYE_GROUP_ROTATION} ${EYE_GROUP_ORIGIN.x} ${EYE_GROUP_ORIGIN.y})`}>
             {EYES.map((e) => (
@@ -175,7 +195,7 @@ function play(m: Motion, name: ReactionName, reduced: boolean) {
 }
 
 const LiveBlob = forwardRef<BlobHandle, Omit<BlobProps, "live" | "still">>(function LiveBlob(
-  { bot, size, look },
+  { bot, size, look, ring },
   ref,
 ) {
   const { fill, outline } = useBody(bot);
@@ -227,7 +247,7 @@ const LiveBlob = forwardRef<BlobHandle, Omit<BlobProps, "live" | "still">>(funct
       ]}
     >
       <Svg width={size} height={size} viewBox="0 0 100 100" style={[StyleSheet.absoluteFill, styles.overflow]}>
-        <Body bot={bot} fill={fill} outline={outline} />
+        <Body bot={bot} fill={fill} outline={outline} ring={ring} />
       </Svg>
       <Animated.View style={[StyleSheet.absoluteFill, eyesStyle]}>
         <View

@@ -46,6 +46,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 import { Blob, type BlobHandle } from "./Blob";
+import { ringBox, ringGeometry, type RingGeometry } from "./blobCentre";
 import type { BlobBot, Offset } from "./blobShapes";
 import { Pill } from "./Pill";
 import { RichText } from "./RichText";
@@ -203,12 +204,11 @@ export function Wash({ colour, night }: { colour: string; night: boolean }) {
 
 /* ----------------------------------------------------------------- rings */
 
-const RING_SIZE = 150;
 const RING_MS = 1400;
 const RING_EASE = Easing.bezier(0, 0, 0.58, 1); // CSS ease-out
 
 /** `.ring`: `pulse 1.4s ease-out infinite`, scale .9 to 1.65 and opacity .45 to 0; `.r2` starts .7 s later. */
-function Ring({ colour, delay }: { colour: string; delay: number }) {
+function Ring({ colour, delay, geometry }: { colour: string; delay: number; geometry: RingGeometry }) {
   const progress = useSharedValue(1);
   useEffect(() => {
     progress.value = 1;
@@ -230,23 +230,19 @@ function Ring({ colour, delay }: { colour: string; delay: number }) {
       pointerEvents="none"
       accessible={false}
       importantForAccessibility="no-hide-descendants"
-      style={[
-        styles.ring,
-        { borderColor: colour },
-        style,
-      ]}
+      style={[styles.ring, ringBox(geometry), { borderColor: colour }, style]}
     />
   );
 }
 
 /** Two rings, 0.7 s apart. Not drawn with reduced motion (the prototype stops its animations). */
-function UrgentRings({ colour }: { colour: string }) {
+function UrgentRings({ colour, geometry }: { colour: string; geometry: RingGeometry }) {
   const reduced = useReducedMotion();
   if (reduced) return null;
   return (
     <>
-      <Ring colour={colour} delay={0} />
-      <Ring colour={colour} delay={RING_MS / 2} />
+      <Ring colour={colour} delay={0} geometry={geometry} />
+      <Ring colour={colour} delay={RING_MS / 2} geometry={geometry} />
     </>
   );
 }
@@ -469,7 +465,7 @@ function AlertFrameBody({
           {clock ? <LockClock now={now} /> : null}
 
           <View style={styles.ablob}>
-            {urgent && !answered ? <UrgentRings colour={nightMode ? bt.glowRing : bt.mark} /> : null}
+            {urgent && !answered ? <UrgentRings colour={nightMode ? bt.glowRing : bt.mark} geometry={ringGeometry(bot, blobSize)} /> : null}
             <Blob ref={blob} bot={bot} size={blobSize} live look={look} />
           </View>
 
@@ -617,11 +613,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: "50%",
     top: "50%",
-    width: RING_SIZE,
-    height: RING_SIZE,
-    marginLeft: -RING_SIZE / 2,
-    marginTop: -RING_SIZE / 2,
-    borderRadius: RING_SIZE / 2,
     borderWidth: 3,
   },
   who: { flexDirection: "row", alignItems: "center", gap: 7, maxWidth: "100%" },

@@ -76,6 +76,15 @@ export function over(fg: string, bg: string): string {
   return toHex(composite(parseColour(fg), parseColour(bg)));
 }
 
+/**
+ * An `rgba(...)` wash as the pair an SVG gradient stop needs: an opaque `stopColor` and its
+ * `stopOpacity`. Giving a stop the rgba string with `stopOpacity` 1 drew the wash at full strength.
+ */
+export function washStop(colour: string): { rgb: string; alpha: number } {
+  const c = parseColour(colour);
+  return { rgb: `rgb(${c.r}, ${c.g}, ${c.b})`, alpha: c.a };
+}
+
 /** Mixes `colour` toward white (`amount` 0 to 1) and returns a hex colour. */
 export function lighten(colour: string, amount: number): string {
   const c = parseColour(colour);

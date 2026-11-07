@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { PALETTE, botTheme } from "./botTheme";
-import { contrastRatio, ensureContrast, over, parseColour } from "./contrast";
+import { contrastRatio, ensureContrast, over, parseColour, washStop } from "./contrast";
 import { darkTokens, lightTokens, type ThemeTokens } from "./tokens";
 
 const BODY = 4.5;
@@ -172,6 +172,37 @@ describe("non-text marks (3:1)", () => {
         expect({ bot: p.name, surface, ok: contrastRatio(dark.mark, surface) >= LARGE }).toEqual({ bot: p.name, surface, ok: true });
       }
     }
+  });
+});
+
+describe("the wash behind a Home card's avatar", () => {
+  test("washStop splits an rgba wash into an opaque colour and its opacity", () => {
+    expect(washStop("rgba(226, 75, 58, 0.1)")).toEqual({ rgb: "rgb(226, 75, 58)", alpha: 0.1 });
+  });
+
+  test("every bot's wash is faint (16% at most in light and dark) once its alpha is honoured", () => {
+    for (const p of PALETTE) {
+      for (const dark of [false, true]) {
+        expect(washStop(botTheme({ colour: p.name }, { dark }).botWash).alpha).toBeLessThanOrEqual(0.16);
+      }
+    }
+  });
+
+  test("the wash never swallows the avatar: 3:1 against it, or within 80% of what the plain card gives", () => {
+    for (const [tokens, dark] of [[lightTokens, false], [darkTokens, true]] as const) {
+      for (const p of PALETTE) {
+        const bt = botTheme({ colour: p.name }, { dark });
+        if (p.name === "black" && dark) continue; // the black bot's rim (mark) does this job in dark
+        const plain = contrastRatio(bt.blobFill, tokens.card);
+        const washed = contrastRatio(bt.blobFill, over(bt.botWash, tokens.card));
+        expect({ bot: p.name, dark, ok: washed >= LARGE || washed >= 0.8 * plain }).toEqual({ bot: p.name, dark, ok: true });
+      }
+    }
+  });
+
+  test("the avatar ring is the card colour in light and a lifted grey in dark", () => {
+    expect(lightTokens.avatarRing).toBe(lightTokens.card);
+    expect(contrastRatio(darkTokens.avatarRing, darkTokens.card)).toBeGreaterThan(1.5);
   });
 });
 

@@ -21,7 +21,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import Svg, { Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import {
   doneStops,
   hasTrack,
@@ -36,6 +36,7 @@ import {
 import { botTestId } from "../botsModel";
 import { Blob } from "./Blob";
 import { CURVES } from "./blobShapes";
+import { washStop } from "./contrast";
 import { useBotTheme, useOnWash, useTheme } from "./theme";
 import { fontFamily } from "./tokens";
 
@@ -58,6 +59,7 @@ export function LiveCard({ activity, now, onPress }: LiveCardProps) {
   const look = useMemo(() => liveLook(activity), [activity]);
   const bt = useBotTheme(look);
   const onWash = useOnWash(bt.botWash, t.card);
+  const wash = washStop(bt.botWash);
   const done = activity.state === "done";
   const running = activity.state === "running";
   const slug = botTestId("live-card", activity.botName);
@@ -67,16 +69,16 @@ export function LiveCard({ activity, now, onPress }: LiveCardProps) {
     <>
       <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none" accessible={false}>
         <Defs>
-          <RadialGradient id="liveWash" cx="0%" cy="0%" rx="90%" ry="140%" fx="0%" fy="0%">
-            <Stop offset="0" stopColor={bt.botWash} stopOpacity="1" />
-            <Stop offset="0.6" stopColor={bt.botWash} stopOpacity="0" />
-          </RadialGradient>
+          <LinearGradient id="liveWash" x1="0" y1="0" x2="1" y2="0.6">
+            <Stop offset="0" stopColor={wash.rgb} stopOpacity={wash.alpha} />
+            <Stop offset="0.75" stopColor={wash.rgb} stopOpacity="0" />
+          </LinearGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#liveWash)" />
       </Svg>
 
       <View style={styles.head}>
-        <Blob bot={look} size={34} live={running && !hasTrack(activity)} still={!running} />
+        <Blob bot={look} size={34} live={running && !hasTrack(activity)} still={!running} ring={t.avatarRing} />
         <View style={styles.name}>
           <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.nameText, { color: t.ink }]}>
             {activity.botName}

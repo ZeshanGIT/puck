@@ -11,6 +11,7 @@ Maestro logs and per-run artifacts go under `.shots/maestro/` (gitignored with `
 ## Files
 - `launch-app.yaml`: subflow. stopApp, opens the dev-client URL for Metro 8082, waits up to 60 s for "Puck".
 - `smoke-home.yaml`: launches, asserts the real Home ("Puck" header, "Settings" icon).
+- `archive.yaml`: Home (`home-clear`) shows no history, only the "Archive · N earlier" row; the row opens the Archive and Back returns.
 - `dev-sample.yaml`: opens `puck://dev-alert?sample=${SAMPLE}`, waits for the Home header when SAMPLE=home, saves `.shots/maestro/dev-sample-<SAMPLE>.png`, checks no crash dialog, ends with stopApp.
 
 Dark and night check (dev only, no rebuild): add `&theme=dark|night|light` to the dev-alert link, e.g. `puck://dev-alert?sample=sheldon&theme=night`; it wraps the sample in that theme (`night` also turns on the night alert look).

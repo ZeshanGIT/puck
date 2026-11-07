@@ -12,14 +12,15 @@
  *   answered from a stack);
  * - "Working now": a `LiveCard` per running task (`WorkingNow`), hidden when none;
  * - "All quiet" with the flock of still blobs, when nothing needs him;
- * - "Earlier": the history by day, a `Row` per alert, and "Load more" until the history is done.
+ * - one "Archive · N earlier" row at the bottom, when there is any history. The history itself (by day,
+ *   "Load more", the alert detail) lives on the Archive screen (`Archive.tsx`), not on Home.
  *
  * `H1Home` only draws: it is given its data and callbacks, so the dev sample route can show it with
  * no backend. `ConnectedH1Home` reads `alerts.waiting` and `alerts.history` from Convex and works
  * out the banners from the phone's real states.
  */
 import { anyApi } from "convex/server";
-import { useQuery, usePaginatedQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { hasDndAccess } from "puck-full-screen";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AppState, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -30,9 +31,9 @@ import {
   BANNER_COPY,
   dndBypassActive,
   flockText,
-  groupByDay,
+  ALL_QUIET_BODY,
+  archiveRowLabel,
   healthBanners,
-  HISTORY_PAGE,
   knownBots,
   needsTitle,
   goThroughLabel,
@@ -50,6 +51,7 @@ import { loadLocalSettings } from "../localSettings";
 import { formatCode, fromText, requestLook, type PairingRequest } from "../pairingModel";
 import type { LiveActivity } from "../liveCardModel";
 import { useBots } from "../useBots";
+import { type HistoryStatus, useHistory } from "../useHistory";
 import { useLiveActivities } from "../useLiveActivities";
 import { usePairingRequests } from "../usePairingRequests";
 import { openDndAccessSettings } from "../onboarding/dndAccess";
@@ -76,7 +78,7 @@ const COMMAND = "puck add sheldon --colour coral";
 
 /* ----------------------------------------------------------------------- the screen */
 
-export type HistoryStatus = "loading" | "canLoadMore" | "loadingMore" | "exhausted";
+export type { HistoryStatus };
 
 export interface H1HomeProps {
   /** The banners to show, in order. */
@@ -84,10 +86,9 @@ export interface H1HomeProps {
   onBanner: (id: BannerId) => void;
   /** The "Needs you" cards; undefined while they load. */
   needs: readonly NeedItem[] | undefined;
-  /** The history so far, newest first; undefined while the first page loads. */
+  /** The history so far, newest first; undefined while the first page loads. Home only counts it. */
   history: readonly HistoryItem[] | undefined;
   historyStatus: HistoryStatus;
-  onLoadMore: () => void;
   /** The bots seen so far (the flock under "All quiet"). */
   bots: readonly KnownBot[];
   /** H2: nothing has ever paged him. */
@@ -98,8 +99,8 @@ export interface H1HomeProps {
   onOpenNeed: (item: NeedItem) => void;
   /** "Go through all N". */
   onGoThroughAll: () => void;
-  /** A tap on an "Earlier" row: H4, the alert's detail. */
-  onOpenAlert: (questionId: string) => void;
+  /** A tap on the Archive row: the Archive screen. */
+  onOpenArchive: () => void;
   onBots: () => void;
   onSettings: () => void;
   onPairBot: () => void;
@@ -121,8 +122,7 @@ export function H1Home(props: H1HomeProps) {
   // A waiting pairing request is the first bot coming in: H2's "run this command" has done its job.
   const noBots = props.noBots && pairings.length === 0;
   const t = useTheme().tokens;
-  const groups = useMemo(() => groupByDay(history ?? [], now), [history, now]);
-  const idByName = useMemo(() => new Map(bots.map((bot) => [bot.botName, bot.botId])), [bots]);
+  const archiveLabel = history ? archiveRowLabel(history.length, historyStatus === "exhausted") : null;
   const stackable = needs ? stackableCount(needs) : 0;
   const live = (props.live?.length ?? 0) > 0;
   const allClear = !noBots && needs !== undefined && needs.length === 0 && pairings.length === 0 && !live;
@@ -170,34 +170,15 @@ export function H1Home(props: H1HomeProps) {
               All quiet
             </Text>
             <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.clearBody, { color: t.ink2 }]}>
-              Nothing needs you right now.
+              {ALL_QUIET_BODY}
             </Text>
             {bots.length > 0 ? <Flock bots={bots} /> : null}
           </View>
         ) : null}
 
-        {groups.map((group) => (
-          <View key={group.label}>
-            <Section label={group.label} />
-            {group.rows.map((row) => (
-              <HistoryRow
-                key={row.questionId}
-                row={row}
-                botId={idByName.get(row.botName) ?? row.botName}
-                onPress={() => props.onOpenAlert(row.questionId)}
-              />
-            ))}
-          </View>
-        ))}
-
-        {historyStatus === "canLoadMore" || historyStatus === "loadingMore" ? (
-          <View style={styles.more}>
-            <Btn
-              label={historyStatus === "loadingMore" ? "Loading…" : "Load more"}
-              variant="line"
-              disabled={historyStatus === "loadingMore"}
-              onPress={props.onLoadMore}
-            />
+        {archiveLabel ? (
+          <View style={styles.archive}>
+            <Row title={archiveLabel} chevron onPress={props.onOpenArchive} testID="archive-row" />
           </View>
         ) : null}
 
@@ -269,7 +250,7 @@ function IconButton({ label, onPress, children }: { label: string; onPress: () =
 }
 
 /** `.sect`: 12.5 / 900, upper case, wide tracking, in `ink3`. */
-function Section({ label }: { label: string }) {
+export function Section({ label }: { label: string }) {
   const t = useTheme().tokens;
   return (
     <Text accessibilityRole="header" maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.section, { color: t.ink3 }]}>
@@ -293,7 +274,7 @@ function NeedRow({ item, now, onPress }: { item: NeedItem; now: number; onPress:
       meta={item.note}
       metaWarn={item.noteWarn}
       metaIcon={<Glyph d={ICON.snooze} size={14} colour={item.noteWarn ? t.warn : t.ink3} width={2.3} />}
-      leading={<Blob bot={bot} size={44} />}
+      leading={<Blob bot={bot} size={44} ring={t.avatarRing} />}
       onPress={onPress}
     />
   );
@@ -301,6 +282,7 @@ function NeedRow({ item, now, onPress }: { item: NeedItem; now: number; onPress:
 
 /** A PAIRING card: `needs.push(...)` for `S.pending` in the prototype's `SCREENS.home`. */
 function PairingRow({ request, onPress }: { request: PairingRequest; onPress: () => void }) {
+  const t = useTheme().tokens;
   const look = useMemo(() => requestLook(request), [request]);
   return (
     <NeedCard
@@ -309,13 +291,23 @@ function PairingRow({ request, onPress }: { request: PairingRequest; onPress: ()
       question="Wants to page you"
       tag={{ label: "PAIRING" }}
       meta={`From ${fromText(request.addedFrom)} · check code ${formatCode(request.pairingCode)}`}
-      leading={<Blob bot={look} size={44} />}
+      leading={<Blob bot={look} size={44} ring={t.avatarRing} />}
       onPress={onPress}
     />
   );
 }
 
-function HistoryRow({ row, botId, onPress }: { row: HistoryRowModel; botId: string; onPress: () => void }) {
+export function HistoryRow({
+  row,
+  botId,
+  onPress,
+  testID,
+}: {
+  row: HistoryRowModel;
+  botId: string;
+  onPress: () => void;
+  testID?: string;
+}) {
   const t = useTheme().tokens;
   const { botName } = row;
   const bot = useMemo(() => botLook({ botId, botName }), [botId, botName]);
@@ -336,6 +328,7 @@ function HistoryRow({ row, botId, onPress }: { row: HistoryRowModel; botId: stri
       }
       leading={<Blob bot={bot} size={40} />}
       onPress={onPress}
+      testID={testID}
     />
   );
 }
@@ -396,7 +389,7 @@ export interface ConnectedH1HomeProps {
   onAllowFullScreen: () => void;
   onOpenNeed: (item: NeedItem) => void;
   onGoThroughAll: () => void;
-  onOpenAlert: (questionId: string) => void;
+  onOpenArchive: () => void;
   onBots: () => void;
   onSettings: () => void;
   onPairBot: () => void;
@@ -484,19 +477,7 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
   const live = useLiveActivities(clientId);
 
   const waiting = useQuery(anyApi.alerts.waiting, clientId ? { clientId } : "skip") as WaitingAlert[] | undefined;
-  const paged = usePaginatedQuery(anyApi.alerts.history, clientId ? { clientId } : "skip", {
-    initialNumItems: HISTORY_PAGE,
-  });
-  const history = clientId ? (paged.results as HistoryItem[]) : [];
-  const status = paged.status as "LoadingFirstPage" | "CanLoadMore" | "LoadingMore" | "Exhausted";
-
-  // "Load more" keeps asking while pages come back short (a page holds only this client's alerts).
-  const [wanted, setWanted] = useState(0);
-  const { loadMore } = paged;
-  useEffect(() => {
-    if (wanted > history.length && status === "CanLoadMore") loadMore(HISTORY_PAGE);
-  }, [wanted, history.length, status, loadMore]);
-  const onLoadMore = useCallback(() => setWanted(history.length + HISTORY_PAGE), [history.length]);
+  const { history, loading: historyLoading, status: historyStatus } = useHistory(clientId);
 
   const queuedKey = (waiting ?? []).map((alert) => (isQueuedLocally(alert.questionId) ? alert.questionId : "")).join("|");
   const needs = useMemo(() => {
@@ -512,17 +493,6 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
     () => (botList ? flockBots(botList) : knownBots(waiting ?? [], history)),
     [botList, waiting, history],
   );
-  const historyStatus: HistoryStatus = !clientId
-    ? "exhausted"
-    : status === "LoadingFirstPage"
-      ? "loading"
-      : status === "CanLoadMore"
-        ? wanted > history.length
-          ? "loadingMore"
-          : "canLoadMore"
-        : status === "LoadingMore"
-          ? "loadingMore"
-          : "exhausted";
   const noBots = Boolean(clientId) && botList !== undefined && botList.length === 0;
 
   return (
@@ -530,15 +500,14 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
       banners={health.banners}
       onBanner={(id) => (id === "fullScreen" ? props.onAllowFullScreen() : health.fix(id))}
       needs={needs}
-      history={status === "LoadingFirstPage" ? undefined : history}
+      history={historyLoading ? undefined : history}
       historyStatus={historyStatus}
-      onLoadMore={onLoadMore}
       bots={bots}
       noBots={noBots}
       now={now}
       onOpenNeed={props.onOpenNeed}
       onGoThroughAll={props.onGoThroughAll}
-      onOpenAlert={props.onOpenAlert}
+      onOpenArchive={props.onOpenArchive}
       onBots={props.onBots}
       onSettings={props.onSettings}
       onPairBot={props.onPairBot}
@@ -591,7 +560,8 @@ const styles = StyleSheet.create({
   /** `.flock{gap:4px; margin-top:16px}`, its text `margin-left:8px` */
   flock: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 16 },
   flockText: { fontFamily: fontFamily.bold, fontSize: 13.5, fontWeight: "700", marginLeft: 8 },
-  more: { paddingTop: 16, paddingHorizontal: 16 },
+  /** The Archive row: a quiet line under everything, set apart from the cards above. */
+  archive: { paddingTop: 26 },
   pair: { paddingTop: 22, paddingHorizontal: 20 },
   code: {
     marginHorizontal: 22,

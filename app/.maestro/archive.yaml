@@ -1,0 +1,23 @@
+appId: in.puckit.app
+---
+# Home keeps no history list: one "Archive · N earlier" row opens the Archive screen, and Back returns.
+# Dev sample only (home-clear has history, nothing waiting). Run: bun run flow archive
+- runFlow: launch-app.yaml
+- openLink: "puck://dev-alert?sample=home-clear"
+- extendedWaitUntil:
+    visible: "All quiet"
+    timeout: 30000
+- assertVisible: "Nothing is waiting for your response or action."
+- assertNotVisible: "Clear out Downloads older than 30 days?"
+- scrollUntilVisible:
+    element:
+      id: "archive-row"
+    direction: DOWN
+- tapOn:
+    id: "archive-row"
+- assertVisible: "Clear out Downloads older than 30 days?"
+- takeScreenshot: archive
+- tapOn:
+    id: "archive-back"
+- assertVisible: "All quiet"
+- stopApp

@@ -1,13 +1,14 @@
 /**
  * Need card, from the prototype's `.needcard` and its `.nmain`, `.nt1`, `.nq`
- * and `.nm`. The bot's wash is a radial gradient from the left edge. The
+ * and `.nm`. The bot's wash is a linear fade from the left edge (an elliptical radial gradient drew a hard edge on Android). The
  * card's bottom edge is a 3 dp shadow, which goes to 1 dp when pressed.
  */
 import { type ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Text, useLines } from "./Text";
-import Svg, { Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { Tag } from "./Pill";
+import { washStop } from "./contrast";
 import { useBotTheme, useTheme } from "./theme";
 import { type ThemeBot } from "./botTheme";
 import { fontFamily } from "./tokens";
@@ -52,7 +53,7 @@ export function NeedCard({
   testID,
 }: NeedCardProps) {
   const t = useTheme().tokens;
-  const { botWash } = useBotTheme(bot);
+  const wash = washStop(useBotTheme(bot).botWash);
   const questionLines = useLines(2);
   const metaColour = metaWarn ? t.warn : t.ink3;
 
@@ -74,10 +75,10 @@ export function NeedCard({
     >
       <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none" accessible={false}>
         <Defs>
-          <RadialGradient id="needWash" cx="0%" cy="50%" rx="70%" ry="130%" fx="0%" fy="50%">
-            <Stop offset="0" stopColor={botWash} stopOpacity="1" />
-            <Stop offset="0.65" stopColor={botWash} stopOpacity="0" />
-          </RadialGradient>
+          <LinearGradient id="needWash" x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0" stopColor={wash.rgb} stopOpacity={wash.alpha} />
+            <Stop offset="0.7" stopColor={wash.rgb} stopOpacity="0" />
+          </LinearGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#needWash)" />
       </Svg>

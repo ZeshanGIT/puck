@@ -276,6 +276,18 @@ export function groupByDay(items: readonly HistoryItem[], now: number): HistoryG
 /** How many more rows one tap on "Load more" asks for. */
 export const HISTORY_PAGE = 20;
 
+/**
+ * The words on Home's one Archive row, or null when there is no history to open. The count is what
+ * has loaded: "20+" while more pages remain (the first page is all Home asks for), exact once the history is done.
+ */
+export function archiveRowLabel(count: number, exhausted: boolean): string | null {
+  if (count <= 0) return null;
+  return `Archive · ${count}${exhausted ? "" : "+"} earlier`;
+}
+
+/** The line under "All quiet": nothing is waiting for his answer or any action from him. */
+export const ALL_QUIET_BODY = "Nothing is waiting for your response or action.";
+
 /* ------------------------------------------------------------- H2 and all clear */
 
 /**

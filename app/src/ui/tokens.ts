@@ -17,6 +17,8 @@ export interface ThemeTokens {
   edge: string;
   /** Borders of controls and markers (empty checkbox, pending step, empty code slot): 3:1 on the neutral surfaces. */
   outline: string;
+  /** The thin ring around a bot avatar that sits on a wash of its own colour (a Home card). */
+  avatarRing: string;
   warn: string;
   warnbg: string;
   danger: string;
@@ -39,6 +41,7 @@ export const lightTokens: ThemeTokens = {
   line: "#ECE9E5",
   edge: "#DCD8D3",
   outline: "#8C8782",
+  avatarRing: "#FFFFFF",
   warn: "#9A5B0E",
   warnbg: "#FFF5E6",
   danger: "#B3261E",
@@ -62,6 +65,7 @@ export const darkTokens: ThemeTokens = {
   line: "#2E2B28",
   edge: "#0B0A09",
   outline: "#7A756F",
+  avatarRing: "#4A4744",
   warn: "#E0A24A",
   warnbg: "#2A2115",
   danger: "#F2867E",

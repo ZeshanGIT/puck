@@ -10,11 +10,16 @@ import { clearOpenedPairing, useOpenedPairingBotId } from "./pairingOpen";
 import { useOpenedQuestionId } from "./push";
 import { useBots } from "./useBots";
 import { readableError } from "./session";
-import { PuckBody, PuckTextLink, PuckTitle } from "./components/PuckButton";
-import { PuckScreen } from "./components/PuckScreen";
+import { inboxReady } from "./startupGate";
+import { useHistory } from "./useHistory";
+import { Text } from "./ui/Text";
+import { TextLink } from "./ui/TextLink";
+import { useTheme } from "./ui/theme";
+import { fontFamily } from "./ui/tokens";
 import type { NeedItem } from "./homeModel";
 import { AlertHost, useAlertDeck } from "./screens/AlertHost";
 import { ConnectedH1Home } from "./screens/H1Home";
+import { ConnectedArchive } from "./screens/Archive";
 import { ConnectedBotsHost } from "./screens/BotsHost";
 import { ConnectedSettingsHost } from "./screens/ConnectedSettings";
 import { SETTINGS_HOME, type SettingsNav } from "./screens/SettingsHost";
@@ -29,16 +34,20 @@ export function Inbox({
   onSignOut,
   onDevReplayOnboarding,
   onDevDesignGallery,
+  onReady,
 }: {
   notifications: boolean | null;
   email: string | null;
   onSignOut: () => void;
   onDevReplayOnboarding?: () => void;
   onDevDesignGallery?: () => void;
+  /** Called once the inbox has its first data (the opening screen over it can go). */
+  onReady?: () => void;
 }) {
   return (
     <ScreenBoundary>
       <InboxBody
+        onReady={onReady}
         notifications={notifications}
         email={email}
         onSignOut={onSignOut}
@@ -55,12 +64,14 @@ function InboxBody({
   onSignOut,
   onDevReplayOnboarding,
   onDevDesignGallery,
+  onReady,
 }: {
   notifications: boolean | null;
   email: string | null;
   onSignOut: () => void;
   onDevReplayOnboarding?: () => void;
   onDevDesignGallery?: () => void;
+  onReady?: (() => void) | undefined;
 }) {
   // undefined while the stored client id loads; null when this install has none (legacy device path).
   const [clientId, setClientId] = useState<string | null | undefined>(undefined);
@@ -122,14 +133,20 @@ function InboxBody({
   useEffect(() => {
     if (chosenId !== null && !deck.live.some((item) => item.questionId === chosenId)) setChosenId(null);
   }, [chosenId, deck.live]);
+  const theme = useTheme().tokens;
   const toast = useToast();
   const comingLater = useCallback(() => toast.show("Coming in a later step"), [toast.show]);
-  // H4, the alert detail, opened from an Earlier row; and a snoozed alert opened from Needs you, shown
+  // H4, the alert detail, opened from a row on the Archive screen; and a snoozed alert opened from Needs you, shown
   // on the normal alert screen (it is not in `pending`, so `useAlertDeck` does not pick it).
   const [detailId, setDetailId] = useState<string | null>(null);
   const [snoozedOpen, setSnoozedOpen] = useState<WaitingFullAlert | null>(null);
   const openDetail = useCallback((questionId: string) => setDetailId(questionId), []);
   const closeDetail = useCallback(() => setDetailId(null), []);
+  // The Archive screen (the history), opened from Home's Archive row. Back from a row's detail comes
+  // back to it, because it stays mounted under the detail.
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const openArchive = useCallback(() => setArchiveOpen(true), []);
+  const closeArchive = useCallback(() => setArchiveOpen(false), []);
   const closeSnoozed = useCallback(() => setSnoozedOpen(null), []);
   // Two or more waiting (not expired) alerts are the A8 stack, which stays a stack until its
   // summary's Done even as answered alerts leave `pending`. While the last alert's receipt is
@@ -220,14 +237,16 @@ function InboxBody({
     await fullScreen.refresh();
   }
 
+  // The opening screen stays over the app until Home has what it draws (see `startupGate.ts`): the
+  // first page of history is read here too (Convex shares the one subscription with Home and Archive).
+  const firstHistory = useHistory(clientId);
+  const ready = inboxReady({ clientId, pending, bots, waiting, historyLoading: firstHistory.loading });
+  useEffect(() => {
+    if (ready) onReady?.();
+  }, [ready, onReady]);
   // With a client id, wait for the bot list too: until it is here a muted bot's alert cannot be told apart.
-  if (pending === undefined || (clientId && bots === undefined)) {
-    return (
-      <PuckScreen center>
-        <PuckBody>Looking for alerts…</PuckBody>
-      </PuckScreen>
-    );
-  }
+  // A blank in the screen background, no words: the opening screen is on top of it.
+  if (pending === undefined || (clientId && bots === undefined)) return <Blank />;
   if (stacking || wantsStack) {
     return (
       <View style={styles.stack}>
@@ -241,7 +260,7 @@ function InboxBody({
   }
   if (snoozedOpen) {
     return (
-      <View style={styles.filled}>
+      <View style={[styles.filled, { backgroundColor: theme.bg }]}>
         <AlertHost
           alert={snoozedOpen}
           waiting={deck.waiting}
@@ -287,9 +306,9 @@ function InboxBody({
     return (
       <View style={styles.stack}>
         <View
-          style={detailId ? styles.hidden : styles.stack}
-          accessibilityElementsHidden={detailId !== null}
-          importantForAccessibility={detailId ? "no-hide-descendants" : "auto"}
+          style={detailId || archiveOpen ? styles.hidden : styles.stack}
+          accessibilityElementsHidden={detailId !== null || archiveOpen}
+          importantForAccessibility={detailId || archiveOpen ? "no-hide-descendants" : "auto"}
         >
           <ConnectedH1Home
             clientId={clientId}
@@ -298,25 +317,39 @@ function InboxBody({
             onAllowFullScreen={() => void allowFullScreen()}
             onOpenNeed={openNeed}
             onGoThroughAll={goThroughAll}
-            onOpenAlert={openDetail}
+            onOpenArchive={openArchive}
             onBots={openBots}
             onSettings={openSettings}
             onPairBot={startPairing}
             onOpenPairing={openPairing}
             footer={
               <View style={styles.footer}>
-                <PuckTextLink label="Pair a bot" onPress={startPairing} />
-                {email ? <PuckBody>Signed in as {email}.</PuckBody> : null}
+                <TextLink label="Pair a bot" onPress={startPairing} />
+                {email ? <FooterNote>Signed in as {email}.</FooterNote> : null}
                 {__DEV__ && onDevReplayOnboarding ? (
-                  <PuckTextLink label="Dev: replay onboarding" onPress={onDevReplayOnboarding} />
+                  <TextLink label="Dev: replay onboarding" onPress={onDevReplayOnboarding} />
                 ) : null}
                 {__DEV__ && onDevDesignGallery ? (
-                  <PuckTextLink label="Dev: design gallery" onPress={onDevDesignGallery} />
+                  <TextLink label="Dev: design gallery" onPress={onDevDesignGallery} />
                 ) : null}
               </View>
             }
           />
         </View>
+        {archiveOpen ? (
+          <View
+            style={detailId ? styles.hidden : styles.overlay}
+            accessibilityElementsHidden={detailId !== null}
+            importantForAccessibility={detailId ? "no-hide-descendants" : "auto"}
+          >
+            <ConnectedArchive
+              clientId={clientId}
+              onOpenAlert={openDetail}
+              onClose={closeArchive}
+              active={detailId === null}
+            />
+          </View>
+        ) : null}
         {detailId ? (
           <View style={styles.overlay}>
             <H4Detail questionId={detailId} onBack={closeDetail} />
@@ -327,10 +360,10 @@ function InboxBody({
     );
   }
   return (
-    <View style={styles.filled}>
+    <View style={[styles.filled, { backgroundColor: theme.bg }]}>
       {fullScreen.allowed === false ? (
         <View style={styles.linkBar}>
-          <PuckTextLink label="Allow full-screen alerts" onPress={() => void allowFullScreen()} />
+          <TextLink label="Allow full-screen alerts" onPress={() => void allowFullScreen()} />
         </View>
       ) : null}
       <AlertHost
@@ -344,6 +377,31 @@ function InboxBody({
   );
 }
 
+/** The error boundary's page: the theme's background and text, no caption styles of the old screens. */
+function ErrorScreen({ message }: { message: string }) {
+  const t = useTheme().tokens;
+  return (
+    <View style={[styles.error, { backgroundColor: t.bg }]}>
+      <Text accessibilityRole="header" style={[styles.errorTitle, { color: t.ink }]}>
+        Something went wrong
+      </Text>
+      <Text style={[styles.errorBody, { color: t.ink2 }]}>{message}</Text>
+    </View>
+  );
+}
+
+/** A line of quiet text under the footer link (13.5 / 600 `ink3`, as the captions elsewhere). */
+function FooterNote({ children }: { children: ReactNode }) {
+  const t = useTheme().tokens;
+  return <Text style={[styles.note, { color: t.ink3 }]}>{children}</Text>;
+}
+
+/** The screen background, nothing else (a captioned page here showed as a flash on every start). */
+function Blank() {
+  const t = useTheme().tokens;
+  return <View style={[styles.stack, { backgroundColor: t.bg }]} />;
+}
+
 /** A waiting alert in full (`alerts.waiting` now returns the alert's fields, as `alerts.pending` does). */
 type WaitingFullAlert = PendingAlert & { status: "pending" | "snoozed"; snoozedUntil: number | null };
 
@@ -355,14 +413,7 @@ class ScreenBoundary extends Component<{ children: ReactNode }, { message: strin
   }
 
   render() {
-    if (this.state.message) {
-      return (
-        <PuckScreen center>
-          <PuckTitle>Something went wrong</PuckTitle>
-          <PuckBody>{this.state.message}</PuckBody>
-        </PuckScreen>
-      );
-    }
+    if (this.state.message) return <ErrorScreen message={this.state.message} />;
     return this.props.children;
   }
 }
@@ -387,6 +438,9 @@ const styles = StyleSheet.create({
   },
   filled: {
     flex: 1,
-    backgroundColor: "#f3e6dc",
   },
+  error: { flex: 1, justifyContent: "center", paddingHorizontal: 28 },
+  errorTitle: { fontFamily: fontFamily.black, fontSize: 24, fontWeight: "900" },
+  errorBody: { fontFamily: fontFamily.semiBold, fontSize: 15.5, fontWeight: "600", marginTop: 8 },
+  note: { fontFamily: fontFamily.semiBold, fontSize: 13.5, fontWeight: "600", paddingVertical: 4 },
 });

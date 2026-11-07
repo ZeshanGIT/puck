@@ -24,6 +24,7 @@ import { AlertHost } from "./src/screens/AlertHost";
 import { AStack, type StackAnswer, type StackGone } from "./src/screens/AStack";
 import { DevGallery } from "./src/screens/DevGallery";
 import { DevSettings } from "./src/screens/gallery/DevSettings";
+import { Archive } from "./src/screens/Archive";
 import { H1Home } from "./src/screens/H1Home";
 import { H4DetailView } from "./src/screens/H4Detail";
 import { BotsHost, type BotsSource } from "./src/screens/BotsHost";
@@ -60,6 +61,7 @@ import { O4FirstBot } from "./src/screens/O4FirstBot";
 import { knownBots, needsYou } from "./src/homeModel";
 import { goneCopy } from "./src/receiptCopy";
 import { readableError } from "./src/session";
+import { INBOX_READY_TIMEOUT_MS, openingVisible } from "./src/startupGate";
 import { ThemeProvider, type ThemeMode } from "./src/ui/theme";
 import { Toast, useToast } from "./src/ui/Toast";
 import { useAppFonts } from "./src/ui/useAppFonts";
@@ -148,6 +150,8 @@ function DevHome({ name }: { name: string }) {
   const [round] = useState(() => Date.now());
   const sample = useMemo(() => freshHome(name, round), [name, round]);
   const [loaded, setLoaded] = useState(false);
+  // `sample=archive` opens on the Archive screen; the others reach it from Home's Archive row.
+  const [archiveOpen, setArchiveOpen] = useState(name === "archive");
   const [now, setNow] = useState(round);
   // The `live-*` samples: running tasks that move on every 3 s (a step, a log line, then done).
   const [live, setLive] = useState(() => sample?.live);
@@ -184,6 +188,23 @@ function DevHome({ name }: { name: string }) {
       </View>
     );
   }
+  const historyStatus = loaded || sample.older.length === 0 ? "exhausted" : "canLoadMore";
+  if (archiveOpen) {
+    return (
+      <View style={styles.root}>
+        <Archive
+          history={history}
+          historyStatus={historyStatus}
+          onLoadMore={() => setLoaded(true)}
+          bots={knownBots(sample.waiting, history)}
+          now={now}
+          onOpenAlert={later}
+          onBack={() => setArchiveOpen(false)}
+        />
+        <Toast message={toast.message} visible={toast.visible} />
+      </View>
+    );
+  }
   return (
     <View style={styles.root}>
       <H1Home
@@ -191,14 +212,13 @@ function DevHome({ name }: { name: string }) {
         onBanner={later}
         needs={needs}
         history={history}
-        historyStatus={loaded || sample.older.length === 0 ? "exhausted" : "canLoadMore"}
-        onLoadMore={() => setLoaded(true)}
+        historyStatus={historyStatus}
         bots={knownBots(sample.waiting, history)}
         noBots={sample.noBots}
         now={now}
         onOpenNeed={later}
         onGoThroughAll={() => toast.show("Would open the stack")}
-        onOpenAlert={later}
+        onOpenArchive={() => setArchiveOpen(true)}
         onBots={later}
         onSettings={later}
         onPairBot={() => setPairing({ kind: "code" })}
@@ -498,6 +518,10 @@ function AppBody({
   const [freshSignIn, setFreshSignIn] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const convexClient = useConvex();
+  // The opening screen stays up until the inbox has its first data, or the safety timeout runs out.
+  const [inboxIsReady, setInboxIsReady] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+  const onInboxReady = useCallback(() => setInboxIsReady(true), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -543,6 +567,19 @@ function AppBody({
     step,
     freshSignIn,
   });
+
+  useEffect(() => {
+    if (gate !== "inbox" || inboxIsReady) return undefined;
+    const id = setTimeout(() => setTimedOut(true), INBOX_READY_TIMEOUT_MS);
+    return () => clearTimeout(id);
+  }, [gate, inboxIsReady]);
+  // Signing out starts the next session from the opening screen again.
+  useEffect(() => {
+    if (signingOut) {
+      setInboxIsReady(false);
+      setTimedOut(false);
+    }
+  }, [signingOut]);
 
   async function signedIn(account: ClerkAccount) {
     setFreshSignIn(true);
@@ -619,11 +656,19 @@ function AppBody({
     );
   }
 
+  const showOpening = openingVisible({ gate, signingOut, inboxReady: inboxIsReady, timedOut });
+  // One opening screen, kept mounted from "opening" through to the inbox's first data, so its blob
+  // does not restart and nothing else shows in between.
   return (
-    <>
-      {renderGate()}
+    <View style={styles.root}>
+      {gate !== "opening" && !signingOut ? renderGate() : null}
+      {showOpening ? (
+        <View style={StyleSheet.absoluteFill}>
+          <O0Opening />
+        </View>
+      ) : null}
       <StatusBar style="auto" />
-    </>
+    </View>
   );
 
   function renderGate() {
@@ -657,6 +702,7 @@ function AppBody({
             onSignOut={() => void signOut()}
             onDevReplayOnboarding={() => void walkThroughEveryStep()}
             onDevGallery={onDevGallery}
+            onReady={onInboxReady}
           />
         );
     }
@@ -682,12 +728,14 @@ function SignedIn({
   onSignOut,
   onDevReplayOnboarding,
   onDevGallery,
+  onReady,
 }: {
   clientId: string | null;
   email: string | null;
   onSignOut: () => void;
   onDevReplayOnboarding: () => void;
   onDevGallery: () => void;
+  onReady: () => void;
 }) {
   const notifications = usePushRegistration(true);
   return (
@@ -699,6 +747,7 @@ function SignedIn({
         onSignOut={onSignOut}
         onDevReplayOnboarding={onDevReplayOnboarding}
         onDevDesignGallery={__DEV__ ? onDevGallery : undefined}
+        onReady={onReady}
       />
     </>
   );

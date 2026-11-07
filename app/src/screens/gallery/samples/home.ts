@@ -37,7 +37,7 @@ export interface HomeSample {
   liveScript?: LiveScript | null;
 }
 
-export const HOME_SAMPLE_NAMES = ["home", "home-clear", "home-empty", "home-pairing", ...LIVE_SAMPLE_NAMES] as const;
+export const HOME_SAMPLE_NAMES = ["home", "home-clear", "home-empty", "home-pairing", "archive", ...LIVE_SAMPLE_NAMES] as const;
 
 export function isHomeSample(name: string): boolean {
   return (HOME_SAMPLE_NAMES as readonly string[]).includes(name);
@@ -149,6 +149,7 @@ export function freshHome(name: string, now: number = Date.now()): HomeSample | 
         noBots: false,
       };
     case "home-clear":
+    case "archive":
       return { banners: [], waiting: [], queuedIds: [], history: earlier(now), older: olderOnes(now), noBots: false };
     case "home-pairing":
       return {
