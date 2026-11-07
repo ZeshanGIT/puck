@@ -2,6 +2,21 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## Compact alert card over other apps and theme preference (t70u, 2026-11-08)
+
+**Overlay card:** on an unlocked phone, a normal or urgent alert also shows a small Puck card drawn over the app in use (`TYPE_APPLICATION_OVERLAY`, native `OverlayCard.kt` in `puck-full-screen`). Tapping it opens Puck on that alert through the same opened-question route as a notification tap. Locked phones keep the full-screen alert; calls get no card. The card hides when the ring ends or the alert is answered or cleared.
+
+**Permission step (the person grants it):** Puck → Settings → Preferences → "Show alert cards over apps" opens Android's "Display over other apps" page for Puck. The app declares `SYSTEM_ALERT_WINDOW` but never grants it or changes OS settings. Without the grant the card is not shown and the notification is the only alert on an unlocked phone, as before.
+
+**Known limitations:**
+- The notification still posts on an unlocked phone (sound, shade copy, heads-up), so a heads-up can appear next to the card. Removing it needs a channel-level decision.
+- Mute is still not enforced on the headless push path (pre-existing); the card follows the same decision as the ring.
+- Not runtime-tested by the agent. Card rendering, tap routing and the theme flip need the owner's device check.
+
+**Theme:** Preferences → Appearance: System (default), Light or Dark. The choice is stored in local settings, applied at the app root, and survives restart. Light or Dark overrides the phone setting; System follows it. The urgent night look is unchanged.
+
+**Release (t70u):** non-debuggable release APK with embedded JS, built from `main` at `9bf9c3e`, installed with `adb install -r` on the Pixel 7 (`versionName` 1.0.0, `run-as` denied). Still not store production-ready: debug keystore, dev Convex `usable-mule-44` and dev Clerk unchanged.
+
 ## Full-screen paging for all priorities (approved 2026-11-08, t56u)
 
 **Direction:** Puck’s core value is full-screen paging, not shade-only notifications. **Normal** and **urgent** alerts both request full-screen presentation when the user has allowed “show over the lock screen.” Urgency stays distinct:
