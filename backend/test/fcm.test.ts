@@ -32,6 +32,20 @@ describe("fcmMessage", () => {
     expect(JSON.stringify(message)).not.toContain("private_key");
   });
 
+  test("a normal alert with full-screen access is data-only", () => {
+    const message = fcmBody({
+      pushToken: TOKEN,
+      questionId: "q_BEXA0M8Y5W1ADYPX",
+      question: "Pick one?",
+      botName: "test",
+      priority: "normal",
+      fullScreen: true,
+    });
+    expect("notification" in message.message).toBe(false);
+    expect(message.message.data?.kind).toBe("fullscreen");
+    expect(message.message.data?.priority).toBe("normal");
+  });
+
   test("an urgent alert with full-screen access is data-only", () => {
     const message = fcmBody({
       pushToken: TOKEN,

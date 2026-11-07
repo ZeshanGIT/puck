@@ -231,7 +231,7 @@ export function healthChecks(snapshot: HealthSnapshot): HealthCheck[] {
       {
         id: "fullScreen",
         label: "Show over the lock screen",
-        detail: "Urgent alerts can't show over the lock screen",
+        detail: "Alerts can't take over the screen",
         fix: { id: "fullScreen", label: "Allow" },
       },
     ),

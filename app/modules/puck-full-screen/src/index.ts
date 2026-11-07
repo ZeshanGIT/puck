@@ -21,7 +21,7 @@ function nativeModule(): FullScreenNative | null {
   }
 }
 
-/** True when Android will allow an urgent alert to take the lock screen. */
+/** True when Android will allow full-screen alert presentation over the lock screen. */
 export function canUseFullScreenIntent(): boolean {
   try {
     return nativeModule()?.canUse() === true;

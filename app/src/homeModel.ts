@@ -59,7 +59,7 @@ export interface BannerCopy {
 /** H3 items 1, 3, 4 and 5. The first and the third are the prototype's words; the Do Not Disturb one follows H3. */
 export const BANNER_COPY: Record<BannerId, BannerCopy> = {
   notifications: { message: "Notifications are off, so bots can't reach you while Puck is closed.", action: "Turn on" },
-  fullScreen: { message: "Urgent alerts can't show over the lock screen.", action: "Allow" },
+  fullScreen: { message: "Alerts can't take over the screen until you allow this.", action: "Allow" },
   dnd: {
     message: "Puck has no Do Not Disturb access, so alerts allowed to ring through it can't.",
     action: "Allow",
