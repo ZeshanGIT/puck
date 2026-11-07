@@ -113,6 +113,8 @@ export const RING_SIZE = 150;
 export interface RingGeometry {
   /** Ring diameter at rest, in dp. */
   size: number;
+  /** The blob's box (a square, in dp) the ring is laid out in. */
+  box: number;
   /** Shift from the middle of the blob's box to the middle of its body, in dp. */
   dx: number;
   dy: number;
@@ -122,22 +124,29 @@ export interface RingGeometry {
 export function ringGeometry(bot: Pick<BlobBot, "shape" | "tilt">, blobSize: number): RingGeometry {
   const c = bodyCentre(bot.shape, bot.tilt);
   const unit = blobSize / 100;
-  return { size: RING_SIZE, dx: (c.x - 50) * unit, dy: (c.y - 50) * unit };
+  return { size: RING_SIZE, box: blobSize, dx: (c.x - 50) * unit, dy: (c.y - 50) * unit };
 }
 
-/** The ring's absolute box style: `left` and `top` are 50% of the blob's box; this centres it on the body. */
+/**
+ * The ring's absolute box inside a wrapper that is exactly `g.box` square. Pixel offsets, not
+ * `left: "50%"`: Yoga resolved that 50% against the width the wrapper was offered (the whole
+ * scroll content, about 300 dp) rather than the blob's own width, which put the ring up to
+ * 120 dp to the right of the blob.
+ */
 export function ringBox(g: RingGeometry): {
+  position: "absolute";
+  left: number;
+  top: number;
   width: number;
   height: number;
-  marginLeft: number;
-  marginTop: number;
   borderRadius: number;
 } {
   return {
+    position: "absolute",
+    left: g.box / 2 + g.dx - g.size / 2,
+    top: g.box / 2 + g.dy - g.size / 2,
     width: g.size,
     height: g.size,
-    marginLeft: -g.size / 2 + g.dx,
-    marginTop: -g.size / 2 + g.dy,
     borderRadius: g.size / 2,
   };
 }

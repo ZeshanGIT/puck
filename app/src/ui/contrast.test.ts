@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { PALETTE, botTheme } from "./botTheme";
-import { contrastRatio, ensureContrast, over, parseColour, washStop } from "./contrast";
+import { contrastRatio, ensureContrast, over, parseColour, washGradientCss, washStop } from "./contrast";
 import { darkTokens, lightTokens, type ThemeTokens } from "./tokens";
 
 const BODY = 4.5;
@@ -178,6 +178,15 @@ describe("non-text marks (3:1)", () => {
 describe("the wash behind a Home card's avatar", () => {
   test("washStop splits an rgba wash into an opaque colour and its opacity", () => {
     expect(washStop("rgba(226, 75, 58, 0.1)")).toEqual({ rgb: "rgb(226, 75, 58)", alpha: 0.1 });
+  });
+
+  test("washGradientCss fades one rgb from the wash's alpha to clear, with no grey fringe", () => {
+    expect(washGradientCss("rgba(226, 75, 58, 0.1)", "to right", 70)).toBe(
+      "linear-gradient(to right, rgba(226, 75, 58, 0.1) 0%, rgba(226, 75, 58, 0) 70%)",
+    );
+    expect(washGradientCss("rgba(255, 255, 255, 0.07)", "to bottom right", 75)).toBe(
+      "linear-gradient(to bottom right, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0) 75%)",
+    );
   });
 
   test("every bot's wash is faint (16% at most in light and dark) once its alpha is honoured", () => {

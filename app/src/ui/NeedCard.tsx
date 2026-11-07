@@ -1,14 +1,14 @@
 /**
  * Need card, from the prototype's `.needcard` and its `.nmain`, `.nt1`, `.nq`
- * and `.nm`. The bot's wash is a linear fade from the left edge (an elliptical radial gradient drew a hard edge on Android). The
+ * and `.nm`. The bot's wash is a CSS linear fade from the left edge on a plain View (an SVG wash ended at the card's first height on Android). The
  * card's bottom edge is a 3 dp shadow, which goes to 1 dp when pressed.
  */
 import { type ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Text, useLines } from "./Text";
-import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import { Tag } from "./Pill";
-import { washStop } from "./contrast";
+import { washGradientCss } from "./contrast";
 import { useBotTheme, useTheme } from "./theme";
 import { type ThemeBot } from "./botTheme";
 import { fontFamily } from "./tokens";
@@ -53,7 +53,7 @@ export function NeedCard({
   testID,
 }: NeedCardProps) {
   const t = useTheme().tokens;
-  const wash = washStop(useBotTheme(bot).botWash);
+  const wash = washGradientCss(useBotTheme(bot).botWash, "to right", 70);
   const questionLines = useLines(2);
   const metaColour = metaWarn ? t.warn : t.ink3;
 
@@ -73,15 +73,14 @@ export function NeedCard({
         },
       ]}
     >
-      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none" accessible={false}>
-        <Defs>
-          <LinearGradient id="needWash" x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0" stopColor={wash.rgb} stopOpacity={wash.alpha} />
-            <Stop offset="0.7" stopColor={wash.rgb} stopOpacity="0" />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#needWash)" />
-      </Svg>
+      {/* The wash is a CSS gradient on a plain View, not an SVG: an absoluteFill Svg with "100%" sizes kept
+          the card's first size on Android and ended the wash at the old height. */}
+      <View
+        pointerEvents="none"
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+        style={[StyleSheet.absoluteFill, { backgroundImage: wash }]}
+      />
 
       {leading}
       <View style={{ flex: 1, minWidth: 0 }}>

@@ -1,7 +1,7 @@
 appId: in.puckit.app
 ---
 # What the app shows for a pending alert from BOT. Needs BOT and MUTED (1 = muted, 0 = unmuted).
-# Unmuted: the alert screen takes over ("Tap twice to answer" is shown).
+# Unmuted: the alert screen takes over (its Reply button is shown and Home's "Needs you" is not).
 # Muted: Home stays up, the alert is under "Needs you" and no alert screen takes over.
 # Does not use launch-app: an unmuted alert covers Home, so launch-app's "Puck" wait would fail there.
 - stopApp
@@ -27,4 +27,5 @@ appId: in.puckit.app
     when:
       true: ${MUTED == '0'}
     commands:
-      - assertVisible: "Tap twice to answer"
+      - assertVisible: "Reply"
+      - assertNotVisible: "NEEDS YOU.*"

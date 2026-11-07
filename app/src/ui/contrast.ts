@@ -85,6 +85,18 @@ export function washStop(colour: string): { rgb: string; alpha: number } {
   return { rgb: `rgb(${c.r}, ${c.g}, ${c.b})`, alpha: c.a };
 }
 
+/**
+ * A CSS `linear-gradient` (React Native's `backgroundImage`) that fades `colour` (an rgba wash) to
+ * nothing: full strength at the start, clear from `endPercent`. Both ends use the same rgb, so there is
+ * no grey fringe in between. Unlike an SVG with percentage sizes, a View with this style follows its
+ * parent's layout whenever it changes (fonts loading, text wrapping).
+ */
+export function washGradientCss(colour: string, direction: string, endPercent: number): string {
+  const c = parseColour(colour);
+  const rgb = `${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)}`;
+  return `linear-gradient(${direction}, rgba(${rgb}, ${c.a}) 0%, rgba(${rgb}, 0) ${endPercent}%)`;
+}
+
 /** Mixes `colour` toward white (`amount` 0 to 1) and returns a hex colour. */
 export function lighten(colour: string, amount: number): string {
   const c = parseColour(colour);

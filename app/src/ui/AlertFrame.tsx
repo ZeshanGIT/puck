@@ -45,6 +45,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import Svg, { Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
+import { shouldFlowBottom } from "./alertLayout";
 import { Blob, type BlobHandle } from "./Blob";
 import { ringBox, ringGeometry, type RingGeometry } from "./blobCentre";
 import type { BlobBot, Offset } from "./blobShapes";
@@ -87,8 +88,6 @@ export function Glyph({
 const NIGHT_BG = "#100F0E";
 const MAX_FONT_SCALE = 1.3;
 const EXPIRY_LOW_SECONDS = 300;
-/** Above this phone font scale the options flow with the message in one scroll instead of being pinned. */
-const FLOW_FONT_SCALE = 1.05;
 
 /* ------------------------------------------------------------------ time */
 
@@ -412,8 +411,14 @@ function AlertFrameBody({
   const reduced = useReducedMotion();
   // Text scaled up: the options no longer stay pinned. They follow the message inside the one
   // scroll, at the screen's bottom when everything fits, so nothing is pushed out of reach.
-  const { fontScale } = useWindowDimensions();
-  const flow = fontScale > FLOW_FONT_SCALE;
+  // The same when the options themselves are tall (four with descriptions): pinned, they would leave the
+  // message a sliver at the normal text size too.
+  const { fontScale, height: windowHeight } = useWindowDimensions();
+  const [tallBottom, setTallBottom] = useState(false);
+  const flow = shouldFlowBottom({ fontScale, bottomHeight: tallBottom ? Infinity : 0, windowHeight });
+  const onPinnedBottomLayout = (e: LayoutChangeEvent) => {
+    if (shouldFlowBottom({ fontScale, bottomHeight: e.nativeEvent.layout.height, windowHeight })) setTallBottom(true);
+  };
   const urgent = priority === "urgent";
   const ownBlob = useRef<BlobHandle>(null);
   const blob = blobRef ?? ownBlob;
@@ -464,7 +469,7 @@ function AlertFrameBody({
         >
           {clock ? <LockClock now={now} /> : null}
 
-          <View style={styles.ablob}>
+          <View style={[styles.ablob, { width: blobSize, height: blobSize }]}>
             {urgent && !answered ? <UrgentRings colour={nightMode ? bt.glowRing : bt.mark} geometry={ringGeometry(bot, blobSize)} /> : null}
             <Blob ref={blob} bot={bot} size={blobSize} live look={look} />
           </View>
@@ -580,6 +585,7 @@ function AlertFrameBody({
         </ScrollView>
 
         <View
+          onLayout={flow ? undefined : onPinnedBottomLayout}
           style={[flow ? styles.abottomEmpty : styles.abottom, dimmed ? styles.dim : null]}
           pointerEvents={dimmed ? "none" : "auto"}
           importantForAccessibility={dimmed ? "no-hide-descendants" : "auto"}
@@ -609,12 +615,7 @@ const styles = StyleSheet.create({
   amidContent: { flexGrow: 1, alignItems: "center", paddingHorizontal: 28 },
   lockClock: { alignItems: "center", marginTop: 2 },
   ablob: { marginVertical: 18, alignItems: "center", justifyContent: "center" },
-  ring: {
-    position: "absolute",
-    left: "50%",
-    top: "50%",
-    borderWidth: 3,
-  },
+  ring: { borderWidth: 3 },
   who: { flexDirection: "row", alignItems: "center", gap: 7, maxWidth: "100%" },
   dot: { width: 9, height: 9, borderRadius: 4.5 },
   // `box-shadow: 0 0 0 1.5px` around the dot: a 12 dp circle with a 1.5 dp border, pulled back by its margin.

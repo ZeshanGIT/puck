@@ -67,11 +67,28 @@ describe("ringGeometry", () => {
 });
 
 describe("ringBox", () => {
-  test("puts the ring's centre at 50% of the box plus the shift", () => {
-    const g = { size: 100, dx: 3, dy: -2 };
-    const box = ringBox(g);
-    expect(box.marginLeft + box.width / 2).toBe(3);
-    expect(box.marginTop + box.height / 2).toBe(-2);
-    expect(box.borderRadius).toBe(50);
+  test("the ring's centre lands on the box centre plus the shift, in pixels from the box's corner", () => {
+    const g = { size: 150, box: 156, dx: 3, dy: -2 };
+    const b = ringBox(g);
+    expect(b.left + b.width / 2).toBe(156 / 2 + 3);
+    expect(b.top + b.height / 2).toBe(156 / 2 - 2);
+    expect(b.borderRadius).toBe(75);
+  });
+
+  test("a round body at any blob size has its ring's centre on the blob's centre, with no percentage involved", () => {
+    for (const size of [84, 112, 128, 156]) {
+      const g = ringGeometry(SAMPLE_BOTS.puck, size);
+      const b = ringBox(g);
+      expect(Math.abs(b.left + b.width / 2 - size / 2)).toBeLessThan(0.02 * size);
+      expect(Math.abs(b.top + b.height / 2 - size / 2)).toBeLessThan(0.02 * size);
+    }
+  });
+
+  test("on a 360 dp screen the ring stays within the body's own box: its centre is never 120 dp from the blob", () => {
+    for (const bot of Object.values(SAMPLE_BOTS)) {
+      const g = ringGeometry(bot, 128);
+      expect(Math.abs(g.dx)).toBeLessThan(10);
+      expect(Math.abs(g.dy)).toBeLessThan(10);
+    }
   });
 });

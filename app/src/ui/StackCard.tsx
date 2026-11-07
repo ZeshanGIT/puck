@@ -231,7 +231,7 @@ function MiddleColumn({
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      <View style={styles.ablob}>
+      <View style={[styles.ablob, { width: answered ? BLOB_SIZE_ANSWERED : BLOB_SIZE, height: answered ? BLOB_SIZE_ANSWERED : BLOB_SIZE }]}>
         {urgent && !answered ? <UrgentRings colour={bt.mark} geometry={ringGeometry(bot, BLOB_SIZE)} /> : null}
         <Blob
           ref={blobRef}
@@ -879,12 +879,7 @@ const styles = StyleSheet.create({
   amidContent: { flexGrow: 1, alignItems: "center", paddingTop: 4, paddingHorizontal: 22 },
   /** `.acard .ablob{margin:16px 0 12px}` */
   ablob: { marginTop: 16, marginBottom: 12, alignItems: "center", justifyContent: "center" },
-  ring: {
-    position: "absolute",
-    left: "50%",
-    top: "50%",
-    borderWidth: 3,
-  },
+  ring: { borderWidth: 3 },
   who: { flexDirection: "row", alignItems: "center", gap: 7, maxWidth: "100%" },
   dot: { width: 9, height: 9, borderRadius: 4.5 },
   dotRing: { width: 12, height: 12, borderRadius: 6, borderWidth: 1.5, margin: -1.5 },
