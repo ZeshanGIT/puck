@@ -8,7 +8,7 @@ import { anyApi } from "convex/server";
 import { useConvex, useQuery } from "convex/react";
 import Constants from "expo-constants";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Linking } from "react-native";
+import { AppState, Linking } from "react-native";
 import { openSoundSettings } from "../botSoundSettings";
 import { syncClientPushToken } from "../clientAuth";
 import { convexUrl } from "../deployment";
@@ -16,6 +16,8 @@ import { dndBypassActive } from "../homeModel";
 import { DEFAULT_LOCAL_SETTINGS, loadLocalSettings, saveLocalSettings, type LocalSettings } from "../localSettings";
 import { openDndAccessSettings } from "../onboarding/dndAccess";
 import { openFullScreenSettings } from "../onboarding/fullScreenSetup";
+import { canDrawOverlay } from "puck-full-screen";
+import { openOverlaySettings } from "../overlayCard";
 import { ensureNotificationPermission, readNotificationRowState } from "../onboarding/notificationSetup";
 import { readableError } from "../session";
 import {
@@ -53,6 +55,15 @@ export function ConnectedSettingsHost({
   const online = useOnline();
   const phone = usePhoneStates();
   const [settings, setSettings] = useState<LocalSettings>(DEFAULT_LOCAL_SETTINGS);
+  const [overlayCards, setOverlayCards] = useState<boolean | null>(null);
+  useEffect(() => {
+    const read = () => setOverlayCards(canDrawOverlay());
+    read();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") read();
+    });
+    return () => subscription.remove();
+  }, []);
   useEffect(() => {
     let cancelled = false;
     void loadLocalSettings().then((loaded) => {
@@ -147,6 +158,10 @@ export function ConnectedSettingsHost({
         }
       },
       openBattery: () => Linking.openSettings(),
+      overlayCards,
+      openOverlay: async () => {
+        await openOverlaySettings();
+      },
       sendTest: async (delaySeconds) => {
         const sent = (await client.mutation(anyApi.alerts.sendTest, { clientId: needClient(), delaySeconds })) as {
           questionId: string;
@@ -155,7 +170,7 @@ export function ConnectedSettingsHost({
       },
       signOut: onSignOut,
     };
-  }, [client, id, email, clients, settings, health, about, refresh, onSignOut]);
+  }, [client, id, email, clients, settings, health, about, refresh, onSignOut, overlayCards]);
 
   // What became of the test page S5 sent. While the alert is on screen it is answered there.
   const alert = useQuery(anyApi.alerts.get, id && nav.testId ? { clientId: id, questionId: nav.testId } : "skip") as

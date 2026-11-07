@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BackHandler, StyleSheet, View } from "react-native";
 import type { SoundKind } from "../botSoundSettings";
 import type { LocalSettings } from "../localSettings";
+import type { ThemePreference } from "../ui/themePreference";
 import {
   healthRowValue,
   otherClientCount,
@@ -33,8 +34,9 @@ import { S4Sounds } from "./S4Sounds";
 import { S5Health } from "./S5Health";
 import { S6SignOutSheet } from "./S6SignOutSheet";
 import { S7About } from "./S7About";
+import { S8Preferences } from "./S8Preferences";
 
-export type SettingsRoute = "home" | "this-phone" | "clients" | "sounds" | "health" | "about";
+export type SettingsRoute = "home" | "this-phone" | "clients" | "sounds" | "health" | "about" | "preferences";
 
 /** Where Settings is: the screen, and the test page S5 sent (so its result survives the alert taking over). */
 export interface SettingsNav {
@@ -45,7 +47,7 @@ export interface SettingsNav {
 export const SETTINGS_HOME: SettingsNav = { route: "home", testId: null };
 
 /** The settings the Sounds screen changes. */
-export type SettingsChange = Partial<Pick<LocalSettings, "bypassDnd" | "bypassSilent" | "ringSeconds">>;
+export type SettingsChange = Partial<Pick<LocalSettings, "theme" | "bypassDnd" | "bypassSilent" | "ringSeconds">>;
 
 export interface SettingsSource {
   email: string | null;
@@ -68,6 +70,10 @@ export interface SettingsSource {
   fix: (id: Exclude<HealthFixId, "signIn">) => Promise<void>;
   /** Opens the app's settings (battery use). */
   openBattery: () => Promise<void>;
+  /** Whether the compact alert card may draw over other apps; null while it is read. */
+  overlayCards: boolean | null;
+  /** Opens Android's "Display over other apps" page for Puck. */
+  openOverlay: () => Promise<void>;
   /** Sends the test page; resolves with its question id. */
   sendTest: (delaySeconds: number) => Promise<string>;
   /** Signs out of Puck on this phone. */
@@ -242,6 +248,18 @@ export function SettingsHost({ source, nav, onNav, testStatus, onClose }: Settin
     case "about":
       screen = <S7About {...source.about} onBack={back} />;
       break;
+    case "preferences":
+      screen = (
+        <S8Preferences
+          theme={settings.theme}
+          overlayCards={source.overlayCards}
+          error={error}
+          onTheme={(theme) => void run(() => source.setSettings({ theme }))}
+          onOverlayCards={() => void run(() => source.openOverlay())}
+          onBack={back}
+        />
+      );
+      break;
     default:
       screen = (
         <S1Settings
@@ -255,6 +273,7 @@ export function SettingsHost({ source, nav, onNav, testStatus, onClose }: Settin
           onSounds={() => go("sounds")}
           onHealth={() => go("health")}
           onAbout={() => go("about")}
+          onPreferences={() => go("preferences")}
           onSignOut={() => setSigningOut(true)}
           onBack={back}
         />

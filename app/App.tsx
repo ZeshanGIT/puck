@@ -63,6 +63,8 @@ import { goneCopy } from "./src/receiptCopy";
 import { readableError } from "./src/session";
 import { INBOX_READY_TIMEOUT_MS, openingVisible } from "./src/startupGate";
 import { ThemeProvider, type ThemeMode } from "./src/ui/theme";
+import { explicitThemeMode } from "./src/ui/themePreference";
+import { useThemePreference } from "./src/themeSettings";
 import { Toast, useToast } from "./src/ui/Toast";
 import { useAppFonts } from "./src/ui/useAppFonts";
 
@@ -443,7 +445,17 @@ function DevAlertSample({ name }: { name: string }) {
   );
 }
 
+/** The theme follows the Preferences choice (System unless the person picked Light or Dark). */
 export default function App() {
+  const preference = useThemePreference();
+  return (
+    <ThemeProvider mode={explicitThemeMode(preference)}>
+      <AppContent />
+    </ThemeProvider>
+  );
+}
+
+function AppContent() {
   const fontsReady = useAppFonts();
   const links = useDevLinks();
   const alertLink = useDevAlertLink();

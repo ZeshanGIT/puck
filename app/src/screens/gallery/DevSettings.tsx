@@ -65,6 +65,8 @@ export function DevSettings({ name }: { name: string }) {
           );
       },
       openBattery: async () => show("Would open Puck's app settings"),
+      overlayCards: false,
+      openOverlay: async () => show("Would open Display over other apps"),
       sendTest: async (delaySeconds) => {
         const testId = `sample-test-${Date.now()}`;
         setTestStatus({ kind: "waiting" });

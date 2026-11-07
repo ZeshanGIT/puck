@@ -90,7 +90,20 @@ describe("parseLocalSettings", () => {
         bots: { a: { dnd: "all" }, b: { dnd: "nope" }, c: "x" },
       }),
     );
-    expect(parsed).toEqual({ bypassDnd: "off", bypassSilent: "all", ringSeconds: 120, bots: { a: { dnd: "all" } } });
+    expect(parsed).toEqual({
+      theme: "system",
+      bypassDnd: "off",
+      bypassSilent: "all",
+      ringSeconds: 120,
+      bots: { a: { dnd: "all" } },
+    });
+  });
+
+  test("the theme is System unless a valid Light or Dark was stored", () => {
+    expect(parseLocalSettings(null).theme).toBe("system");
+    expect(parseLocalSettings(JSON.stringify({ theme: "dark" })).theme).toBe("dark");
+    expect(parseLocalSettings(JSON.stringify({ theme: "light" })).theme).toBe("light");
+    expect(parseLocalSettings(JSON.stringify({ theme: "night" })).theme).toBe("system");
   });
 
   test("never hands out the shared defaults object", () => {

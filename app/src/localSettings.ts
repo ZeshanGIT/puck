@@ -8,6 +8,8 @@
  * Nothing here imports React Native, so the rules can be unit-tested. Storage is loaded lazily.
  */
 
+import { DEFAULT_THEME_PREFERENCE, isThemePreference, type ThemePreference } from "./ui/themePreference";
+
 /* ----------------------------------------------------------------- settings */
 
 /** Q6: each global setting is Off, Urgent only, or All alerts. */
@@ -22,6 +24,8 @@ export interface BotBypass {
 }
 
 export interface LocalSettings {
+  /** The Preferences screen's theme. Default: follow the system. */
+  theme: ThemePreference;
   /** Allow bots to bypass Do Not Disturb. Default: urgent only. */
   bypassDnd: BypassMode;
   /** Allow bots to bypass silent mode. Default: urgent only. */
@@ -39,6 +43,7 @@ export const RING_SECONDS_MIN = 5;
 export const RING_SECONDS_MAX = 600;
 
 export const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
+  theme: DEFAULT_THEME_PREFERENCE,
   bypassDnd: "urgent",
   bypassSilent: "urgent",
   ringSeconds: DEFAULT_RING_SECONDS,
@@ -79,6 +84,7 @@ export function parseLocalSettings(raw: string | null | undefined): LocalSetting
     }
   }
   return {
+    theme: isThemePreference(record.theme) ? record.theme : defaults.theme,
     bypassDnd: isBypassMode(record.bypassDnd) ? record.bypassDnd : defaults.bypassDnd,
     bypassSilent: isBypassMode(record.bypassSilent) ? record.bypassSilent : defaults.bypassSilent,
     ringSeconds: isRingSeconds(record.ringSeconds) ? record.ringSeconds : defaults.ringSeconds,
@@ -98,11 +104,23 @@ export async function loadLocalSettings(): Promise<LocalSettings> {
   }
 }
 
+type SettingsListener = (settings: LocalSettings) => void;
+const listeners = new Set<SettingsListener>();
+
+/** Calls `listener` with the settings after each save, so a screen can apply a change at once. */
+export function subscribeLocalSettings(listener: SettingsListener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 /** Merges a change into the stored settings. The Settings screens call this. */
 export async function saveLocalSettings(change: Partial<LocalSettings>): Promise<LocalSettings> {
   const next = parseLocalSettings(JSON.stringify({ ...(await loadLocalSettings()), ...change }));
   const SecureStore = await import("expo-secure-store");
   await SecureStore.setItemAsync(SETTINGS_KEY, JSON.stringify(next));
+  for (const listener of listeners) listener(next);
   return next;
 }
 

@@ -27,6 +27,8 @@ export interface S1SettingsProps {
   onSounds: () => void;
   onHealth: () => void;
   onAbout: () => void;
+  /** Theme and the alert card (S8). */
+  onPreferences: () => void;
   /** Opens the sign-out sheet (S6). */
   onSignOut: () => void;
   onBack: () => void;
@@ -71,6 +73,7 @@ export function S1Settings(props: S1SettingsProps) {
 
         <Section label="Puck" />
         <Group>
+          <SettingsRow icon="sun" label="Preferences" onPress={props.onPreferences} testID="settings-row-preferences" />
           <SettingsRow icon="info" label="About" value={props.version} onPress={props.onAbout} testID="settings-row-about" />
           <SettingsRow icon="logout" label="Sign out" onPress={props.onSignOut} chevron={false} testID="settings-row-signout" />
         </Group>

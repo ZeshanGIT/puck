@@ -25,6 +25,7 @@ export const SETTINGS_ICON = {
   check: "M5 12.5l4.5 4.5L19 7.5",
   warn: "M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01",
   dash: "M8 12h8",
+  sun: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4",
 } as const;
 
 export type SettingsIconName = keyof typeof SETTINGS_ICON;
