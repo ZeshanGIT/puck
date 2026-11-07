@@ -9,6 +9,7 @@ import {
   TOO_MANY_CLIENTS,
   decideRegistration,
   renameConflicts,
+  toClientView,
   validateClientName,
 } from "./lib/clientRules";
 import { isPushToken } from "./lib/fcm";
@@ -119,6 +120,8 @@ export const list = queryGeneric({
       platform,
       fullScreenAllowed: v.optional(v.boolean()),
       dndAccess: v.optional(v.boolean()),
+      // Whether a push token is stored (S5 Alert health). The token itself is never returned.
+      hasPushToken: v.boolean(),
       lastSeenAt: v.number(),
       createdAt: v.number(),
     }),
@@ -129,15 +132,7 @@ export const list = queryGeneric({
       .query("clients")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .take(MAX_CLIENTS_PER_USER);
-    return rows.map((row) => ({
-      id: row._id as string,
-      name: row.name,
-      platform: row.platform,
-      ...(row.fullScreenAllowed === undefined ? {} : { fullScreenAllowed: row.fullScreenAllowed }),
-      ...(row.dndAccess === undefined ? {} : { dndAccess: row.dndAccess }),
-      lastSeenAt: row.lastSeenAt,
-      createdAt: row.createdAt,
-    }));
+    return rows.map((row) => toClientView({ ...row, _id: row._id as string }));
   },
 });
 

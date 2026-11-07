@@ -6,6 +6,7 @@ import {
   clerkSubject,
   decideRegistration,
   renameConflicts,
+  toClientView,
   validateClientName,
 } from "../convex/lib/clientRules";
 
@@ -111,5 +112,26 @@ describe("clerkSubject", () => {
 
   test("rejects an identity with no issuer", () => {
     expect(() => clerkSubject({ subject: "user_abc" }, CLERK)).toThrow(UNAUTHORIZED);
+  });
+});
+
+describe("toClientView", () => {
+  const row = { _id: "c1", name: "Pixel 7", platform: "android" as const, lastSeenAt: 20, createdAt: 10 };
+
+  test("says whether a push token is stored and never returns the token", () => {
+    const withToken = toClientView({ ...row, pushToken: "fcm-secret-token" });
+    expect(withToken.hasPushToken).toBe(true);
+    expect(JSON.stringify(withToken)).not.toContain("fcm-secret-token");
+    expect("pushToken" in withToken).toBe(false);
+    expect(toClientView(row).hasPushToken).toBe(false);
+    expect(toClientView({ ...row, pushToken: "" }).hasPushToken).toBe(false);
+  });
+
+  test("carries the flags only when they were recorded", () => {
+    expect(toClientView(row)).toEqual({ id: "c1", name: "Pixel 7", platform: "android", hasPushToken: false, lastSeenAt: 20, createdAt: 10 });
+    expect(toClientView({ ...row, fullScreenAllowed: false, dndAccess: true })).toMatchObject({
+      fullScreenAllowed: false,
+      dndAccess: true,
+    });
   });
 });

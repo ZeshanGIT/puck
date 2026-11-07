@@ -48,6 +48,40 @@ export function decideRegistration(input: {
   return input.clientCount >= MAX_CLIENTS_PER_USER ? { action: "full" } : { action: "create" };
 }
 
+/** One client as `clients.list` returns it. The push token itself never leaves the server: only whether there is one. */
+export interface ClientView {
+  id: string;
+  name: string;
+  platform: ClientPlatform;
+  fullScreenAllowed?: boolean;
+  dndAccess?: boolean;
+  hasPushToken: boolean;
+  lastSeenAt: number;
+  createdAt: number;
+}
+
+export function toClientView(row: {
+  _id: string;
+  name: string;
+  platform: ClientPlatform;
+  pushToken?: string;
+  fullScreenAllowed?: boolean;
+  dndAccess?: boolean;
+  lastSeenAt: number;
+  createdAt: number;
+}): ClientView {
+  return {
+    id: row._id,
+    name: row.name,
+    platform: row.platform,
+    ...(row.fullScreenAllowed === undefined ? {} : { fullScreenAllowed: row.fullScreenAllowed }),
+    ...(row.dndAccess === undefined ? {} : { dndAccess: row.dndAccess }),
+    hasPushToken: typeof row.pushToken === "string" && row.pushToken.length > 0,
+    lastSeenAt: row.lastSeenAt,
+    createdAt: row.createdAt,
+  };
+}
+
 /** A rename clashes when another client of the same user already has the name. */
 export function renameConflicts(clientId: string, sameName: { id: string } | null): boolean {
   return sameName !== null && sameName.id !== clientId;
