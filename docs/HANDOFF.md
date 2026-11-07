@@ -36,3 +36,13 @@ Updated when product direction or alert presentation behavior changes. Vault `Pr
 ## Workflow (t69u)
 
 Seshan authorized **2026-11-08:** Cursor agents commit and push **`main` directly** after tests/typecheck; no feature branch or review gate. Other rules unchanged (no automated on-device testing; preserve data on install; ask before invasive unlocked takeover / overlay work).
+
+## Release APK (t64u)
+
+**WorkManager crash (fixed):** SDK 58 release enables R8 (`android.enableMinifyInReleaseBuilds=true`). `WorkManagerInitializer` failed with `WorkDatabase.canonicalName` because R8 stripped Room/InputMerger reflective constructors (Notifee → `work-runtime`). Fix: `plugins/withWorkManagerProguard.js` + `work-manager-proguard-rules.pro` (Expo issue #52173 pattern).
+
+**Build:** `cd app && expo prebuild --platform android --no-install` then `cd android && ./gradlew :app:assembleRelease` (bundled `assets/index.android.bundle` via `export:embed`).
+
+**Not store production-ready:** same debug keystore as dev builds; `EXPO_PUBLIC_*` / Convex `usable-mule-44` / Clerk dev instance unchanged. `expo-dev-client` remains a dependency (release still non-debuggable with embedded JS).
+
+**Install:** `adb install -r` only; preserve data.
