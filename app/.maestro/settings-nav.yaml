@@ -1,0 +1,43 @@
+appId: in.puckit.app
+---
+# Home gear -> S1 Settings, then each section (This phone, Other clients, Alert sounds, Alert health, About),
+# coming back with the back id, and one with the Android back key. Ends on Home.
+- runFlow: launch-app.yaml
+- tapOn: "Settings"
+- assertVisible:
+    id: "settings-account"
+- tapOn:
+    id: "settings-row-this-phone"
+- assertVisible:
+    id: "phone-rename"
+- tapOn:
+    id: "back"
+- tapOn:
+    id: "settings-row-clients"
+- assertVisible: "Every alert reaches.*"
+- tapOn:
+    id: "back"
+- tapOn:
+    id: "settings-row-sounds"
+- assertVisible: "Urgent rings for"
+- back
+- assertVisible:
+    id: "settings-row-health"
+- tapOn:
+    id: "settings-row-health"
+- assertVisible:
+    id: "health-title"
+- tapOn:
+    id: "back"
+- tapOn:
+    id: "settings-row-about"
+- assertVisible:
+    id: "about-title"
+- assertVisible: "Build"
+- tapOn:
+    id: "back"
+- assertVisible:
+    id: "settings-account"
+- tapOn:
+    id: "back"
+- assertVisible: "Puck"

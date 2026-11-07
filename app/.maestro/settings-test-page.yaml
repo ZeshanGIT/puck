@@ -1,0 +1,27 @@
+appId: in.puckit.app
+---
+# S5 "Send a test page": the alert takes over, answer "Yes, loud and clear" (armed: both taps in one
+# doubleTapOn), then back on S5 the result says it works with the time. Ends on Home.
+- runFlow: launch-app.yaml
+- tapOn: "Settings"
+- tapOn:
+    id: "settings-row-health"
+- tapOn:
+    id: "health-test-page"
+- extendedWaitUntil:
+    visible: "Can you hear me.*"
+    timeout: 60000
+- assertVisible: "Yes, loud and clear"
+- doubleTapOn: "Yes, loud and clear"
+- extendedWaitUntil:
+    visible:
+      id: "health-title"
+    timeout: 30000
+- assertVisible:
+    id: "health-test-result"
+- assertVisible: "It works. You answered at .*"
+- tapOn:
+    id: "back"
+- tapOn:
+    id: "back"
+- assertVisible: "Puck"

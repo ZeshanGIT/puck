@@ -1,0 +1,31 @@
+appId: in.puckit.app
+---
+# S2 rename this phone to NAME, check S2 shows it and S3 lists it as this phone (row client-row-SLUG).
+# Run it again with the original name to restore. Needs NAME and SLUG (NAME with dashes for spaces and
+# underscores). Ends on Home.
+- runFlow: launch-app.yaml
+- tapOn: "Settings"
+- tapOn:
+    id: "settings-row-this-phone"
+- tapOn:
+    id: "phone-rename"
+- assertVisible:
+    id: "rename-input"
+- eraseText: 80
+- inputText: "${NAME}"
+- tapOn:
+    id: "rename-save"
+- extendedWaitUntil:
+    visible: "(?i)${NAME}"
+    timeout: 15000
+- tapOn:
+    id: "back"
+- tapOn:
+    id: "settings-row-clients"
+- assertVisible:
+    id: "client-row-${SLUG}"
+- tapOn:
+    id: "back"
+- tapOn:
+    id: "back"
+- assertVisible: "Puck"

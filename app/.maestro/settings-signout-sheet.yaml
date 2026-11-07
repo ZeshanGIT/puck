@@ -1,0 +1,34 @@
+appId: in.puckit.app
+---
+# Sign-out sheet, opened from S1 "Sign out" and from S2 "Remove this phone", both cancelled. Never taps
+# signout-confirm (that would sign the emulator out). Ends on Home.
+- runFlow: launch-app.yaml
+- tapOn: "Settings"
+- tapOn:
+    id: "settings-row-signout"
+- assertVisible:
+    id: "signout-sheet"
+- assertVisible: "Sign out\\?"
+- tapOn:
+    id: "signout-cancel"
+- extendedWaitUntil:
+    notVisible:
+      id: "signout-sheet"
+    timeout: 15000
+- tapOn:
+    id: "settings-row-this-phone"
+- tapOn:
+    id: "phone-remove"
+- assertVisible:
+    id: "signout-sheet"
+- tapOn:
+    id: "signout-cancel"
+- extendedWaitUntil:
+    notVisible:
+      id: "signout-sheet"
+    timeout: 15000
+- tapOn:
+    id: "back"
+- tapOn:
+    id: "back"
+- assertVisible: "Puck"

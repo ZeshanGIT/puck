@@ -4,6 +4,21 @@ appId: in.puckit.app
 # Use from a flow with: - runFlow: launch-app.yaml
 - stopApp
 - openLink: "puck://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8082"
+# With POST_NOTIFICATIONS revoked, the system asks on launch and covers Home: answer "Don't allow" (keeps it revoked).
+- extendedWaitUntil:
+    visible: "(Allow Puck to send you notifications.*)|Puck|Continue"
+    timeout: 60000
+# A cancelled alert can still be on screen ("cancelled this ... Continue"): dismiss it, never answer.
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+- runFlow:
+    when:
+      visible: "Allow Puck to send you notifications.*"
+    commands:
+      - tapOn: "Don.t allow"
 - extendedWaitUntil:
     visible: "Puck"
     timeout: 60000

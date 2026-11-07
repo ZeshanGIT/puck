@@ -1,0 +1,21 @@
+appId: in.puckit.app
+---
+# S4 global bypass settings. Needs DND and SILENT, each off, urgent or all. Ends on Home.
+- runFlow: launch-app.yaml
+- tapOn: "Settings"
+- tapOn:
+    id: "settings-row-sounds"
+- scrollUntilVisible:
+    element:
+      id: "global-dnd-off"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "global-dnd-${DND}"
+- tapOn:
+    id: "global-silent-${SILENT}"
+- tapOn:
+    id: "back"
+- tapOn:
+    id: "back"
+- assertVisible: "Puck"

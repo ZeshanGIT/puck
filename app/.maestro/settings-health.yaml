@@ -1,0 +1,39 @@
+appId: in.puckit.app
+---
+# Alert health (S5). Needs EXPECT: ok | bad-notifications | bad-fullscreen (scripts/health-qa.sh sets it after
+# changing the real permission). Does not tap any fix: a fix opens system settings. Ends on Home.
+- runFlow: launch-app.yaml
+- tapOn: "Settings"
+- tapOn:
+    id: "settings-row-health"
+- assertVisible:
+    id: "health-title"
+- runFlow:
+    when:
+      true: ${EXPECT == 'ok'}
+    commands:
+      - assertVisible:
+          id: "health-row-notifications"
+      - assertNotVisible:
+          id: "health-fix-notifications"
+      - assertNotVisible:
+          id: "health-fix-fullScreen"
+- runFlow:
+    when:
+      true: ${EXPECT == 'bad-notifications'}
+    commands:
+      - assertVisible:
+          id: "health-fix-notifications"
+      - assertVisible: "Off, so bots can't reach you.*"
+- runFlow:
+    when:
+      true: ${EXPECT == 'bad-fullscreen'}
+    commands:
+      - assertVisible:
+          id: "health-fix-fullScreen"
+      - assertVisible: "Urgent alerts can't show over the lock screen"
+- tapOn:
+    id: "back"
+- tapOn:
+    id: "back"
+- assertVisible: "Puck"
