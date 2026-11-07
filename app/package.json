@@ -52,6 +52,7 @@
     "awake": "sh scripts/keep-awake.sh",
     "flow": "sh scripts/flow.sh",
     "icons": "bun scripts/generate-blob-icons.mjs",
+    "release:install": "bun scripts/release-install.mjs",
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit"
   },

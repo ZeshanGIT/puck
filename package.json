@@ -11,7 +11,8 @@
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun test",
-    "cli:build": "bun run --filter @puck/cli build"
+    "cli:build": "bun run --filter @puck/cli build",
+    "release:install": "bun run --filter @puck/app release:install"
   },
   "devDependencies": {
     "typescript": "~6.0.3"
