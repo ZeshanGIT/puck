@@ -19,4 +19,4 @@ Updated when product direction or alert presentation behavior changes. Vault `Pr
 
 **Deploy:** Backend `fcmBody` change must be on Convex (`usable-mule-44`) for normal alerts to receive data-only full-screen pushes. App JS handles presentation on device.
 
-**Related branch:** `cursor/reply-sheet-keyboard-565d` (`a928d15`) is independent; merge separately.
+**Main (t57u):** Merged to `main` at **e708869** (`f0cb3fa` + `e708869`). Convex `usable-mule-44` deployed 2026-11-08 ~01:08 IST. Feature branches kept on origin.
