@@ -17,7 +17,13 @@ import { internal } from "./_generated/api";
 import { BUILT_IN_BOT_ID, BUILT_IN_BOT_NAME, botMayAuthenticate } from "./lib/builtInBot";
 import { TOO_MANY_PENDING_BOTS } from "./lib/deviceAuth";
 import { decryptHeader, encryptHeader, hashSecret, mutationRandomInt, newSecret, timingSafeEqual } from "./lib/crypto";
-import { countsTowardPendingCap, isOpenRequestFor, pairingStatusOf } from "./lib/pairingRules";
+import {
+  approvePairingBlock,
+  approvePairingError,
+  countsTowardPendingCap,
+  isOpenRequestFor,
+  pairingStatusOf,
+} from "./lib/pairingRules";
 import { tallyWaiting, validateBotColour, validateMutedUntil } from "./lib/botSettings";
 import { selectPushTargets } from "./lib/pushTargets";
 
@@ -25,8 +31,11 @@ const PAIRING_TTL_MS = 15 * 60 * 1000;
 const MAX_OWNER_CLIENTS = 50;
 const DUMMY_HASH = "0".repeat(64);
 
-function invalidCode(): never {
-  throw new Error("pairing code is not valid");
+function failApprovePairing(block: ReturnType<typeof approvePairingBlock>): never {
+  if (block.kind === "ok_pending" || block.kind === "adopt_paired") {
+    throw new Error("pairing approval invariant");
+  }
+  throw new Error(approvePairingError(block));
 }
 
 function validationMessage(error: unknown): never {
@@ -146,17 +155,27 @@ export const approvePairing = mutationGeneric({
   handler: async (ctx, args) => {
     const client = args.clientId === undefined ? null : await requireClient(ctx, args.clientId);
     if (client === null) await requireDevice(ctx);
-    if (!/^\d{6}$/u.test(args.pairingCode)) invalidCode();
+    if (!/^\d{6}$/u.test(args.pairingCode)) failApprovePairing({ kind: "not_found" });
     const pairingCodeHash = await hashSecret(args.pairingCode);
     const bot = await ctx.db
       .query("bots")
       .withIndex("by_pairingCodeHash", (q) => q.eq("pairingCodeHash", pairingCodeHash))
       .unique();
-    if (!bot || bot.pairingState !== "pending") invalidCode();
-    // A request tied to a signed-in owner can only be approved by that owner's clients.
-    if (client !== null && bot.userId !== undefined && bot.userId !== client.userId) invalidCode();
-    if (bot.pairingCodeExpiresAt === undefined || bot.pairingCodeExpiresAt < Date.now()) invalidCode();
-    await ctx.db.patch(bot._id, { pairingState: "paired", pairingCodeCipher: undefined });
+    const now = Date.now();
+    const callerUserId = client?.userId ?? null;
+    const block = approvePairingBlock(bot, callerUserId, now);
+    if (block.kind === "adopt_paired") {
+      if (!bot) throw new Error("pairing approval invariant");
+      await ctx.db.patch(bot._id, { userId: callerUserId! });
+      return { botId: bot.id };
+    }
+    if (block.kind !== "ok_pending") failApprovePairing(block);
+    if (!bot) throw new Error("pairing approval invariant");
+    await ctx.db.patch(bot._id, {
+      pairingState: "paired",
+      pairingCodeCipher: undefined,
+      ...(callerUserId !== null && bot.userId === undefined ? { userId: callerUserId } : {}),
+    });
     return { botId: bot.id };
   },
 });

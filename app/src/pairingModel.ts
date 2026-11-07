@@ -133,6 +133,12 @@ export function fromText(addedFrom: string | null): string {
 /** The words for an error from approving or rejecting. */
 export function pairingErrorText(message: string): string {
   const text = message.toLowerCase();
+  if (text.includes("already used")) {
+    return "That code was already used. If Puck isn't in your Bots list, open Bots and pair again with the same code to finish claiming it.";
+  }
+  if (text.includes("has expired")) {
+    return "That code has expired. Run puck add again on the computer and enter the new code.";
+  }
   if (text.includes("not valid") || text.includes("invalid")) {
     return "That code doesn't match a waiting request. Check the terminal, or run puck add again if it timed out.";
   }

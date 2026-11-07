@@ -152,6 +152,8 @@ describe("words", () => {
   });
 
   test("errors read plainly", () => {
+    expect(pairingErrorText("pairing code was already used")).toContain("already used");
+    expect(pairingErrorText("pairing code has expired")).toContain("expired");
     expect(pairingErrorText("pairing code is not valid")).toContain("doesn't match");
     expect(pairingErrorText("pairing request is no longer open")).toContain("no longer open");
     expect(pairingErrorText("Network down")).toBe("Network down");
