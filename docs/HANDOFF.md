@@ -56,7 +56,7 @@ Seshan authorized **2026-11-08:** Cursor agents commit and push **`main` directl
 
 **WorkManager crash (fixed):** SDK 58 release enables R8 (`android.enableMinifyInReleaseBuilds=true`). `WorkManagerInitializer` failed with `WorkDatabase.canonicalName` because R8 stripped Room/InputMerger reflective constructors (Notifee → `work-runtime`). Fix: `plugins/withWorkManagerProguard.js` + `work-manager-proguard-rules.pro` (Expo issue #52173 pattern).
 
-**Build:** `cd app && expo prebuild --platform android --no-install` then `cd android && ./gradlew :app:assembleRelease` (bundled `assets/index.android.bundle` via `export:embed`).
+**Build and install (t78u):** `bun run release:install` from the repo root builds the release APK and runs `adb install -r` on the Pixel 7, after the checks in the README ("Release APK on the Pixel 7"). Manual steps are unchanged: `expo prebuild --platform android --no-install`, then `./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a`.
 
 **Not store production-ready:** same debug keystore as dev builds; `EXPO_PUBLIC_*` / Convex `usable-mule-44` / Clerk dev instance unchanged. `expo-dev-client` remains a dependency (release still non-debuggable with embedded JS).
 

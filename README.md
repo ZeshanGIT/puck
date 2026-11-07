@@ -52,6 +52,34 @@ cd android
 
 Prebuild writes `app/android/` locally (gitignored). A successful `assembleDebug` produces a debug APK under `app/android/app/build/outputs/apk/debug/`.
 
+### Release APK on the Pixel 7 (one command)
+
+Connect the Pixel 7 over wireless debugging or USB, unlock it, and accept the debugging prompt. Then, from the repo root:
+
+```sh
+bun run release:install
+```
+
+The script checks JDK 17, the Android SDK and the phone before it builds. Then it:
+
+1. runs `expo prebuild` for Android, which regenerates `app/android` from `app.json` and the config plugins;
+2. runs `./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a`, with R8 on and the JavaScript bundle embedded;
+3. checks the APK: the package name, not debuggable, the bundle present, and the WorkManager keep rules in the R8 mapping;
+4. runs `adb install -r` on the phone, which keeps the app's data, and prints the package metadata.
+
+It does not launch the app or change device settings.
+
+Options (after `--`):
+
+- `bun run release:install -- --serial <serial>` picks the phone when more than one is connected. `PUCK_ADB_SERIAL` does the same. Find serials with `adb devices -l`.
+- `bun run release:install -- --dry-run` checks everything and prints the plan. Nothing is built or installed.
+- `bun run release:install -- --skip-build` installs the APK already built.
+- `PUCK_DEVICE_MODEL` sets the expected model (default `Pixel 7`); set it to an empty string to skip the check.
+
+Safety: emulators are refused. A phone that is not authorized, or several phones without `--serial`, stop the script with a message. The phone's model must match. Install is `adb install -r` only: no uninstall, no data clear, no downgrade. If the signing key differs from the installed app, install fails and nothing is removed.
+
+Requirements: JDK 17 (`/usr/libexec/java_home -v 17` on macOS, or `JAVA_HOME`), the Android SDK (`ANDROID_HOME`, default `~/Library/Android/sdk` on macOS), Node 22.13 or newer, and `unzip`. The release is signed with the debug keystore and points at the dev Convex and Clerk instances, so it is not a store build.
+
 ### Run on a device or emulator (development build)
 
 When you have a connected device or a working emulator:
