@@ -133,7 +133,7 @@ export function O2Permissions({ clientId, onContinue }: { clientId: string; onCo
       <PermRow
         icon={<ScreenIcon colour={t.ink} />}
         title="Show over the lock screen"
-        body="Urgent alerts ring and take the screen, like a call."
+        body="Alerts can cover the lock screen. Urgent ones ring longer and repeat."
         on={fullScreen}
         action="Allow"
         onPress={() => void allowFullScreen()}

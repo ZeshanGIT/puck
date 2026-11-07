@@ -15,6 +15,7 @@ describe("fullscreenAlert", () => {
       questionId: ALERT.questionId,
       question: ALERT.question,
       botName: ALERT.botName,
+      priority: "urgent",
     });
     expect(fullscreenAlert({ data: { questionId: ALERT.questionId } })).toBeNull();
     expect(fullscreenAlert(null)).toBeNull();
@@ -39,6 +40,7 @@ describe("fullscreenAlert flags", () => {
       questionId: ALERT.questionId,
       question: ALERT.question,
       botName: ALERT.botName,
+      priority: "urgent",
       ringSeconds: 300,
       speak: true,
       bypassDnd: true,
@@ -48,15 +50,21 @@ describe("fullscreenAlert flags", () => {
     });
   });
 
-  test("an old payload has none of them", () => {
+  test("an old payload has none of them and defaults priority to urgent", () => {
     const alert = read({});
     expect(alert).not.toBeNull();
-    expect(Object.keys(alert ?? {}).sort()).toEqual(["botName", "question", "questionId"]);
+    expect(Object.keys(alert ?? {}).sort()).toEqual(["botName", "priority", "question", "questionId"]);
+    expect(alert?.priority).toBe("urgent");
+  });
+
+  test("reads normal priority from the payload", () => {
+    const alert = read({ priority: "normal" });
+    expect(alert?.priority).toBe("normal");
   });
 
   test("ignores junk and out-of-range values instead of failing", () => {
     const alert = read({ ringSeconds: "99999", speak: "yes", bypassDnd: 1, alertMessage: "" });
-    expect(Object.keys(alert ?? {}).sort()).toEqual(["botName", "question", "questionId"]);
+    expect(Object.keys(alert ?? {}).sort()).toEqual(["botName", "priority", "question", "questionId"]);
     expect(read({ ringSeconds: "2" })?.ringSeconds).toBeUndefined();
     expect(read({ ringSeconds: 60 })?.ringSeconds).toBe(60);
   });

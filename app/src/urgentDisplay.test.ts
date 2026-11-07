@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { PUSH_CHANNEL_ID } from "@puck/shared";
 
 /**
  * Changing the bypass settings in Settings (S4) must change how the NEXT urgent alert behaves.
@@ -72,6 +73,7 @@ function asking(extra: Record<string, unknown> = {}) {
     questionId: `q_URGENTTEST${String(counter).padStart(6, "0")}`,
     question: "Deploy now?",
     botName: "Sheldon",
+    priority: "urgent" as const,
     bypassDnd: true,
     bypassSilent: true,
     ...extra,
@@ -83,6 +85,17 @@ async function ring(alert: ReturnType<typeof asking>) {
   await urgent.clearDisplayedAlert(alert.questionId);
   return notifications[notifications.length - 1]!;
 }
+
+describe("normal full-screen presentation", () => {
+  test("rings on puck-alerts without insistent loop, even when bypass is all", async () => {
+    await settings.saveLocalSettings({ bypassDnd: "all", bypassSilent: "all" });
+    const note = await ring(asking({ priority: "normal", bypassDnd: true, bypassSilent: true }));
+    expect(note.channelId).toBe(PUSH_CHANNEL_ID);
+    expect(note.timeoutAfter).toBe(60_000);
+    const insistent = notifications.some((n) => n.channelId === PUSH_CHANNEL_ID);
+    expect(insistent).toBe(true);
+  });
+});
 
 describe("the next urgent alert reads the settings fresh", () => {
   test("default (urgent only): an urgent alert that asks rings on the alarm channel through Do Not Disturb", async () => {

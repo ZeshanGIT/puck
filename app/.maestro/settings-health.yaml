@@ -31,7 +31,7 @@ appId: in.puckit.app
     commands:
       - assertVisible:
           id: "health-fix-fullScreen"
-      - assertVisible: "Urgent alerts can't show over the lock screen"
+      - assertVisible: "Alerts can't take over the screen"
 - tapOn:
     id: "back"
 - tapOn:

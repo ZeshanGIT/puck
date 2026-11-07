@@ -1,4 +1,11 @@
-import { DISMISS_KIND, FULL_SCREEN_KIND, LIVE_KIND, PAIRING_KIND, PUSH_CHANNEL_ID } from "@puck/shared";
+import {
+  DISMISS_KIND,
+  FULL_SCREEN_KIND,
+  LIVE_KIND,
+  PAIRING_KIND,
+  PUSH_CHANNEL_ID,
+  pushUsesFullScreenDataMessage,
+} from "@puck/shared";
 import { selectPushTargets, type PushTargetClient, type PushTargetDevice } from "./pushTargets";
 
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
@@ -59,7 +66,7 @@ export function isPushToken(token: string): boolean {
  * Notification message for a backgrounded phone.
  * The system draws the heads-up. The question id is how a tap finds the alert.
  */
-/** Shade notification. Urgent alerts use this until full-screen access is allowed. */
+/** Shade notification when the phone has not allowed full-screen presentation (any priority). */
 export function fcmMessage(alert: PushAlert) {
   return {
     message: {
@@ -191,7 +198,7 @@ export function selectDismissTargets(input: {
 }
 
 export function fcmBody(alert: PushAlert) {
-  if (alert.priority === "urgent" && alert.fullScreen) return fcmFullScreenMessage(alert);
+  if (pushUsesFullScreenDataMessage(alert.fullScreen)) return fcmFullScreenMessage(alert);
   return fcmMessage(alert);
 }
 

@@ -1,11 +1,11 @@
 import notifee, { AndroidImportance, AndroidVisibility, EventType, type Event } from "@notifee/react-native";
-import { PUSH_URGENT_CHANNEL_ID } from "@puck/shared";
+import { PUSH_CHANNEL_ID, PUSH_URGENT_CHANNEL_ID } from "@puck/shared";
+import { alertRingingPlan } from "./alertRinging";
 import { canCreateAlarmChannel, createAlarmChannel, hasDndAccess, isInCall, isLocked } from "puck-full-screen";
 import { useEffect, useState } from "react";
 import { dismissedQuestionId } from "./dismissPayload";
 import { fullscreenAlert, type FullScreenAlert } from "./fullscreenPayload";
 import {
-  bypassDecision,
   isNight,
   loadLocalSettings,
   ringSecondsFor,
@@ -22,7 +22,8 @@ import { pairingPush } from "./pairingPayload";
 import { speechText, startSpeaking } from "./speak";
 
 /**
- * An urgent alert on the phone (A4). It rings by posting an insistent notification: Notifee's
+ * A full-screen alert on the phone (A4). Urgent alerts ring insistently; normal alerts use the
+ * standard alerts channel with one sound. Both may request full-screen presentation via Notifee's
  * `loopSound` sets Android's FLAG_INSISTENT, which repeats the channel's sound and vibration until
  * the notification is cancelled, and `timeoutAfter` makes Android cancel it after `ringSeconds`
  * even when no JavaScript is running. Answering, swiping it away or a volume key stops it sooner.
@@ -56,6 +57,20 @@ const afterCall = new Map<string, { alert: FullScreenAlert; since: number }>();
 let callTimer: ReturnType<typeof setInterval> | null = null;
 
 /* ----------------------------------------------------------------- channels */
+
+/** Normal full-screen alerts always use the shared `puck-alerts` channel (not urgent bypass). */
+async function ensureNormalChannel(): Promise<string> {
+  await notifee.createChannel({
+    id: PUSH_CHANNEL_ID,
+    name: "Alerts",
+    importance: AndroidImportance.HIGH,
+    sound: "default",
+    vibration: true,
+    visibility: AndroidVisibility.PUBLIC,
+    bypassDnd: false,
+  });
+  return PUSH_CHANNEL_ID;
+}
 
 async function ensureChannel(decision: BypassDecision): Promise<string> {
   const alarm = decision.silent && canCreateAlarmChannel();
@@ -106,7 +121,11 @@ async function ensureWaitingChannel(): Promise<string> {
 
 /* ------------------------------------------------------------ notifications */
 
-async function postRinging(alert: FullScreenAlert, channelId: string, seconds: number): Promise<void> {
+async function postRinging(
+  alert: FullScreenAlert,
+  channelId: string,
+  plan: { insistent: boolean; timeoutMs: number | undefined },
+): Promise<void> {
   await notifee.displayNotification({
     id: alert.questionId,
     title: alert.botName,
@@ -118,8 +137,8 @@ async function postRinging(alert: FullScreenAlert, channelId: string, seconds: n
       fullScreenAction: { id: "default" },
       visibility: AndroidVisibility.PUBLIC,
       tag: alert.questionId,
-      loopSound: true,
-      timeoutAfter: seconds * 1000,
+      ...(plan.insistent ? { loopSound: true } : {}),
+      ...(plan.timeoutMs !== undefined ? { timeoutAfter: plan.timeoutMs } : {}),
     },
   });
 }
@@ -176,13 +195,20 @@ async function settle(questionId: string): Promise<void> {
 }
 
 async function startRinging(alert: FullScreenAlert, settings: LocalSettings): Promise<void> {
-  const seconds = ringSecondsFor(alert.ringSeconds, settings);
-  // The bot's own overrides (B2) apply when the push names the bot; without a bot id (an older
-  // backend) the global settings decide. The channel follows the decision (`urgentChannelId`).
-  const decision = bypassDecision({ priority: "urgent", ...alert }, settings, alert.botId);
-  // Do Not Disturb access is what lets the channel override it; without it the alert rings normally.
-  const dnd = decision.dnd && hasDndAccess() === true;
-  const channelId = await ensureChannel({ dnd, silent: decision.silent });
+  const plan = alertRingingPlan(alert, settings, alert.botId, canCreateAlarmChannel());
+  const seconds =
+    plan.timeoutMs !== undefined ? Math.max(1, Math.round(plan.timeoutMs / 1000)) : ringSecondsFor(alert.ringSeconds, settings);
+  let channelId = plan.channelId;
+  if (alert.priority === "urgent") {
+    // Do Not Disturb access is what lets the channel override it; without it the alert rings normally.
+    const decision = {
+      dnd: plan.bypassDndOnChannel && hasDndAccess() === true,
+      silent: plan.useAlarmChannel,
+    };
+    channelId = await ensureChannel(decision);
+  } else {
+    channelId = await ensureNormalChannel();
+  }
   forget(alert.questionId);
   // A soft cue from a call may still be up. Post fresh so the screen and sound start again.
   await notifee.cancelNotification(alert.questionId, alert.questionId);
@@ -190,10 +216,13 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings): Pr
     alert,
     state: "ringing",
     timer: setTimeout(() => void settle(alert.questionId), seconds * 1000 + QUIET_DELAY_MS),
-    stopSpeech: alert.speak ? startSpeaking(alert.questionId, speechText(alert.question, alert.message), seconds) : null,
+    stopSpeech:
+      alert.priority === "urgent" && alert.speak
+        ? startSpeaking(alert.questionId, speechText(alert.question, alert.message), seconds)
+        : null,
   };
   rings.set(alert.questionId, ring);
-  await postRinging(alert, channelId, seconds);
+  await postRinging(alert, channelId, plan);
 }
 
 /** Volume key: silence every ringing alert (and its voice) without answering. */
@@ -324,28 +353,28 @@ export interface UrgentLook {
   clock: boolean;
 }
 
-function currentLook(urgent: boolean): UrgentLook {
-  const overLockScreen = urgent && isLocked() === true;
-  return { night: overLockScreen && isNight(new Date()), clock: overLockScreen };
+function currentLook(priority: "normal" | "urgent"): UrgentLook {
+  const overLockScreen = isLocked() === true;
+  const urgent = priority === "urgent";
+  return { night: overLockScreen && urgent && isNight(new Date()), clock: overLockScreen };
 }
 
 /**
- * A4: an urgent alert over the lock screen shows the clock, and from 10 PM to 7 AM uses the night
- * look. Pass the result to `AlertFrame` (`night`, `clock`). Re-checks every few seconds so the look
+ * A4: any full-screen alert over the lock screen shows the clock. The night look stays urgent-only.
+ * Pass the result to `AlertFrame` (`night`, `clock`). Re-checks every few seconds so the look
  * follows an unlock or the clock striking 7.
  */
 export function useUrgentLook(priority: "normal" | "urgent"): UrgentLook {
-  const urgent = priority === "urgent";
-  const [look, setLook] = useState(() => currentLook(urgent));
+  const [look, setLook] = useState(() => currentLook(priority));
   useEffect(() => {
     const update = () =>
       setLook((previous) => {
-        const next = currentLook(urgent);
+        const next = currentLook(priority);
         return previous.night === next.night && previous.clock === next.clock ? previous : next;
       });
     update();
     const id = setInterval(update, 5000);
     return () => clearInterval(id);
-  }, [urgent]);
+  }, [priority]);
   return look;
 }

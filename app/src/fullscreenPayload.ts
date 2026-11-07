@@ -1,9 +1,12 @@
 import { FULL_SCREEN_KIND, isQuestionId } from "@puck/shared";
+import type { AlertPriority } from "./localSettings";
 
 export interface FullScreenAlert {
   questionId: string;
   question: string;
   botName: string;
+  /** From the FCM data payload; older pushes default to urgent. */
+  priority: AlertPriority;
   /** The bot's public id (`sheldon-11019`), for its own Do Not Disturb and silent-mode overrides. Older pushes have none. */
   botId?: string;
   /** The alert's message, sent only with `speak` so the phone can read it aloud. */
@@ -29,7 +32,10 @@ export function fullscreenAlert(payload: unknown): FullScreenAlert | null {
   if (typeof questionId !== "string" || !isQuestionId(questionId)) return null;
   if (typeof question !== "string" || question.length === 0) return null;
   if (typeof botName !== "string" || botName.length === 0) return null;
-  const alert: FullScreenAlert = { questionId, question, botName };
+  const priorityRaw = data.priority;
+  const priority: AlertPriority =
+    priorityRaw === "normal" || priorityRaw === "urgent" ? priorityRaw : "urgent";
+  const alert: FullScreenAlert = { questionId, question, botName, priority };
   // Optional: an older backend does not send it. Anything but a non-empty string is dropped.
   const botId = data.botId;
   if (typeof botId === "string" && botId.length > 0) alert.botId = botId;
