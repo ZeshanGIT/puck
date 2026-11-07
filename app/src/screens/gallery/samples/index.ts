@@ -13,6 +13,7 @@ import { ALERT_SAMPLE_GROUPS, freshGroup } from "./a8";
 import { DETAIL_SAMPLE_NAMES, freshDetail, isDetailSample } from "./detail";
 import { freshHome, HOME_SAMPLE_NAMES, isHomeSample } from "./home";
 import { BOTS_SAMPLE_NAMES, freshBots, isBotsSample } from "./bots";
+import { freshSettings, isSettingsSample, SAMPLE_THIS_CLIENT_ID, SETTINGS_SAMPLE_NAMES } from "./settings";
 import { freshPairing, isPairingSample, PAIRING_SAMPLE_NAMES } from "./pairing";
 
 export const ALERT_SAMPLES: Record<string, PendingAlert> = {
@@ -51,3 +52,6 @@ export { freshPairing, isPairingSample, PAIRING_SAMPLE_NAMES };
 
 /** The Bots samples (B1, B2: `bots`, `bots-empty`, `bot`, `bot-muted`); see `bots.ts`. */
 export { BOTS_SAMPLE_NAMES, freshBots, isBotsSample };
+
+/** The Settings samples (S1 to S7: `settings`, `this-phone`, `clients`, `sounds`, `health`, `about`); see `settings.ts`. */
+export { freshSettings, isSettingsSample, SAMPLE_THIS_CLIENT_ID, SETTINGS_SAMPLE_NAMES };

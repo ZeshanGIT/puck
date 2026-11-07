@@ -16,6 +16,8 @@ import type { NeedItem } from "./homeModel";
 import { AlertHost, useAlertDeck } from "./screens/AlertHost";
 import { ConnectedH1Home } from "./screens/H1Home";
 import { ConnectedBotsHost } from "./screens/BotsHost";
+import { ConnectedSettingsHost } from "./screens/ConnectedSettings";
+import { SETTINGS_HOME, type SettingsNav } from "./screens/SettingsHost";
 import { ConnectedPairingHost, type PairingStart } from "./screens/PairingHost";
 import { H4Detail } from "./screens/H4Detail";
 import { StackHost } from "./screens/StackHost";
@@ -184,6 +186,11 @@ function InboxBody({
   const [botsOpen, setBotsOpen] = useState(false);
   const openBots = useCallback(() => setBotsOpen(true), []);
   const closeBots = useCallback(() => setBotsOpen(false), []);
+  // S1 to S7 (Settings), opened from Home's Settings icon. Where it is lives here, so an alert that takes
+  // over the screen (the test page in S5) leaves Settings where it was.
+  const [settingsNav, setSettingsNav] = useState<SettingsNav | null>(null);
+  const openSettings = useCallback(() => setSettingsNav(SETTINGS_HOME), []);
+  const closeSettings = useCallback(() => setSettingsNav(null), []);
   const openPairing = useCallback((botId: string) => setPairFlow({ kind: "approve", botId }), []);
   const startPairing = useCallback(() => setPairFlow({ kind: "code" }), []);
   const closePairing = useCallback(
@@ -260,6 +267,20 @@ function InboxBody({
       </View>
     );
   }
+  if (!alert && settingsNav) {
+    return (
+      <View style={styles.stack}>
+        <ConnectedSettingsHost
+          clientId={clientId}
+          email={email}
+          nav={settingsNav}
+          onNav={setSettingsNav}
+          onSignOut={onSignOut}
+          onClose={closeSettings}
+        />
+      </View>
+    );
+  }
   if (!alert) {
     // Home stays mounted under the detail (H4), so Back shows the list that is already loaded. While
     // the detail is up Home is hidden, so it takes no touches and is not read by a screen reader.
@@ -279,7 +300,7 @@ function InboxBody({
             onGoThroughAll={goThroughAll}
             onOpenAlert={openDetail}
             onBots={openBots}
-            onSettings={comingLater}
+            onSettings={openSettings}
             onPairBot={startPairing}
             onOpenPairing={openPairing}
             footer={
@@ -292,7 +313,6 @@ function InboxBody({
                 {__DEV__ && onDevDesignGallery ? (
                   <PuckTextLink label="Dev: design gallery" onPress={onDevDesignGallery} />
                 ) : null}
-                <PuckTextLink label="Sign out" onPress={onSignOut} />
               </View>
             }
           />

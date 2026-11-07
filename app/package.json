@@ -10,6 +10,7 @@
     "babel-preset-expo": "~58.0.0",
     "convex": "1.48.0",
     "expo": "~58.0.20",
+    "expo-constants": "~58.0.13",
     "expo-crypto": "^58.0.7",
     "expo-dev-client": "~58.0.17",
     "expo-device": "^58.0.5",
@@ -46,6 +47,7 @@
     "gallery": "sh scripts/gallery.sh",
     "lock": "sh scripts/lock.sh",
     "unlock": "sh scripts/unlock.sh",
+    "awake": "sh scripts/keep-awake.sh",
     "flow": "sh scripts/flow.sh",
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit"

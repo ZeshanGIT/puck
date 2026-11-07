@@ -179,6 +179,14 @@ export async function loadAnswerQueue(storage: QueueStorage = secureQueueStorage
   return update(storage, (queue) => ({ queue, result: queue }));
 }
 
+/**
+ * Empties the queue. Signing out does this: the answers wait for a client row that is being removed,
+ * and sending them later under a new row (or another account) would be wrong.
+ */
+export async function clearAnswerQueue(storage: QueueStorage = secureQueueStorage): Promise<void> {
+  await update(storage, () => ({ queue: [], result: undefined }));
+}
+
 /** Keeps an answer on the phone to send later. */
 export async function enqueueAnswer(item: QueuedAnswer, storage: QueueStorage = secureQueueStorage): Promise<void> {
   await update(storage, (queue) => ({ queue: addToQueue(dropExpired(queue, item.queuedAt), item), result: undefined }));

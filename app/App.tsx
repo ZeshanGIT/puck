@@ -1,5 +1,6 @@
 import type { ClerkAccount } from "@puck/shared";
 import { ConvexProvider, useConvex } from "convex/react";
+import { anyApi } from "convex/server";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Linking, StyleSheet, Text, View } from "react-native";
@@ -8,7 +9,9 @@ import { appGate, nextStep, type OnboardingStatus, type OnboardingStep } from ".
 import { useClerkAccount } from "./src/clerkAccount";
 import { convex } from "./src/client";
 import { useClientSession } from "./src/clientAuth";
-import { clearClientId } from "./src/clientStore";
+import { clearAnswerQueue } from "./src/answerQueue";
+import { clearClientId, readClientId } from "./src/clientStore";
+import { signOutPhone } from "./src/signOutFlow";
 import { Inbox } from "./src/Inbox";
 import { DevMenu } from "./src/onboarding/DevMenu";
 import { readDevWalkthrough, startDevWalkthrough, stopDevWalkthrough } from "./src/onboarding/devOnboarding";
@@ -19,6 +22,7 @@ import { useWakeSnoozed } from "./src/screens/A11Snooze";
 import { AlertHost } from "./src/screens/AlertHost";
 import { AStack, type StackAnswer, type StackGone } from "./src/screens/AStack";
 import { DevGallery } from "./src/screens/DevGallery";
+import { DevSettings } from "./src/screens/gallery/DevSettings";
 import { H1Home } from "./src/screens/H1Home";
 import { H4DetailView } from "./src/screens/H4Detail";
 import { BotsHost, type BotsSource } from "./src/screens/BotsHost";
@@ -36,6 +40,8 @@ import {
   isHomeSample,
   isPairingSample,
   isBotsSample,
+  isSettingsSample,
+  SETTINGS_SAMPLE_NAMES,
   freshBots,
   BOTS_SAMPLE_NAMES,
   freshPairing,
@@ -369,7 +375,7 @@ function DevAlertSample({ name }: { name: string }) {
     return (
       <View style={styles.root}>
         <Text style={styles.devNote}>
-          Unknown sample: {name}. Known: {[...Object.keys(ALERT_SAMPLES), ...Object.keys(ALERT_SAMPLE_GROUPS), ...HOME_SAMPLE_NAMES, ...DETAIL_SAMPLE_NAMES, ...PAIRING_SAMPLE_NAMES, ...BOTS_SAMPLE_NAMES].join(", ")}.
+          Unknown sample: {name}. Known: {[...Object.keys(ALERT_SAMPLES), ...Object.keys(ALERT_SAMPLE_GROUPS), ...HOME_SAMPLE_NAMES, ...DETAIL_SAMPLE_NAMES, ...PAIRING_SAMPLE_NAMES, ...BOTS_SAMPLE_NAMES, ...SETTINGS_SAMPLE_NAMES].join(", ")}.
         </Text>
       </View>
     );
@@ -409,6 +415,8 @@ export default function App() {
             <DevHome key={alertLink.sample} name={alertLink.sample} />
           ) : isBotsSample(alertLink.sample) ? (
             <DevBots key={alertLink.sample} name={alertLink.sample} />
+          ) : isSettingsSample(alertLink.sample) ? (
+            <DevSettings key={alertLink.sample} name={alertLink.sample} />
           ) : isPairingSample(alertLink.sample) ? (
             <DevPairing key={alertLink.sample} name={alertLink.sample} />
           ) : isDetailSample(alertLink.sample) ? (
@@ -462,6 +470,8 @@ function AppBody({
   const [devWalkthrough, setDevWalkthrough] = useState(false);
   const [step, setStep] = useState<OnboardingStep | null>(null);
   const [freshSignIn, setFreshSignIn] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const convexClient = useConvex();
 
   useEffect(() => {
     let cancelled = false;
@@ -514,11 +524,29 @@ function AppBody({
   }
 
   async function signOut() {
-    // This phone's client row stays on the account; signing in again offers to replace it (Q11).
-    await clearClientId().catch(() => {});
-    setFreshSignIn(false);
-    setStep(null);
-    await clerk.signOut();
+    // Sign-out removes this phone's client row so it stops being paged (best effort, 3 s), clears the stored
+    // client id and any answers still waiting to send (they belong to that row), then ends the Clerk session.
+    // The opening screen covers the moments in between, so the inbox's queries never meet a missing row.
+    setSigningOut(true);
+    try {
+      await signOutPhone({
+        removeClient: async () => {
+          const clientId = await readClientId();
+          if (clientId) await convexClient.mutation(anyApi.clients.remove, { clientId });
+        },
+        clearLocal: async () => {
+          setFreshSignIn(false);
+          setStep(null);
+          await clearClientId();
+          await clearAnswerQueue().catch(() => {});
+        },
+        endSession: () => clerk.signOut(),
+      });
+    } catch (error) {
+      console.error(readableError(error));
+    } finally {
+      setSigningOut(false);
+    }
   }
 
   async function walkThroughEveryStep() {
@@ -573,6 +601,7 @@ function AppBody({
   );
 
   function renderGate() {
+    if (signingOut) return <O0Opening />;
     // The gate only reaches O2 and later with a registered client.
     const clientId = session.status === "ready" ? session.clientId : null;
     switch (gate) {

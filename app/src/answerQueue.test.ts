@@ -4,6 +4,7 @@ import {
   QUEUE_MAX_FAILURES,
   QUEUE_MAX_ITEMS,
   addToQueue,
+  clearAnswerQueue,
   dropExpired,
   enqueueAnswer,
   flushAnswerQueue,
@@ -250,5 +251,16 @@ describe("submitOrQueue", () => {
       }),
     ).rejects.toThrow("already answered");
     expect(await isAnswerQueued("q_A", storage)).toBe(false);
+  });
+});
+
+describe("clearAnswerQueue", () => {
+  test("empties the stored queue and the in-memory ids", async () => {
+    const storage = memoryStorage([item("A", NOW - 10), item("B", NOW - 5)]);
+    await loadAnswerQueue(storage);
+    expect(isQueuedLocally("q_A")).toBe(true);
+    await clearAnswerQueue(storage);
+    expect(await loadAnswerQueue(storage)).toEqual([]);
+    expect(isQueuedLocally("q_A")).toBe(false);
   });
 });
