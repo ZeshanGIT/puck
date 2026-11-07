@@ -1,4 +1,4 @@
-import { DISMISS_KIND, FULL_SCREEN_KIND, PAIRING_KIND, PUSH_CHANNEL_ID } from "@puck/shared";
+import { DISMISS_KIND, FULL_SCREEN_KIND, LIVE_KIND, PAIRING_KIND, PUSH_CHANNEL_ID } from "@puck/shared";
 import { selectPushTargets, type PushTargetClient, type PushTargetDevice } from "./pushTargets";
 
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
@@ -242,4 +242,51 @@ export function googleAssertionClaims(clientEmail: string, nowSeconds: number) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The fields a live-activity push carries (see `live.loadPush`). Strings only, no secrets. */
+export interface LivePushInput {
+  pushToken: string;
+  activityId: string;
+  botId: string;
+  botName: string;
+  colour: string | null;
+  title: string;
+  currentStep: string;
+  state: string;
+  stepIndex: number | null;
+  stepCount: number | null;
+  startedAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Data-only live-activity update (N8). Normal priority and no notification block, so it never
+ * rings or vibrates; the phone updates its ongoing notification in place. The phone can open the
+ * full activity by `activityId`. Steps are not sent, to keep the message small.
+ */
+export function fcmLiveMessage(input: LivePushInput) {
+  const data: Record<string, string> = {
+    kind: LIVE_KIND,
+    activityId: input.activityId,
+    botId: input.botId,
+    botName: input.botName,
+    title: input.title,
+    currentStep: input.currentStep,
+    state: input.state,
+    startedAt: String(input.startedAt),
+    updatedAt: String(input.updatedAt),
+  };
+  if (input.colour !== null) data.colour = input.colour;
+  if (input.stepIndex !== null) data.stepIndex = String(input.stepIndex);
+  if (input.stepCount !== null) data.stepCount = String(input.stepCount);
+  return {
+    message: {
+      token: input.pushToken,
+      data,
+      android: {
+        priority: "NORMAL" as const,
+      },
+    },
+  };
 }

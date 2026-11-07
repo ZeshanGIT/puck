@@ -2,7 +2,7 @@ import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
 import { login, logout, openBrowser, signedInToken, whoami } from "./account";
 import { liveBackend } from "./backend";
-import { addBot, cancelAlert, listAlerts, scheduleAlert, sendAlert, type Runtime } from "./commands";
+import { addBot, cancelAlert, listAlerts, scheduleAlert, sendAlert, statusCommand, type Runtime } from "./commands";
 import { defaultConfigDir } from "./config";
 import { promptHidden } from "./prompt";
 
@@ -59,6 +59,43 @@ export function createProgram(runtime: Runtime = defaultRuntime()): Command {
     .option("--color <name>", "same as --colour")
     .action(async (name: string, options: { colour?: string; color?: string }) => {
       runtime.stdout(await addBot(name, runtime, options));
+    });
+
+  const status = program.command("status").description("report what the bot is working on (live activity)");
+  status
+    .command("start")
+    .description("start an activity, replacing this bot's current one")
+    .requiredOption("--title <text>", "what the bot is working on")
+    .option("--steps <a|b|c>", "steps, separated by |")
+    .option("--link <url>", "a link for the task")
+    .option("--bot <bot-id>", "bot id, or the default in config.json")
+    .action(async (options: { title: string; steps?: string; link?: string; bot?: string }) => {
+      runtime.stdout(await statusCommand({ action: "start", ...options }, runtime));
+    });
+  status
+    .command("step")
+    .description("move to a step, adding it if it is new")
+    .argument("<text>", "the step")
+    .option("--bot <bot-id>", "bot id, or the default in config.json")
+    .action(async (text: string, options: { bot?: string }) => {
+      runtime.stdout(await statusCommand({ action: "step", text, ...options }, runtime));
+    });
+  status
+    .command("steps")
+    .description("replace the list of steps")
+    .argument("<list>", "steps separated by |")
+    .option("--bot <bot-id>", "bot id, or the default in config.json")
+    .action(async (list: string, options: { bot?: string }) => {
+      runtime.stdout(await statusCommand({ action: "steps", steps: list, ...options }, runtime));
+    });
+  status
+    .command("end")
+    .description("end the activity")
+    .option("--ok", "finished (the default)")
+    .option("--failed", "finished with a failure")
+    .option("--bot <bot-id>", "bot id, or the default in config.json")
+    .action(async (options: { ok?: boolean; failed?: boolean; bot?: string }) => {
+      runtime.stdout(await statusCommand({ action: "end", ...options }, runtime));
     });
 
   program

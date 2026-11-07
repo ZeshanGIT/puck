@@ -27,8 +27,10 @@ import type * as lib_crypto from "../lib/crypto.js";
 import type * as lib_deliveryRetry from "../lib/deliveryRetry.js";
 import type * as lib_deviceAuth from "../lib/deviceAuth.js";
 import type * as lib_fcm from "../lib/fcm.js";
+import type * as lib_liveRules from "../lib/liveRules.js";
 import type * as lib_pairingRules from "../lib/pairingRules.js";
 import type * as lib_pushTargets from "../lib/pushTargets.js";
+import type * as live from "../live.js";
 import type * as push from "../push.js";
 
 import type {
@@ -57,8 +59,10 @@ declare const fullApi: ApiFromModules<{
   "lib/deliveryRetry": typeof lib_deliveryRetry;
   "lib/deviceAuth": typeof lib_deviceAuth;
   "lib/fcm": typeof lib_fcm;
+  "lib/liveRules": typeof lib_liveRules;
   "lib/pairingRules": typeof lib_pairingRules;
   "lib/pushTargets": typeof lib_pushTargets;
+  live: typeof live;
   push: typeof push;
 }>;
 

@@ -3,6 +3,7 @@ import {
   ANSWER_SOURCES,
   ATTACHMENT_TYPES,
   DELIVERY_STATUSES,
+  LIVE_STATES,
   OPTION_TONES,
   PAIRING_STATES,
   PRESENTATIONS,
@@ -44,6 +45,8 @@ export const option = v.object({
 });
 
 export const alertLink = v.object({ label: v.string(), url: v.string() });
+
+export const liveState = v.union(...literals(LIVE_STATES));
 
 /** The optional alert fields added after v0 (see `AlertExtras` in @puck/shared). All optional. */
 export const alertExtraFields = {
@@ -181,6 +184,27 @@ export default defineSchema({
   })
     .index("by_alert", ["alertId"])
     .index("by_questionId", ["questionId"]),
+
+  // A live activity (N8, H5): what a bot is working on. One per bot: a new start replaces the old
+  // row. `steps` and `stepIndex` are the track when the bot gave one; `currentStep` is the step
+  // text (or free text without a track); `log` keeps the last finished steps. `state` is running
+  // until the bot ends it, or done, failed, or stale (no update for 30 minutes).
+  liveActivities: defineTable({
+    botId: v.id("bots"),
+    userId: v.optional(v.string()),
+    title: v.string(),
+    steps: v.optional(v.array(v.string())),
+    stepIndex: v.optional(v.number()),
+    currentStep: v.string(),
+    log: v.array(v.string()),
+    state: liveState,
+    link: v.optional(alertLink),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    endedAt: v.optional(v.number()),
+  })
+    .index("by_bot", ["botId"])
+    .index("by_state", ["state"]),
 
   // One `snoozed` webhook event (Q17), delivered like an answer: same four tries and backoff.
   // `snoozedUntil` is epoch ms, or null for "until I'm back". Not an answer, so `answers` is untouched.

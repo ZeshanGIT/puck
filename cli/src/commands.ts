@@ -6,7 +6,9 @@ import {
   isQuestionId,
   validateAlertTiming,
   validateCreateAlert,
+  validateLiveCommand,
   validatePairingInput,
+  type LiveCommand,
   type PairingInput,
 } from "@puck/shared";
 import type { AlertBody, Backend, ListedAlert, PairingStatus } from "./backend";
@@ -232,4 +234,70 @@ function formatLocal(epochMs: number): string {
   const hour = String(date.getHours()).padStart(2, "0");
   const minute = String(date.getMinutes()).padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day} ${hour}:${minute}`;
+}
+
+/** The `puck status` input, as the program parses it. */
+export interface StatusInput {
+  action: "start" | "step" | "steps" | "end";
+  bot?: string;
+  title?: string;
+  /** Steps separated by `|`, for start and steps. */
+  steps?: string;
+  link?: string;
+  /** The step text, for step. */
+  text?: string;
+  ok?: boolean;
+  failed?: boolean;
+}
+
+/** Splits `A|B|C`. An empty piece is kept, so the validator names it. */
+export function parseSteps(raw: string): string[] {
+  return raw.split("|").map((piece) => piece.trim());
+}
+
+/**
+ * `puck status`: start, step, steps or end a live activity for the bot. The body is checked with
+ * the same validator the server uses, so a bad one fails here with a short message.
+ */
+export async function statusCommand(input: StatusInput, runtime: Runtime): Promise<string> {
+  let raw: Record<string, unknown>;
+  switch (input.action) {
+    case "start":
+      raw = {
+        action: "start",
+        title: input.title ?? "",
+        ...(input.steps === undefined ? {} : { steps: parseSteps(input.steps) }),
+        ...(input.link === undefined ? {} : { link: input.link }),
+      };
+      break;
+    case "step":
+      raw = { action: "step", step: input.text ?? "" };
+      break;
+    case "steps":
+      raw = { action: "steps", steps: parseSteps(input.steps ?? "") };
+      break;
+    case "end":
+      if (input.ok && input.failed) throw new CliError("pass --ok or --failed, not both");
+      raw = { action: "end", state: input.failed ? "failed" : "done" };
+      break;
+  }
+  let command: LiveCommand;
+  try {
+    command = validateLiveCommand(raw);
+  } catch (error) {
+    if (error instanceof AlertValidationError) throw new CliError(error.message);
+    throw error;
+  }
+  const { config, botId, secret } = await openBot(input.bot, runtime);
+  await runtime.backend.postStatus(config.siteUrl, botId, secret, command);
+  switch (command.action) {
+    case "start":
+      return "started\n";
+    case "step":
+      return `step: ${command.step}\n`;
+    case "steps":
+      return `steps: ${command.steps.length}\n`;
+    case "end":
+      return `ended: ${command.state}\n`;
+  }
 }

@@ -1,6 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi, type FunctionReference } from "convex/server";
-import type { AlertExtras, AlertOption, PairingInput } from "@puck/shared";
+import type { AlertExtras, AlertOption, LiveCommand, PairingInput } from "@puck/shared";
 import { isQuestionId } from "@puck/shared";
 import { CliError, publicError, redact } from "./errors";
 
@@ -40,6 +40,8 @@ export interface Backend {
   createPairing(deploymentUrl: string, input: PairingInput, token: string | null): Promise<PairingResult>;
   pairingStatus(deploymentUrl: string, botId: string, secret: string): Promise<PairingStatus>;
   postAlert(siteUrl: string, botId: string, secret: string, body: AlertBody): Promise<{ questionId: string }>;
+  /** `POST /status`: start, step, steps or end a live activity. */
+  postStatus(siteUrl: string, botId: string, secret: string, body: LiveCommand): Promise<void>;
   listAlerts(siteUrl: string, botId: string, secret: string): Promise<ListedAlert[]>;
   cancelAlert(siteUrl: string, botId: string, secret: string, questionId: string): Promise<void>;
 }
@@ -99,6 +101,33 @@ export const liveBackend: Backend = {
       throw new CliError("pairing status was not returned");
     }
     return status;
+  },
+
+  async postStatus(siteUrl, botId, secret, body) {
+    let response: Response;
+    try {
+      response = await fetch(`${siteUrl}/status`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-puck-bot-id": botId,
+          authorization: `Bearer ${secret}`,
+        },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      throw new CliError("could not reach the deployment");
+    }
+    const text = await response.text();
+    if (response.ok) return;
+    let reason = `status ${response.status}`;
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      if (isRecord(parsed) && typeof parsed.error === "string") reason = parsed.error;
+    } catch {
+      // Keep the status code as the reason.
+    }
+    throw new CliError(redact(`status was not accepted: ${reason}`, [secret]));
   },
 
   async postAlert(siteUrl, botId, secret, body) {

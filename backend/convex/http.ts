@@ -5,6 +5,7 @@ import {
   isQuestionId,
   validateAlertTiming,
   validateCreateAlert,
+  validateLiveCommand,
 } from "@puck/shared";
 import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
@@ -204,6 +205,62 @@ http.route({
     return json(status, 200);
   }),
 });
+
+// POST /status: a live activity (N8). Same bot-secret auth as POST /alerts. The body is one of
+// start, step, steps or end (validateLiveCommand); each returns 200 {ok: true}, and start also the
+// activityId. A step, steps or end with no running activity is 409.
+http.route({
+  path: "/status",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const auth = await authenticate(ctx, request);
+    if (auth instanceof Response) return auth;
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: "body must be JSON" }, 400);
+    }
+    let command;
+    try {
+      command = validateLiveCommand(body);
+    } catch (error) {
+      if (error instanceof AlertValidationError) return json({ error: error.message }, 400);
+      throw error;
+    }
+    try {
+      switch (command.action) {
+        case "start": {
+          const started = await ctx.runMutation(internal.live.start, {
+            botDocId: auth.botDocId,
+            title: command.title,
+            steps: command.steps,
+            link: command.link,
+          });
+          return json({ ok: true, activityId: started.activityId }, 200);
+        }
+        case "step":
+          await ctx.runMutation(internal.live.step, { botDocId: auth.botDocId, step: command.step });
+          return json({ ok: true }, 200);
+        case "steps":
+          await ctx.runMutation(internal.live.steps, { botDocId: auth.botDocId, steps: command.steps });
+          return json({ ok: true }, 200);
+        case "end":
+          await ctx.runMutation(internal.live.end, { botDocId: auth.botDocId, state: command.state });
+          return json({ ok: true }, 200);
+      }
+    } catch (error) {
+      return liveFailure(error);
+    }
+  }),
+});
+
+function liveFailure(error: unknown): Response {
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("no running activity")) return json({ error: "no running activity" }, 409);
+  if (message.includes("at most")) return json({ error: message.replace(/^.*?at most/, "at most") }, 400);
+  throw error;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

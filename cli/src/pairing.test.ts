@@ -32,6 +32,9 @@ function fakeBackend(statuses: PairingStatus[], seen: { colour?: string; addedFr
       index += 1;
       return status;
     },
+    async postStatus() {
+      throw new Error("not used");
+    },
     async postAlert() {
       throw new Error("not used");
     },

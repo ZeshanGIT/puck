@@ -30,6 +30,9 @@ async function postedBody(alert: unknown): Promise<AlertBody> {
       async createPairing() {
         throw new Error("not used");
       },
+      async postStatus() {
+        throw new Error("not used");
+      },
       async postAlert(_site, _bot, _secret, posted) {
         body = posted;
         return { questionId: "q_01HV7K3M2ZABCDEF" };

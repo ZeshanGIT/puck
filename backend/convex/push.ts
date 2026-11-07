@@ -9,6 +9,7 @@ import {
   fcmBody,
   fcmDismissMessage,
   fcmErrorStatus,
+  fcmLiveMessage,
   fcmPairingMessage,
   pushAlertExtras,
   readServiceAccount,
@@ -215,6 +216,72 @@ export const sendPairing = internalActionGeneric({
         else console.log(`pairing push failed: ${fcmErrorStatus(await response.text())}`);
       } catch {
         console.log("pairing push failed: request");
+      }
+    }
+    console.log(pushSummary(sent, target.targets.length));
+    return null;
+  },
+});
+
+/**
+ * Sends a live-activity update (N8) to the owner's clients: one data-only FCM message each. Same
+ * failure handling as the other pushes: logged without the service account or tokens, not retried.
+ */
+export const sendLive = internalActionGeneric({
+  args: { activityId: v.id("liveActivities") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const target = await ctx.runQuery(internal.live.loadPush, { activityId: args.activityId });
+    if (!target.send) {
+      console.log(`live push skipped: ${target.reason}`);
+      return null;
+    }
+    const raw = readEnv("FIREBASE_SERVICE_ACCOUNT");
+    if (!raw) {
+      console.log("live push skipped: firebase is not configured");
+      return null;
+    }
+    let account;
+    let accessToken;
+    try {
+      account = readServiceAccount(raw);
+      accessToken = await googleAccessToken(account.clientEmail, account.privateKey);
+    } catch {
+      console.log("live push failed: request");
+      return null;
+    }
+    const url = `https://fcm.googleapis.com/v1/projects/${account.projectId}/messages:send`;
+    let sent = 0;
+    for (const entry of target.targets) {
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(
+            fcmLiveMessage({
+              pushToken: entry.pushToken,
+              activityId: target.activityId,
+              botId: target.botId,
+              botName: target.botName,
+              colour: target.colour,
+              title: target.title,
+              currentStep: target.currentStep,
+              state: target.state,
+              stepIndex: target.stepIndex,
+              stepCount: target.stepCount,
+              startedAt: target.startedAt,
+              updatedAt: target.updatedAt,
+            }),
+          ),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (response.ok) sent += 1;
+        else console.log(`live push failed: ${fcmErrorStatus(await response.text())}`);
+      } catch {
+        console.log("live push failed: request");
       }
     }
     console.log(pushSummary(sent, target.targets.length));

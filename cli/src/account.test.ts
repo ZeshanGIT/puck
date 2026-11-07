@@ -131,6 +131,9 @@ describe("login command", () => {
         createPairing: async () => {
           throw new Error("backend");
         },
+        postStatus: async () => {
+          throw new Error("not used");
+        },
         postAlert: async () => {
           throw new Error("backend");
         },
