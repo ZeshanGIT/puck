@@ -20,3 +20,19 @@ Updated when product direction or alert presentation behavior changes. Vault `Pr
 **Deploy:** Backend `fcmBody` change must be on Convex (`usable-mule-44`) for normal alerts to receive data-only full-screen pushes. App JS handles presentation on device.
 
 **Main (t57u):** Merged to `main` at **e708869** (`f0cb3fa` + `e708869`). Convex `usable-mule-44` deployed 2026-11-08 ~01:08 IST. Feature branches kept on origin.
+
+## Alert launch routing (t63u, main **be2b5c8**)
+
+**Problem:** Normal lock-screen open could flash Home before the launched alert mounted (`openedId` async; deck fell back to `live[0]`).
+
+**Fix:** `alertLaunchRouting.ts` — `pickDeckAlert`, `alertLaunchSettled`, `inboxShowsHome`. `Inbox` delays `onReady` and shows `Blank` instead of Home until the launch target settles or is known gone.
+
+## Launcher icon (t66u, main **226f524**)
+
+**Source:** `SAMPLE_BOTS.puck` / Home header blob (`puckBrandBlob.ts`, same shape/eyes as `Blob` in `H1Home`).
+
+**Assets:** `app/assets/icon.png`, `android-icon-{foreground,background,monochrome}.png`, `puck-blob-icon.svg`. Regenerate: `bun run icons` from `app/`. **`expo prebuild --platform android`** before `assembleRelease`/`assembleDebug` so gitignored `android/.../mipmap/ic_launcher_*` reflects committed PNGs (CNG).
+
+## Workflow (t69u)
+
+Seshan authorized **2026-11-08:** Cursor agents commit and push **`main` directly** after tests/typecheck; no feature branch or review gate. Other rules unchanged (no automated on-device testing; preserve data on install; ask before invasive unlocked takeover / overlay work).
