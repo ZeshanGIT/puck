@@ -37,6 +37,7 @@
     "react-native-worklets": "0.13.0"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/react": "~19.3.0",
     "typescript": "~6.0.3"
   },
@@ -50,6 +51,7 @@
     "unlock": "sh scripts/unlock.sh",
     "awake": "sh scripts/keep-awake.sh",
     "flow": "sh scripts/flow.sh",
+    "icons": "bun scripts/generate-blob-icons.mjs",
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit"
   },

@@ -68,12 +68,11 @@ import { NeedCard } from "../ui/NeedCard";
 import { Row } from "../ui/Row";
 import { useTheme } from "../ui/theme";
 import { fontFamily } from "../ui/tokens";
+import { PUCK_HOME_BLOB } from "../ui/puckBrandBlob";
 import { useOnline } from "./A10Offline";
 import { WorkingNow } from "./WorkingNow";
 
 const MAX_FONT_SCALE = 1.3;
-/** `BOTS.puck`: `mkBot("puck", "Puck", "sky", "round", 3)`. */
-const PUCK_BLOB: BlobBot = { name: "Puck", colour: "sky", shape: "round", tilt: 3 };
 const COMMAND = "puck add sheldon --colour coral";
 
 /* ----------------------------------------------------------------------- the screen */
@@ -196,7 +195,7 @@ function Header({ onBots, onSettings }: { onBots: () => void; onSettings: () => 
   return (
     <View style={styles.header}>
       <View style={styles.brand} accessible accessibilityRole="header" accessibilityLabel="Puck">
-        <Blob bot={PUCK_BLOB} size={28} />
+        <Blob bot={PUCK_HOME_BLOB} size={28} />
         <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.brandText, { color: t.ink }]}>
           Puck
         </Text>
