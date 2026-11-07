@@ -20,8 +20,8 @@ import { createContext, type ComponentRef, useCallback, useContext, useEffect, u
 import {
   Image,
   Keyboard,
-  KeyboardAvoidingView,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -354,8 +354,15 @@ function A5ReplySheet({
         if (!busy) onClose();
       }}
       testID="a5-reply"
+      keyboardAvoiding
     >
-      <KeyboardAvoidingView behavior="padding">
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        nestedScrollEnabled
+        bounces={false}
+        contentContainerStyle={styles.sheetScroll}
+      >
         <SheetTitle>{`Reply to ${alert.botName}`}</SheetTitle>
         <SheetText>Type, dictate, or add a photo or file.</SheetText>
 
@@ -426,7 +433,7 @@ function A5ReplySheet({
         <View pointerEvents="none" style={styles.toastSlot}>
           <Toast message={toast.message} visible={toast.visible} />
         </View>
-      </KeyboardAvoidingView>
+      </ScrollView>
     </Sheet>
   );
 }
@@ -641,6 +648,7 @@ function DocIcon() {
 }
 
 const styles = StyleSheet.create({
+  sheetScroll: { flexGrow: 1 },
   // `.with`
   with: {
     alignSelf: "flex-start",

@@ -4,7 +4,17 @@
  * the sheet on tap. With reduced motion on it fades instead of sliding.
  */
 import { type ReactNode, useEffect, useState } from "react";
-import { Modal, Pressable, StyleSheet, View, type ViewStyle } from "react-native";
+import {
+  Dimensions,
+  Keyboard,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+  type ViewStyle,
+} from "react-native";
+import { sheetKeyboardBottomInset, sheetMaxHeightWhenKeyboardOpen } from "./sheetKeyboard";
 import { Text } from "./Text";
 import Animated, {
   interpolate,
@@ -30,18 +40,50 @@ export interface SheetProps {
   onClose: () => void;
   children: ReactNode;
   testID?: string;
+  /**
+   * Lifts the sheet above the software keyboard. Needed on Android where Modal
+   * windows often use adjustPan and KeyboardAvoidingView does not move the sheet.
+   */
+  keyboardAvoiding?: boolean;
 }
 
 /**
  * Renders in a transparent Modal, so Android's back button also reaches
  * `onClose`. Keeps itself mounted until the close animation has finished.
  */
-export function Sheet({ visible, onClose, children, testID }: SheetProps) {
+export function Sheet({ visible, onClose, children, testID, keyboardAvoiding = false }: SheetProps) {
   const t = useTheme().tokens;
   const reduceMotion = useReducedMotion();
   const [mounted, setMounted] = useState(visible);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const progress = useSharedValue(0);
   const height = useSharedValue(0);
+
+  useEffect(() => {
+    if (!visible || !keyboardAvoiding) {
+      setKeyboardHeight(0);
+      return;
+    }
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const show = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+    });
+    const hide = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [visible, keyboardAvoiding]);
+
+  const keyboardBottomInset = sheetKeyboardBottomInset(keyboardHeight, keyboardAvoiding);
+  const maxHeight = sheetMaxHeightWhenKeyboardOpen(
+    Dimensions.get("window").height,
+    keyboardBottomInset,
+    keyboardAvoiding,
+  );
 
   useEffect(() => {
     if (visible) {
@@ -96,7 +138,13 @@ export function Sheet({ visible, onClose, children, testID }: SheetProps) {
           onLayout={(e) => {
             height.value = e.nativeEvent.layout.height;
           }}
-          style={[styles.sheet, { backgroundColor: t.card }, sheetStyle]}
+          style={[
+            styles.sheet,
+            { backgroundColor: t.card },
+            keyboardBottomInset > 0 ? { bottom: keyboardBottomInset } : null,
+            maxHeight != null ? { maxHeight } : null,
+            sheetStyle,
+          ]}
         >
           <View style={[styles.grab, { backgroundColor: t.edge }]} />
           {children}
