@@ -13,7 +13,9 @@
  */
 import type { BannerId, HistoryItem, WaitingAlert } from "../../../homeModel";
 import type { PairingRequest } from "../../../pairingModel";
+import type { LiveActivity } from "../../../liveCardModel";
 import { cortanaRequest } from "./pairing";
+import { freshLive, LIVE_SAMPLE_NAMES, type LiveScript } from "./live";
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
@@ -30,9 +32,12 @@ export interface HomeSample {
   noBots: boolean;
   /** Open pairing requests: PAIRING cards first in "Needs you". */
   pairings?: PairingRequest[];
+  /** Running tasks ("Working now"), and how they move on every 3 s (the `live-*` samples). */
+  live?: LiveActivity[];
+  liveScript?: LiveScript | null;
 }
 
-export const HOME_SAMPLE_NAMES = ["home", "home-clear", "home-empty", "home-pairing"] as const;
+export const HOME_SAMPLE_NAMES = ["home", "home-clear", "home-empty", "home-pairing", ...LIVE_SAMPLE_NAMES] as const;
 
 export function isHomeSample(name: string): boolean {
   return (HOME_SAMPLE_NAMES as readonly string[]).includes(name);
@@ -157,7 +162,19 @@ export function freshHome(name: string, now: number = Date.now()): HomeSample | 
       };
     case "home-empty":
       return { banners: [], waiting: [], queuedIds: [], history: [], older: [], noBots: true };
-    default:
-      return null;
+    default: {
+      const live = freshLive(name, now);
+      if (!live) return null;
+      return {
+        banners: [],
+        waiting: [],
+        queuedIds: [],
+        history: earlier(now),
+        older: [],
+        noBots: false,
+        live: live.activities,
+        liveScript: live.script,
+      };
+    }
   }
 }

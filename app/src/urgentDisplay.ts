@@ -14,6 +14,8 @@ import {
   type BypassDecision,
   type LocalSettings,
 } from "./localSettings";
+import { handleLivePush } from "./liveNotification";
+import { livePush } from "./livePayload";
 import { openPairingFromNotificationData } from "./pairingOpen";
 import { displayPairing } from "./pairingDisplay";
 import { pairingPush } from "./pairingPayload";
@@ -301,6 +303,12 @@ export async function handleUrgentTask(data: unknown): Promise<void> {
   const pairing = pairingPush(data);
   if (pairing) {
     await displayPairing(pairing);
+    return;
+  }
+  // A bot's running task (N8): one quiet ongoing notification, updated in place.
+  const live = livePush(data);
+  if (live) {
+    await handleLivePush(live);
     return;
   }
   const alert = fullscreenAlert(data);

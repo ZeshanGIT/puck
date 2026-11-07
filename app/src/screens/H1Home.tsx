@@ -10,7 +10,7 @@
  * - H2 in place of the empty sections when no bot has ever paged him;
  * - "Needs you": a `NeedCard` per waiting alert, and "Go through all N" (two or more that can be
  *   answered from a stack);
- * - "Working now": an empty slot until live activities (P8);
+ * - "Working now": a `LiveCard` per running task (`WorkingNow`), hidden when none;
  * - "All quiet" with the flock of still blobs, when nothing needs him;
  * - "Earlier": the history by day, a `Row` per alert, and "Load more" until the history is done.
  *
@@ -47,7 +47,9 @@ import {
 import { flockBots } from "../botsModel";
 import { loadLocalSettings } from "../localSettings";
 import { formatCode, fromText, requestLook, type PairingRequest } from "../pairingModel";
+import type { LiveActivity } from "../liveCardModel";
 import { useBots } from "../useBots";
+import { useLiveActivities } from "../useLiveActivities";
 import { usePairingRequests } from "../usePairingRequests";
 import { openDndAccessSettings } from "../onboarding/dndAccess";
 import { ensureNotificationPermission, readNotificationRowState } from "../onboarding/notificationSetup";
@@ -64,6 +66,7 @@ import { Row } from "../ui/Row";
 import { useTheme } from "../ui/theme";
 import { fontFamily } from "../ui/tokens";
 import { useOnline } from "./A10Offline";
+import { WorkingNow } from "./WorkingNow";
 
 const MAX_FONT_SCALE = 1.3;
 /** `BOTS.puck`: `mkBot("puck", "Puck", "sky", "round", 3)`. */
@@ -103,6 +106,10 @@ export interface H1HomeProps {
   pairings?: readonly PairingRequest[];
   /** A tap on a PAIRING card: B4 for that bot. */
   onOpenPairing?: (botId: string) => void;
+  /** Running tasks (H5): "Working now", below Needs you; hidden when none. */
+  live?: readonly LiveActivity[];
+  /** A tap on a card whose task gave a link. */
+  onOpenLive?: (activity: LiveActivity) => void;
   /** Under everything: sign out, the dev links. */
   footer?: ReactNode;
 }
@@ -116,7 +123,7 @@ export function H1Home(props: H1HomeProps) {
   const groups = useMemo(() => groupByDay(history ?? [], now), [history, now]);
   const idByName = useMemo(() => new Map(bots.map((bot) => [bot.botName, bot.botId])), [bots]);
   const stackable = needs ? stackableCount(needs) : 0;
-  const live = false; // P8: becomes "a live activity is running".
+  const live = (props.live?.length ?? 0) > 0;
   const allClear = !noBots && needs !== undefined && needs.length === 0 && pairings.length === 0 && !live;
   const needCount = (needs?.length ?? 0) + pairings.length;
 
@@ -154,7 +161,7 @@ export function H1Home(props: H1HomeProps) {
           </>
         ) : null}
 
-        {/* P8: "Working now", the live activity cards (H5), go here. */}
+        <WorkingNow activities={props.live} now={now} onOpen={props.onOpenLive} />
 
         {allClear ? (
           <View style={styles.clear}>
@@ -473,6 +480,7 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
   const now = useNow();
   const health = useHealthBanners({ notifications: props.notifications, fullScreenAllowed: props.fullScreenAllowed });
   const pairings = usePairingRequests(clientId);
+  const live = useLiveActivities(clientId);
 
   const waiting = useQuery(anyApi.alerts.waiting, clientId ? { clientId } : "skip") as WaitingAlert[] | undefined;
   const paged = usePaginatedQuery(anyApi.alerts.history, clientId ? { clientId } : "skip", {
@@ -535,6 +543,10 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
       onPairBot={props.onPairBot}
       pairings={pairings ?? []}
       onOpenPairing={props.onOpenPairing}
+      live={live}
+      onOpenLive={(activity) => {
+        if (activity.link) void Linking.openURL(activity.link.url).catch((error: unknown) => console.error(readableError(error)));
+      }}
       footer={props.footer}
     />
   );

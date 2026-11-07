@@ -138,6 +138,18 @@ function DevHome({ name }: { name: string }) {
   const sample = useMemo(() => freshHome(name, round), [name, round]);
   const [loaded, setLoaded] = useState(false);
   const [now, setNow] = useState(round);
+  // The `live-*` samples: running tasks that move on every 3 s (a step, a log line, then done).
+  const [live, setLive] = useState(() => sample?.live);
+  useEffect(() => {
+    const script = sample?.liveScript;
+    if (!script) return;
+    let tick = 0;
+    const id = setInterval(() => {
+      tick += 1;
+      setLive((before) => (before ? (script(before, tick, Date.now()) ?? before) : before));
+    }, 3000);
+    return () => clearInterval(id);
+  }, [sample]);
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(id);
@@ -181,6 +193,7 @@ function DevHome({ name }: { name: string }) {
         onPairBot={() => setPairing({ kind: "code" })}
         pairings={sample.pairings}
         onOpenPairing={(botId) => setPairing({ kind: "approve", botId })}
+        live={live}
       />
       <Toast message={toast.message} visible={toast.visible} />
     </View>
