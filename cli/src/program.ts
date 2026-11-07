@@ -2,7 +2,16 @@ import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
 import { login, logout, openBrowser, signedInToken, whoami } from "./account";
 import { liveBackend } from "./backend";
-import { addBot, cancelAlert, listAlerts, scheduleAlert, sendAlert, statusCommand, type Runtime } from "./commands";
+import {
+  addBot,
+  cancelAlert,
+  listAlerts,
+  scheduleAlert,
+  sendAlert,
+  setBotWebhook,
+  statusCommand,
+  type Runtime,
+} from "./commands";
 import { defaultConfigDir } from "./config";
 import { promptHidden } from "./prompt";
 
@@ -133,6 +142,15 @@ export function createProgram(runtime: Runtime = defaultRuntime()): Command {
     .option("--bot <bot-id>", "bot id, or the default in config.json")
     .action(async (id: string, options: { bot?: string }) => {
       runtime.stdout(await cancelAlert(id, options.bot, runtime));
+    });
+
+  const botCmd = program.command("bot").description("change a paired bot without re-pairing");
+  botCmd
+    .command("set-webhook")
+    .description("set webhook URL and Authorization from PUCK_WEBHOOK_* env vars")
+    .option("--bot <bot-id>", "bot id, or the default in config.json")
+    .action(async (options: { bot?: string }) => {
+      runtime.stdout(await setBotWebhook(options.bot, runtime));
     });
 
   return program;

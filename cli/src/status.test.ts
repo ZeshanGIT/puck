@@ -29,6 +29,9 @@ function fake(posted: LiveCommand[]): Backend {
     async createPairing() {
       throw new Error("not used");
     },
+    async updateWebhook() {
+      throw new Error("not used");
+    },
     async postStatus(_site, _bot, secret, body) {
       expect(secret).toBe(SECRET);
       posted.push(body);

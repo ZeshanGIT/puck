@@ -30,6 +30,9 @@ async function postedBody(alert: unknown): Promise<AlertBody> {
       async createPairing() {
         throw new Error("not used");
       },
+      async updateWebhook() {
+        throw new Error("not used");
+      },
       async postStatus() {
         throw new Error("not used");
       },

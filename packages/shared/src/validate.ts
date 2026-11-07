@@ -25,6 +25,7 @@ import {
   SNOOZE_MAX_MS,
   SWIPE_MAX_OPTIONS,
 } from "./model";
+import { normalizeWebhookAuthorization } from "./webhookAuth";
 
 export class AlertValidationError extends Error {
   constructor(message: string) {
@@ -337,10 +338,8 @@ export function validatePairingInput(body: unknown): PairingInput {
   }
   if (parsed.protocol !== "https:") fail("webhookUrl must be an https URL");
   if (parsed.username !== "" || parsed.password !== "") fail("webhookUrl must not include credentials");
-  const webhookHeader = oneLine(
-    requiredString(body.webhookHeader, "webhookHeader"),
-    "webhookHeader",
-    2_048,
+  const webhookHeader = normalizeWebhookAuthorization(
+    oneLine(requiredString(body.webhookHeader, "webhookHeader"), "webhookHeader", 2_048),
   );
   let routine: string | null = null;
   if (body.routine !== undefined && body.routine !== null && body.routine !== "") {

@@ -10,7 +10,7 @@ import { internalMutationGeneric, internalQueryGeneric, mutationGeneric, queryGe
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { clerkIssuer, requireClient } from "./lib/clientAuth";
+import { clerkIssuer, requireClient, requireUser } from "./lib/clientAuth";
 import { clerkSubject } from "./lib/clientRules";
 import { requireDevice } from "./device";
 import { internal } from "./_generated/api";
@@ -386,13 +386,17 @@ const RECENT_PER_BOT = 1;
 /** A paired bot the caller owns. Anything else is "bot not found" (no hint that it exists). */
 async function ownedBot(ctx: MutationCtx, clientId: string, botId: string): Promise<Doc<"bots">> {
   const client = await requireClient(ctx, clientId);
+  return ownedBotForUser(ctx, client.userId, botId);
+}
+
+async function ownedBotForUser(ctx: MutationCtx, userId: string, botId: string): Promise<Doc<"bots">> {
   const bot = await ctx.db
     .query("bots")
     .withIndex("by_publicId", (q) => q.eq("id", botId))
     .unique();
   if (
     !bot ||
-    bot.userId !== client.userId ||
+    bot.userId !== userId ||
     bot.builtIn === true ||
     bot.removedAt !== undefined ||
     bot.pairingState !== "paired"
@@ -509,6 +513,41 @@ export const update = mutationGeneric({
       colour: after?.colour ?? null,
       mutedUntil: after?.mutedUntil ?? null,
     };
+  },
+});
+
+/**
+ * Replace a paired bot's webhook URL and Authorization value (owner only). Signed-in CLI calls
+ * this with no `clientId`; the phone may pass `clientId`. Pairing and bot id stay the same.
+ */
+export const updateWebhook = mutationGeneric({
+  args: {
+    botId: v.string(),
+    webhookUrl: v.string(),
+    webhookHeader: v.string(),
+    clientId: v.optional(v.string()),
+  },
+  returns: v.object({ botId: v.string(), updated: v.literal(true) }),
+  handler: async (ctx, args) => {
+    const userId =
+      args.clientId === undefined ? await requireUser(ctx) : (await requireClient(ctx, args.clientId)).userId;
+    const bot = await ownedBotForUser(ctx, userId, args.botId);
+    let pairing;
+    try {
+      pairing = validatePairingInput({
+        name: bot.name,
+        webhookUrl: args.webhookUrl,
+        webhookHeader: args.webhookHeader,
+        routine: bot.routine,
+      });
+    } catch (error) {
+      validationMessage(error);
+    }
+    await ctx.db.patch(bot._id, {
+      webhookUrl: pairing.webhookUrl,
+      webhookHeader: await encryptHeader(pairing.webhookHeader),
+    });
+    return { botId: bot.id, updated: true as const };
   },
 });
 

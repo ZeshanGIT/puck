@@ -38,6 +38,7 @@ export interface ListedAlert {
 export interface Backend {
   /** `token` is the Clerk Convex token when the CLI is signed in, else null (typed-code flow). */
   createPairing(deploymentUrl: string, input: PairingInput, token: string | null): Promise<PairingResult>;
+  updateWebhook(deploymentUrl: string, botId: string, input: Pick<PairingInput, "webhookUrl" | "webhookHeader">, token: string): Promise<void>;
   pairingStatus(deploymentUrl: string, botId: string, secret: string): Promise<PairingStatus>;
   postAlert(siteUrl: string, botId: string, secret: string, body: AlertBody): Promise<{ questionId: string }>;
   /** `POST /status`: start, step, steps or end a live activity. */
@@ -78,6 +79,22 @@ export const liveBackend: Backend = {
       throw new CliError("pairing did not return a bot id and code");
     }
     return { botId: result.botId, secret: result.secret, pairingCode: result.pairingCode };
+  },
+
+  async updateWebhook(deploymentUrl, botId, input, token) {
+    const client = new ConvexHttpClient(deploymentUrl);
+    client.setAuth(token);
+    const updateWebhook = anyApi.bots?.updateWebhook as FunctionReference<"mutation"> | undefined;
+    if (!updateWebhook) throw new CliError("webhook update is unavailable");
+    try {
+      await client.mutation(updateWebhook, {
+        botId,
+        webhookUrl: input.webhookUrl,
+        webhookHeader: input.webhookHeader,
+      });
+    } catch (error) {
+      throw new CliError(redact(publicError(error), [input.webhookHeader, input.webhookUrl]));
+    }
   },
 
   async pairingStatus(deploymentUrl, botId, secret) {

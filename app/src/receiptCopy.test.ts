@@ -27,6 +27,7 @@ describe("receiptLine", () => {
       tone: "warn",
       icon: "warn",
     });
+    expect(receiptLine("failed", "Sheldon", { exhausted: true }).text).toContain("Fix the webhook");
   });
 });
 

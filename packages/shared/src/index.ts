@@ -94,6 +94,7 @@ export {
   resolveAnsweredAt,
   ANSWERED_AT_MAX_AGE_MS,
 } from "./validate";
+export { normalizeWebhookAuthorization } from "./webhookAuth";
 export {
   CONVEX_TOKEN_TEMPLATE,
   ClerkSignInError,

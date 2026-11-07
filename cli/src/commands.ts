@@ -222,6 +222,34 @@ export async function cancelAlert(questionId: string, bot: string | undefined, r
   return `cancelled ${questionId}\n`;
 }
 
+/**
+ * `puck bot set-webhook`. Reads `PUCK_WEBHOOK_URL` and `PUCK_WEBHOOK_HEADER` (same as `puck add`).
+ * Requires sign-in; bot id and pairing stay the same.
+ */
+export async function setBotWebhook(bot: string | undefined, runtime: Runtime): Promise<string> {
+  const token = runtime.convexToken ? await runtime.convexToken() : null;
+  if (!token) throw new CliError("sign in with puck login to update a webhook");
+  const config = await loadConfig(runtime.configDir, runtime.env);
+  const botId = bot ?? config.defaultBot;
+  if (!botId) throw new CliError("pass --bot <bot-id>");
+  if (!isBotId(botId)) throw new CliError("bot id is not valid");
+  const secrets = await readPairingSecrets(runtime.env, runtime.prompt);
+  let pairing: PairingInput;
+  try {
+    pairing = validatePairingInput({ name: "unused", webhookUrl: secrets.webhookUrl, webhookHeader: secrets.webhookHeader });
+  } catch (error) {
+    if (error instanceof AlertValidationError) throw new CliError(error.message);
+    throw error;
+  }
+  await runtime.backend.updateWebhook(
+    config.deploymentUrl,
+    botId,
+    { webhookUrl: pairing.webhookUrl, webhookHeader: pairing.webhookHeader },
+    token,
+  );
+  return `webhook updated for ${botId}\n`;
+}
+
 function formatListedAlert(alert: ListedAlert): string {
   const when = alert.scheduledFor === null ? "" : `  ${formatLocal(alert.scheduledFor)}`;
   return `${alert.questionId}  ${alert.status}${when}  ${alert.question}`;

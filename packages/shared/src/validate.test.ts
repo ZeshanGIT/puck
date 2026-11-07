@@ -461,6 +461,12 @@ describe("resolveAnsweredAt", () => {
 describe("validatePairingInput colour and addedFrom", () => {
   const base = { name: "cortana", webhookUrl: "https://example.com/hook", webhookHeader: "Bearer x" };
 
+  test("normalizes a full Authorization header line to the header value", () => {
+    expect(
+      validatePairingInput({ ...base, webhookHeader: "Authorization: Bearer routine-key" }).webhookHeader,
+    ).toBe("Bearer routine-key");
+  });
+
   test("accepts a palette colour and a hostname", () => {
     expect(validatePairingInput({ ...base, colour: "indigo", addedFrom: "Seshans-MacBook.local" })).toEqual({
       name: "cortana",

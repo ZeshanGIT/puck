@@ -27,6 +27,7 @@ function fakeBackend(statuses: PairingStatus[], seen: { colour?: string; addedFr
       seen.token = token;
       return { botId: "cortana-12345", secret: SECRET, pairingCode: "042815" };
     },
+    async updateWebhook() {},
     async pairingStatus() {
       const status = statuses[Math.min(index, statuses.length - 1)] ?? "pending";
       index += 1;

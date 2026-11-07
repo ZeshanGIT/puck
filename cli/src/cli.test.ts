@@ -115,6 +115,9 @@ describe("puck add", () => {
           seenHeader = input.webhookHeader;
           return { botId: "sheldon-23648", secret: SECRET, pairingCode: "042815" };
         },
+        async updateWebhook() {
+          throw new Error("not used");
+        },
         async postStatus() {
           throw new Error("not used");
         },
@@ -169,6 +172,9 @@ describe("puck send", () => {
         async createPairing() {
           throw new Error("not used");
         },
+        async updateWebhook() {
+          throw new Error("not used");
+        },
         async postStatus() {
           throw new Error("not used");
         },
@@ -208,6 +214,9 @@ describe("puck send", () => {
         async createPairing() {
           throw new Error("not used");
         },
+        async updateWebhook() {
+          throw new Error("not used");
+        },
         async postStatus() {
           throw new Error("not used");
         },
@@ -245,6 +254,9 @@ describe("puck send", () => {
           return "paired" as const;
         },
         async createPairing() {
+          throw new Error("not used");
+        },
+        async updateWebhook() {
           throw new Error("not used");
         },
         async postStatus() {
@@ -294,6 +306,9 @@ describe("puck schedule", () => {
         async createPairing() {
           throw new Error("not used");
         },
+        async updateWebhook() {
+          throw new Error("not used");
+        },
         async postStatus() {
           throw new Error("not used");
         },
@@ -337,6 +352,9 @@ describe("argument parsing", () => {
           return "paired" as const;
         },
         async createPairing() {
+          throw new Error("network");
+        },
+        async updateWebhook() {
           throw new Error("network");
         },
         async postStatus() {

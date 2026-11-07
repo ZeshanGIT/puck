@@ -1,4 +1,10 @@
-import { DELIVERY_MAX_ATTEMPTS, buildAnswerPayload, buildSnoozedPayload, deliveryBackoffMs } from "@puck/shared";
+import {
+  DELIVERY_MAX_ATTEMPTS,
+  buildAnswerPayload,
+  buildSnoozedPayload,
+  deliveryBackoffMs,
+  normalizeWebhookAuthorization,
+} from "@puck/shared";
 import { internalActionGeneric, internalMutationGeneric } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -118,7 +124,7 @@ type WebhookResult = { ok: true } | { ok: false; error: string; retry: boolean }
 /** POST one JSON body to a bot's webhook. Shared by answers and snoozed events. */
 async function postWebhook(webhookUrl: string, webhookHeader: string, body: string): Promise<WebhookResult> {
   try {
-    const authorization = await decryptHeader(webhookHeader);
+    const authorization = normalizeWebhookAuthorization(await decryptHeader(webhookHeader));
     const response = await fetch(webhookUrl, {
       method: "POST",
       redirect: "error",

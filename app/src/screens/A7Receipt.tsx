@@ -42,6 +42,8 @@ const MAX_FONT_SCALE = 1.3;
 export interface A7ReceiptProps {
   /** The bot that asked. Accepted for the API's sake; the receipt itself has no bot colour. */
   bot: BlobBot;
+  /** True when the backend has given up retrying delivery. */
+  deliveryExhausted?: boolean;
   /** Labels of the options he chose; empty for a reply made only of words or files. */
   answerLabels: string[];
   /** His own words, when he replied (A5). */
@@ -58,9 +60,17 @@ export interface A7ReceiptProps {
 const WARN_PATH =
   "M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01";
 
-export function A7Receipt({ answerLabels, reply, attachments, state, botName, onDone }: A7ReceiptProps) {
+export function A7Receipt({
+  answerLabels,
+  reply,
+  attachments,
+  state,
+  botName,
+  deliveryExhausted = false,
+  onDone,
+}: A7ReceiptProps) {
   const t = useTheme().tokens;
-  const line = receiptLine(state, botName);
+  const line = receiptLine(state, botName, { exhausted: deliveryExhausted });
   const summary = answerSummary(answerLabels);
   const files = attachmentSummary(attachments);
   const done = useRef(false);
@@ -163,11 +173,11 @@ export function useAnswerReceipt(input: {
   questionId: string;
   queued: boolean;
   sentLocally: boolean;
-}): { state: ReceiptViewState; botName: string | null } {
+}): { state: ReceiptViewState; botName: string | null; deliveryExhausted: boolean } {
   const result = useQuery(
     anyApi.answers.receipt,
     input.clientId && !input.queued ? { clientId: input.clientId, questionId: input.questionId } : "skip",
-  ) as { state: ReceiptState; botName: string; attempts: number } | null | undefined;
+  ) as { state: ReceiptState; botName: string; attempts: number; exhausted: boolean } | null | undefined;
   return {
     state: receiptViewState({
       queued: input.queued,
@@ -175,6 +185,7 @@ export function useAnswerReceipt(input: {
       sentLocally: input.sentLocally,
     }),
     botName: result?.botName ?? null,
+    deliveryExhausted: result?.exhausted ?? false,
   };
 }
 

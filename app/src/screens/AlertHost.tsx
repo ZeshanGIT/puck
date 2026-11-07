@@ -425,6 +425,7 @@ function ConnectedAlertHost({
       waiting={stale ? waiting + 1 : waiting}
       answered={answered}
       receiptState={state}
+      deliveryExhausted={receipt.deliveryExhausted}
       botName={receipt.botName ?? alert.botName}
       onAnswer={onAnswer}
       onReceiptDone={onReceiptDone}
@@ -492,6 +493,7 @@ interface AlertScreenProps {
   waiting: number;
   answered: AnsweredView | null;
   receiptState: ReceiptViewState;
+  deliveryExhausted?: boolean;
   botName: string;
   onAnswer: AnswerHandler;
   onReceiptDone: () => void;
@@ -506,6 +508,7 @@ function AlertScreen({
   waiting,
   answered,
   receiptState,
+  deliveryExhausted = false,
   botName,
   onAnswer,
   onReceiptDone,
@@ -539,6 +542,7 @@ function AlertScreen({
               {...(answered.attachments ? { attachments: answered.attachments } : {})}
               state={receiptState}
               botName={botName}
+              deliveryExhausted={deliveryExhausted}
               onDone={onReceiptDone}
             />
           ) : undefined

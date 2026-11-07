@@ -179,7 +179,7 @@ export const receipt = queryGeneric({
   args: { clientId: v.string(), questionId: v.string() },
   returns: v.union(
     v.null(),
-    v.object({ state: RECEIPT_STATES, botName: v.string(), attempts: v.number() }),
+    v.object({ state: RECEIPT_STATES, botName: v.string(), attempts: v.number(), exhausted: v.boolean() }),
   ),
   handler: async (ctx, args) => {
     await requireClient(ctx, args.clientId);
@@ -197,6 +197,7 @@ export const receipt = queryGeneric({
       state: receiptState(answer),
       botName: bot?.name ?? "the bot",
       attempts: answer?.deliveryAttempts ?? 0,
+      exhausted: answer?.deliveryStatus === "failed",
     };
   },
 });
