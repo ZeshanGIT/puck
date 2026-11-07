@@ -1,0 +1,54 @@
+appId: in.puckit.app
+---
+# Real Working now card for cortana8 (driven by scripts/live-qa.sh). STAGE: start | stepped | log (running: the card
+# shows) or done | failed (ended: the card leaves Home and "All quiet" shows). KEEP=1 brings the running app to the front
+# without killing it (the live push needs a live process); KEEP=0 relaunches via launch-app. Leaves the app on Home.
+- runFlow:
+    when:
+      true: ${KEEP == '1'}
+    commands:
+      - launchApp:
+          appId: in.puckit.app
+          stopApp: false
+- runFlow:
+    when:
+      true: ${KEEP != '1'}
+    commands:
+      - runFlow: launch-app.yaml
+- runFlow:
+    when:
+      true: ${STAGE == 'start' || STAGE == 'stepped' || STAGE == 'log'}
+    commands:
+      - extendedWaitUntil:
+          visible: "(?i)working now"
+          timeout: 30000
+      - assertVisible:
+          id: "live-card-cortana8"
+- runFlow:
+    when:
+      true: ${STAGE == 'start'}
+    commands:
+      - assertVisible: "QA .*"
+      - assertVisible: "Build"
+- runFlow:
+    when:
+      true: ${STAGE == 'stepped'}
+    commands:
+      - assertVisible: "Running tests"
+- runFlow:
+    when:
+      true: ${STAGE == 'log'}
+    commands:
+      - assertVisible:
+          id: "live-log-cortana8"
+      - assertVisible: "line two"
+- runFlow:
+    when:
+      true: ${STAGE == 'done' || STAGE == 'failed'}
+    commands:
+      - extendedWaitUntil:
+          visible: "All quiet"
+          timeout: 30000
+      - assertNotVisible:
+          id: "live-card-cortana8"
+- takeScreenshot: live-real-${STAGE}

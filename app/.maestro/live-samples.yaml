@@ -1,0 +1,42 @@
+appId: in.puckit.app
+---
+# Working now samples (T82): one dev sample on Home per run (SAMPLE = live-steps, live-log, live-none or live-done).
+# Checks the card or the log, or the empty state, then takes a screenshot and stops the app (sample flows stop it).
+- runFlow: launch-app.yaml
+- openLink: "puck://dev-alert?sample=${SAMPLE}"
+- extendedWaitUntil:
+    visible: "Puck"
+    timeout: 30000
+- runFlow:
+    when:
+      true: ${SAMPLE == 'live-steps'}
+    commands:
+      - assertVisible: "(?i)working now"
+      - assertVisible:
+          id: "live-card-sheldon"
+      - assertVisible:
+          id: "live-track-sheldon"
+      - assertVisible: "Fixing the swipe arm bug"
+- runFlow:
+    when:
+      true: ${SAMPLE == 'live-log'}
+    commands:
+      - assertVisible: "(?i)working now"
+      - assertVisible:
+          id: "live-card-brow"
+      - assertVisible:
+          id: "live-log-brow"
+      - assertVisible: "Tidying your Downloads"
+- runFlow:
+    when:
+      true: ${SAMPLE == 'live-none'}
+    commands:
+      - assertNotVisible: "(?i)working now"
+      - assertVisible: "All quiet"
+- runFlow:
+    when:
+      true: ${SAMPLE == 'live-done'}
+    commands:
+      - assertVisible: "All steps done"
+- takeScreenshot: live-sample-${SAMPLE}
+- stopApp
