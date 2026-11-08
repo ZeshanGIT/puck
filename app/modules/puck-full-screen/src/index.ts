@@ -7,7 +7,7 @@ type FullScreenNative = {
   hasDndAccess?: () => boolean;
   isLocked?: () => boolean;
   isInCall?: () => boolean;
-  createAlarmChannel?: (id: string, name: string, bypassDnd: boolean) => boolean;
+  createAlarmChannel?: (id: string, name: string, bypassDnd: boolean, headsUp: boolean) => boolean;
   watchVolumeKeys?: () => boolean;
   requestUnlock?: () => Promise<string>;
   canDrawOverlay?: () => boolean;
@@ -22,10 +22,10 @@ type FullScreenNative = {
     accent: string,
   ) => boolean;
   hideOverlayCard?: (questionId: string) => boolean;
-  takeOverlayOpen?: () => string | null;
+  takeOverlayOpen?: () => { questionId: string; snooze: boolean } | null;
   addListener?: (
-    eventName: "onVolumeKey" | "onOverlayOpen",
-    listener: (event?: { questionId: string }) => void,
+    eventName: "onVolumeKey" | "onOverlayOpen" | "onOverlayAction",
+    listener: (event?: { questionId: string; snooze?: boolean; action?: "dismiss" | "snooze" }) => void,
   ) => { remove: () => void };
 };
 
@@ -122,12 +122,13 @@ export function canCreateAlarmChannel(): boolean {
 
 /**
  * Creates (or finds) a notification channel that rings on the alarm audio stream, so silent and
- * vibrate mode do not mute it, optionally overriding Do Not Disturb. Settings are fixed once the
- * channel exists. False when it could not be created.
+ * vibrate mode do not mute it, optionally overriding Do Not Disturb. `headsUp` false keeps the sound
+ * but not the banner over other apps. Settings are fixed once the channel exists. False when it
+ * could not be created.
  */
-export function createAlarmChannel(id: string, name: string, bypassDnd: boolean): boolean {
+export function createAlarmChannel(id: string, name: string, bypassDnd: boolean, headsUp: boolean): boolean {
   try {
-    return nativeModule()?.createAlarmChannel?.(id, name, bypassDnd) === true;
+    return nativeModule()?.createAlarmChannel?.(id, name, bypassDnd, headsUp) === true;
   } catch {
     return false;
   }
@@ -219,22 +220,49 @@ export function hideOverlayCard(questionId: string): void {
   }
 }
 
-/** The alert a tap on the compact card opened on a cold start, taken once; null otherwise. */
-export function takeOverlayOpen(): string | null {
+/** An open from the compact card: the alert, and whether its Snooze was chosen. */
+export interface OverlayOpen {
+  questionId: string;
+  snooze: boolean;
+}
+
+/** A dismiss or snooze chosen on the compact card, reported while the app is running. */
+export interface OverlayAction {
+  questionId: string;
+  action: "dismiss" | "snooze";
+}
+
+/** The card open that started a cold start, taken once; null otherwise. */
+export function takeOverlayOpen(): OverlayOpen | null {
   try {
-    return nativeModule()?.takeOverlayOpen?.() ?? null;
+    const opened = nativeModule()?.takeOverlayOpen?.();
+    return opened ? { questionId: opened.questionId, snooze: opened.snooze === true } : null;
   } catch {
     return null;
   }
 }
 
-/** Calls `listener` with the alert id when a tap on the card arrives while the app is running. */
-export function subscribeOverlayOpen(listener: (questionId: string) => void): () => void {
+/** Calls `listener` when a tap on the card (or its Snooze) arrives while the app is running. */
+export function subscribeOverlayOpen(listener: (open: OverlayOpen) => void): () => void {
   try {
     const native = nativeModule();
     if (!native?.addListener) return () => {};
     const subscription = native.addListener("onOverlayOpen", (event) => {
-      if (event) listener(event.questionId);
+      if (event) listener({ questionId: event.questionId, snooze: event.snooze === true });
+    });
+    return () => subscription.remove();
+  } catch {
+    return () => {};
+  }
+}
+
+/** Calls `listener` when the card is dismissed or snoozed, so JavaScript can stop the alert's speech. */
+export function subscribeOverlayAction(listener: (action: OverlayAction) => void): () => void {
+  try {
+    const native = nativeModule();
+    if (!native?.addListener) return () => {};
+    const subscription = native.addListener("onOverlayAction", (event) => {
+      if (event?.action) listener({ questionId: event.questionId, action: event.action });
     });
     return () => subscription.remove();
   } catch {

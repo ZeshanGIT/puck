@@ -1,5 +1,6 @@
 package puck.fullscreen
 
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
@@ -11,20 +12,32 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import kotlin.math.abs
+import kotlin.math.min
+import kotlin.math.sign
 
 /**
  * The compact alert card, drawn over other apps. It needs the overlay permission the person grants
  * on Android's "Display over other apps" page; without it nothing is drawn and the notification
  * carries the alert alone. One card at a time. It never takes focus, and touches outside it reach
- * the app underneath. A tap on the card opens Puck on that alert and the card goes away.
+ * the app underneath. A tap opens Puck on that alert. A swipe sideways or Dismiss removes the card
+ * and stops its ring; Snooze does the same and opens Puck on the snooze choices for that alert.
  */
 internal object OverlayCard {
   const val EXTRA_QUESTION_ID = "puck.overlayQuestionId"
+  const val EXTRA_SNOOZE = "puck.overlaySnooze"
+  const val ACTION_DISMISS = "dismiss"
+  const val ACTION_SNOOZE = "snooze"
+
+  private const val SWIPE_FRACTION = 0.3f
+  private const val SETTLE_MS = 150L
 
   data class Spec(
     val questionId: String,
@@ -36,6 +49,11 @@ internal object OverlayCard {
     val ink2: Int,
     val accent: Int,
   )
+
+  data class Opened(val questionId: String, val snooze: Boolean)
+
+  /** Set by the module: reports a dismiss or snooze to JavaScript while the app is running. */
+  @Volatile var onAction: ((questionId: String, action: String) -> Unit)? = null
 
   private val main = Handler(Looper.getMainLooper())
   private var view: View? = null
@@ -89,11 +107,32 @@ internal object OverlayCard {
     }
   }
 
-  /** The alert a tap on the card opened (a cold start), taken once so it does not open again. */
-  fun takeOpenedQuestionId(activityIntent: Intent?): String? {
+  /** The alert a tap on the card opened (a cold start) and whether Snooze was chosen; taken once. */
+  fun takeOpened(activityIntent: Intent?): Opened? {
     val id = activityIntent?.getStringExtra(EXTRA_QUESTION_ID) ?: return null
+    val snooze = activityIntent.getBooleanExtra(EXTRA_SNOOZE, false)
     activityIntent.removeExtra(EXTRA_QUESTION_ID)
-    return id
+    activityIntent.removeExtra(EXTRA_SNOOZE)
+    return Opened(id, snooze)
+  }
+
+  /**
+   * Cancels the ring notifications for one alert. Notifee posts them with the alert id as the tag,
+   * so the id and tag are matched from the active notifications rather than rebuilt.
+   */
+  fun silenceNotifications(context: Context, questionId: String) {
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    manager.activeNotifications
+      .filter { it.tag == questionId }
+      .forEach { manager.cancel(it.tag, it.id) }
+  }
+
+  fun openApp(context: Context, questionId: String, snooze: Boolean) {
+    val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return
+    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    launch.putExtra(EXTRA_QUESTION_ID, questionId)
+    launch.putExtra(EXTRA_SNOOZE, snooze)
+    context.startActivity(launch)
   }
 
   private fun removeView() {
@@ -107,12 +146,11 @@ internal object OverlayCard {
     }
   }
 
-  private fun open(context: Context, questionId: String) {
+  /** Removes the card, stops this alert's ring, and reports the action to JavaScript. */
+  private fun release(context: Context, questionId: String, action: String) {
     removeView()
-    val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return
-    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-    launch.putExtra(EXTRA_QUESTION_ID, questionId)
-    context.startActivity(launch)
+    silenceNotifications(context, questionId)
+    onAction?.invoke(questionId, action)
   }
 
   private fun buildView(context: Context, card: Spec): View {
@@ -124,16 +162,96 @@ internal object OverlayCard {
         cornerRadius = dp(context, 18).toFloat()
       }
       elevation = dp(context, 10).toFloat()
-      setOnClickListener { open(context, card.questionId) }
+      setOnClickListener { openApp(context, card.questionId, snooze = false); removeView() }
     }
     box.addView(line(context, card.label, card.accent, 12f, bold = true))
     box.addView(line(context, card.title, card.ink, 16f, bold = true, maxLines = 1))
     box.addView(line(context, card.body, card.ink2, 14f, maxLines = 2))
-    box.addView(line(context, "Tap to open", card.ink2, 12f, topPaddingDp = 6))
+    box.addView(line(context, "Tap to open, swipe to dismiss", card.ink2, 12f, topPaddingDp = 6))
+    box.addView(actionRow(context, card))
+    swipeToDismiss(context, box, card.questionId)
     return FrameLayout(context).apply {
       setPadding(dp(context, 12), 0, dp(context, 12), 0)
       addView(box, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
     }
+  }
+
+  private fun actionRow(context: Context, card: Spec): View = LinearLayout(context).apply {
+    orientation = LinearLayout.HORIZONTAL
+    gravity = Gravity.END
+    setPadding(0, dp(context, 6), 0, 0)
+    addView(action(context, "Dismiss", card.ink2) { release(context, card.questionId, ACTION_DISMISS) })
+    addView(action(context, "Snooze", card.accent) {
+      release(context, card.questionId, ACTION_SNOOZE)
+      openApp(context, card.questionId, snooze = true)
+    })
+  }
+
+  private fun action(context: Context, label: String, colour: Int, onClick: () -> Unit): TextView =
+    TextView(context).apply {
+      text = label
+      setTextColor(colour)
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+      typeface = Typeface.DEFAULT_BOLD
+      setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
+      isClickable = true
+      isFocusable = true
+      val outValue = TypedValue()
+      context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
+      setBackgroundResource(outValue.resourceId)
+      setOnClickListener { onClick() }
+    }
+
+  /** A horizontal drag moves the card with the finger; past 30% of its width it is dismissed. */
+  private fun swipeToDismiss(context: Context, box: View, questionId: String) {
+    val slop = ViewConfiguration.get(context).scaledTouchSlop
+    var downX = 0f
+    var dragging = false
+    box.setOnTouchListener { view, event ->
+      when (event.actionMasked) {
+        MotionEvent.ACTION_DOWN -> {
+          downX = event.rawX
+          dragging = false
+          true
+        }
+        MotionEvent.ACTION_MOVE -> {
+          val dx = event.rawX - downX
+          if (!dragging && abs(dx) > slop) dragging = true
+          if (dragging) {
+            view.translationX = dx
+            view.alpha = 1f - min(abs(dx) / view.width, 0.7f)
+          }
+          true
+        }
+        MotionEvent.ACTION_UP -> {
+          val dx = event.rawX - downX
+          when {
+            !dragging -> view.performClick()
+            abs(dx) > view.width * SWIPE_FRACTION -> {
+              view.animate()
+                .translationX(sign(dx) * view.width)
+                .alpha(0f)
+                .setDuration(SETTLE_MS)
+                .withEndAction { release(context, questionId, ACTION_DISMISS) }
+                .start()
+            }
+            else -> settleBack(view)
+          }
+          dragging = false
+          true
+        }
+        MotionEvent.ACTION_CANCEL -> {
+          if (dragging) settleBack(view)
+          dragging = false
+          true
+        }
+        else -> false
+      }
+    }
+  }
+
+  private fun settleBack(view: View) {
+    view.animate().translationX(0f).alpha(1f).setDuration(SETTLE_MS).start()
   }
 
   private fun line(

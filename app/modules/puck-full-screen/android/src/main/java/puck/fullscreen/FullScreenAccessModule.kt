@@ -37,7 +37,13 @@ class FullScreenAccessModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("PuckFullScreenAccess")
 
-    Events("onVolumeKey", "onOverlayOpen")
+    Events("onVolumeKey", "onOverlayOpen", "onOverlayAction")
+
+    OnCreate {
+      OverlayCard.onAction = { questionId, action ->
+        sendEvent("onOverlayAction", mapOf("questionId" to questionId, "action" to action))
+      }
+    }
 
     Function("canUse") {
       val context = appContext.reactContext ?: return@Function false
@@ -136,8 +142,10 @@ class FullScreenAccessModule : Module() {
     // A channel whose sound plays on the alarm stream, so silent and vibrate mode do not mute it.
     // Optionally also set to override Do Not Disturb (Puck needs Do Not Disturb access for that to
     // apply). A channel's settings are fixed once it exists, so each combination has its own id.
+    // Without headsUp the channel is DEFAULT importance: it keeps the sound but no heads-up banner,
+    // so the banner cannot cover the compact card.
     // Returns false when the channel could not be created (Android 7 and older, or an error).
-    Function("createAlarmChannel") { id: String, name: String, bypassDnd: Boolean ->
+    Function("createAlarmChannel") { id: String, name: String, bypassDnd: Boolean, headsUp: Boolean ->
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@Function false
       val context = appContext.reactContext ?: return@Function false
       try {
@@ -148,7 +156,8 @@ class FullScreenAccessModule : Module() {
           .setUsage(AudioAttributes.USAGE_ALARM)
           .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
           .build()
-        val channel = NotificationChannel(id, name, NotificationManager.IMPORTANCE_HIGH)
+        val importance = if (headsUp) NotificationManager.IMPORTANCE_HIGH else NotificationManager.IMPORTANCE_DEFAULT
+        val channel = NotificationChannel(id, name, importance)
         channel.setSound(sound, attributes)
         channel.enableVibration(true)
         channel.vibrationPattern = longArrayOf(0, 500, 400, 500)
@@ -175,7 +184,10 @@ class FullScreenAccessModule : Module() {
     // A tap on the compact card while the app is already running: JavaScript opens that alert.
     OnNewIntent { intent: Intent ->
       intent.getStringExtra(OverlayCard.EXTRA_QUESTION_ID)?.let { id ->
-        sendEvent("onOverlayOpen", mapOf("questionId" to id))
+        sendEvent(
+          "onOverlayOpen",
+          mapOf("questionId" to id, "snooze" to intent.getBooleanExtra(OverlayCard.EXTRA_SNOOZE, false)),
+        )
       }
     }
 
@@ -221,9 +233,11 @@ class FullScreenAccessModule : Module() {
       true
     }
 
-    // The alert a tap on the compact card opened on a cold start; taken once.
+    // The alert a tap on the compact card opened on a cold start, and whether Snooze was chosen; taken once.
     Function("takeOverlayOpen") {
-      OverlayCard.takeOpenedQuestionId(appContext.currentActivity?.intent)
+      OverlayCard.takeOpened(appContext.currentActivity?.intent)?.let { opened ->
+        mapOf("questionId" to opened.questionId, "snooze" to opened.snooze)
+      }
     }
   }
 
