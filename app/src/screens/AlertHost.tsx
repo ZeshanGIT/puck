@@ -31,6 +31,7 @@ import { isQueuedLocally, submitOrQueue, type QueuedAnswer } from "../answerQueu
 import type { UploadedAttachment } from "../attachments";
 import { replyPayload } from "../choice";
 import { readClientId } from "../clientStore";
+import { subscribeSnoozeRequests, takeSnoozeOnOpen } from "../cardSnooze";
 import { shouldGoBack, type ReceiptViewState } from "../receiptCopy";
 import { useReadingAloud } from "../speak";
 import { useAnnounceNewAlerts } from "../ui/announce";
@@ -522,6 +523,14 @@ function AlertScreen({
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const openReply = useCallback(() => setReplyOpen(true), []);
   const openSnooze = useCallback(() => setSnoozeOpen(true), []);
+  const { questionId } = alert;
+  useEffect(() => {
+    const checkSnoozeRequest = () => {
+      if (takeSnoozeOnOpen(questionId)) setSnoozeOpen(true);
+    };
+    checkSnoozeRequest();
+    return subscribeSnoozeRequests(checkSnoozeRequest);
+  }, [questionId]);
   const { botId, botName: alertBotName } = alert;
   const bot = useMemo(() => botLook({ botId, botName: alertBotName }), [botId, alertBotName]);
   // Over the lock screen the A9 card closes by itself, so it never holds the lock screen.

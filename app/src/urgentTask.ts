@@ -1,8 +1,8 @@
 import notifee from "@notifee/react-native";
 import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
-import { onVolumeKey } from "puck-full-screen";
-import { handleNotifeeEvent, handleUrgentTask, silenceRings } from "./urgentDisplay";
+import { onVolumeKey, subscribeOverlayAction } from "puck-full-screen";
+import { handleNotifeeEvent, handleUrgentTask, silenceCardAlert, silenceRings } from "./urgentDisplay";
 
 export const URGENT_TASK = "puck-urgent-alert";
 
@@ -14,5 +14,10 @@ notifee.onForegroundEvent(handleNotifeeEvent);
 
 // A volume key silences the ring without answering, like a call (A4, J4).
 onVolumeKey(silenceRings);
+
+// Dismissing or snoozing the compact card stops its voice; the alert stays in the shade.
+subscribeOverlayAction(({ questionId }) => {
+  void silenceCardAlert(questionId);
+});
 
 void Notifications.registerTaskAsync(URGENT_TASK).catch(() => {});

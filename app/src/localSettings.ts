@@ -232,10 +232,24 @@ export const URGENT_CHANNEL = {
  * The ringing channel for a decision. `silent` only counts when the build can create alarm
  * channels (the native function); otherwise the alert still rings, just not in silent mode.
  */
-export function urgentChannelId(decision: BypassDecision, alarmChannels: boolean): string {
+export function urgentChannelId(decision: BypassDecision, alarmChannels: boolean, card = false): string {
   const silent = decision.silent && alarmChannels;
-  if (silent) return decision.dnd ? URGENT_CHANNEL.bypass : URGENT_CHANNEL.alarm;
-  return decision.dnd ? URGENT_CHANNEL.dnd : URGENT_CHANNEL.plain;
+  const id = silent
+    ? decision.dnd
+      ? URGENT_CHANNEL.bypass
+      : URGENT_CHANNEL.alarm
+    : decision.dnd
+      ? URGENT_CHANNEL.dnd
+      : URGENT_CHANNEL.plain;
+  return card ? cardChannelId(id) : id;
+}
+
+/**
+ * The same channel as `base`, but without a heads-up banner: used when the compact card shows the
+ * alert, so the banner cannot cover the card. The sound and the stream stay as they are.
+ */
+export function cardChannelId(base: string): string {
+  return `${base}-card`;
 }
 
 /* -------------------------------------------------------------------- night */

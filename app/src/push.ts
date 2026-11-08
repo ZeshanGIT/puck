@@ -3,7 +3,8 @@ import { useConvex } from "convex/react";
 import { AppState } from "react-native";
 import { useEffect, useState } from "react";
 import { readClientId } from "./clientStore";
-import { subscribeOverlayOpen, takeOverlayOpen } from "puck-full-screen";
+import { subscribeOverlayOpen, takeOverlayOpen, type OverlayOpen } from "puck-full-screen";
+import { requestSnoozeOnOpen } from "./cardSnooze";
 import { questionIdFromNotificationData } from "./pushOpen";
 import { readableError } from "./session";
 import { loadNotificationsModule, registerPushTokenWithConvex } from "./onboarding/notificationSetup";
@@ -57,12 +58,16 @@ export function useOpenedQuestionId(): string | null {
   const [opened, setOpened] = useState<string | null>(null);
 
   useEffect(() => {
+    const open = (next: OverlayOpen) => {
+      if (next.snooze) requestSnoozeOnOpen(next.questionId);
+      setOpened(next.questionId);
+    };
     const apply = () => {
-      const id = takeOverlayOpen();
-      if (id) setOpened(id);
+      const next = takeOverlayOpen();
+      if (next) open(next);
     };
     apply();
-    const unsubscribe = subscribeOverlayOpen(setOpened);
+    const unsubscribe = subscribeOverlayOpen(open);
     const app = AppState.addEventListener("change", (state) => {
       if (state === "active") apply();
     });

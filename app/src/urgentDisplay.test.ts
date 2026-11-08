@@ -59,6 +59,7 @@ mock.module("puck-full-screen", () => ({
   },
   takeOverlayOpen: () => null,
   subscribeOverlayOpen: () => () => {},
+  subscribeOverlayAction: () => () => {},
 }));
 
 type UrgentModule = typeof import("./urgentDisplay");
@@ -137,6 +138,34 @@ describe("the compact card over other apps", () => {
     await urgent.displayUrgent(asking());
     expect(cards).toEqual([]);
     expect(notifications.length).toBeGreaterThan(0);
+  });
+
+  test("with the card, the ring moves to a no-banner channel so a heads-up cannot cover the card", async () => {
+    overlay.allowed = true;
+    const note = await ring(asking({ priority: "normal", question: "Lunch?" }));
+    expect(note.channelId).toBe("puck-alerts-card");
+    expect(channels.find((channel) => channel.id === "puck-alerts-card")?.importance).toBe(3);
+  });
+
+  test("without the card, the ring keeps the heads-up channel", async () => {
+    const note = await ring(asking({ priority: "normal", question: "Lunch?" }));
+    expect(note.channelId).toBe(PUSH_CHANNEL_ID);
+    expect(channels.find((channel) => channel.id === PUSH_CHANNEL_ID)?.importance).toBe(4);
+  });
+
+  test("an urgent alert with the card rings on the card variant of its channel", async () => {
+    overlay.allowed = true;
+    const note = await ring(asking());
+    expect(note.channelId).toBe("puck-urgent-bypass-card");
+    expect(alarmChannels[0]).toEqual({ id: "puck-urgent-bypass-card", bypassDnd: true });
+  });
+
+  test("dismissing the card stops the ring and leaves the alert waiting, quietly, in the shade", async () => {
+    overlay.allowed = true;
+    const alert = asking({ priority: "normal", question: "Lunch?" });
+    await urgent.displayUrgent(alert);
+    await urgent.silenceCardAlert(alert.questionId);
+    expect(notifications[notifications.length - 1]!.channelId).toBe("puck-urgent-waiting");
   });
 });
 

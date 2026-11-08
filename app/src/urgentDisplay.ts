@@ -1,5 +1,5 @@
 import notifee, { AndroidImportance, AndroidVisibility, EventType, type Event } from "@notifee/react-native";
-import { PUSH_CHANNEL_ID, PUSH_URGENT_CHANNEL_ID } from "@puck/shared";
+import { PUSH_CHANNEL_ID } from "@puck/shared";
 import { alertRingingPlan } from "./alertRinging";
 import {
   canCreateAlarmChannel,
@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { dismissedQuestionId } from "./dismissPayload";
 import { fullscreenAlert, type FullScreenAlert } from "./fullscreenPayload";
 import {
+  cardChannelId,
   isNight,
   loadLocalSettings,
   ringSecondsFor,
@@ -70,33 +71,43 @@ let callTimer: ReturnType<typeof setInterval> | null = null;
 
 /* ----------------------------------------------------------------- channels */
 
+/**
+ * Whether the compact card will show this alert. The ring's channel must be chosen before the
+ * notification is posted: a card means a quiet-banner channel, so no heads-up covers the card.
+ */
+function overlayCardWanted(): boolean {
+  return shouldShowOverlayCard({ locked: isLocked(), allowed: canDrawOverlay(), inCall: false });
+}
+
 /** Normal full-screen alerts always use the shared `puck-alerts` channel (not urgent bypass). */
-async function ensureNormalChannel(): Promise<string> {
+async function ensureNormalChannel(card: boolean): Promise<string> {
+  const id = card ? cardChannelId(PUSH_CHANNEL_ID) : PUSH_CHANNEL_ID;
   await notifee.createChannel({
-    id: PUSH_CHANNEL_ID,
-    name: "Alerts",
-    importance: AndroidImportance.HIGH,
+    id,
+    name: card ? "Alerts on the card" : "Alerts",
+    importance: card ? AndroidImportance.DEFAULT : AndroidImportance.HIGH,
     sound: "default",
     vibration: true,
     visibility: AndroidVisibility.PUBLIC,
     bypassDnd: false,
   });
-  return PUSH_CHANNEL_ID;
+  return id;
 }
 
-async function ensureChannel(decision: BypassDecision): Promise<string> {
+async function ensureChannel(decision: BypassDecision, card: boolean): Promise<string> {
   const alarm = decision.silent && canCreateAlarmChannel();
-  const id = urgentChannelId(decision, alarm);
+  const id = urgentChannelId(decision, alarm, card);
+  const label = decision.dnd ? "Urgent alerts (Do Not Disturb)" : "Urgent alerts";
   if (alarm) {
     const name = decision.dnd ? "Urgent alerts (alarm, Do Not Disturb)" : "Urgent alerts (alarm)";
-    if (createAlarmChannel(id, name, decision.dnd)) return id;
+    if (createAlarmChannel(id, card ? `${name}, on the card` : name, decision.dnd, !card)) return id;
     // The native channel failed: ring on the notification stream instead.
-    return ensureChannel({ ...decision, silent: false });
+    return ensureChannel({ ...decision, silent: false }, card);
   }
   await notifee.createChannel({
     id,
-    name: id === PUSH_URGENT_CHANNEL_ID ? "Urgent alerts" : "Urgent alerts (Do Not Disturb)",
-    importance: AndroidImportance.HIGH,
+    name: card ? `${label}, on the card` : label,
+    importance: card ? AndroidImportance.DEFAULT : AndroidImportance.HIGH,
     // Notifee is silent unless this is set. "default" is the system ringtone.
     sound: "default",
     vibration: true,
@@ -211,16 +222,17 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings): Pr
   const plan = alertRingingPlan(alert, settings, alert.botId, canCreateAlarmChannel());
   const seconds =
     plan.timeoutMs !== undefined ? Math.max(1, Math.round(plan.timeoutMs / 1000)) : ringSecondsFor(alert.ringSeconds, settings);
-  let channelId = plan.channelId;
+  const card = overlayCardWanted();
+  let channelId: string;
   if (alert.priority === "urgent") {
     // Do Not Disturb access is what lets the channel override it; without it the alert rings normally.
     const decision = {
       dnd: plan.bypassDndOnChannel && hasDndAccess() === true,
       silent: plan.useAlarmChannel,
     };
-    channelId = await ensureChannel(decision);
+    channelId = await ensureChannel(decision, card);
   } else {
-    channelId = await ensureNormalChannel();
+    channelId = await ensureNormalChannel(card);
   }
   forget(alert.questionId);
   // A soft cue from a call may still be up. Post fresh so the screen and sound start again.
@@ -239,14 +251,18 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings): Pr
   };
   rings.set(alert.questionId, ring);
   await postRinging(alert, channelId, plan);
-  await showCard(alert, settings);
+  if (card) await showCard(alert, settings);
 }
 
 /** On an unlocked phone the alert also shows as a compact card over other apps (when allowed). */
 async function showCard(alert: FullScreenAlert, settings: LocalSettings): Promise<void> {
-  if (!shouldShowOverlayCard({ locked: isLocked(), allowed: canDrawOverlay(), inCall: false })) return;
   const dark = themeIsDark(settings.theme, await systemIsDark());
   showOverlayCard({ questionId: alert.questionId, ...overlayCardText(alert), ...overlayPalette(dark, alert.priority) });
+}
+
+/** The card was dismissed or snoozed: stop this alert's voice and quiet its ring, keeping it in the shade. */
+export function silenceCardAlert(questionId: string): Promise<void> {
+  return settle(questionId);
 }
 
 /** Volume key: silence every ringing alert (and its voice) without answering. */
