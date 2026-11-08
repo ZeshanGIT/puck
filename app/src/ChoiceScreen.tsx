@@ -21,6 +21,9 @@ export interface PendingAlert extends AlertExtras {
   presentation: "choice" | "swipe";
   options: AlertOption[];
   createdAt: number;
+  /** Set on a snoozed alert opened from Needs you (`alerts.waiting`): its wake time, or null for "until I'm back". */
+  status?: "pending" | "snoozed";
+  snoozedUntil?: number | null;
 }
 
 export function ChoiceScreen({ alert, waiting }: { alert: PendingAlert; waiting: number }) {

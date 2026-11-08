@@ -28,6 +28,7 @@ import { ConnectedPairingHost, type PairingStart } from "./screens/PairingHost";
 import { H4Detail } from "./screens/H4Detail";
 import { StackHost } from "./screens/StackHost";
 import { Toast, useToast } from "./ui/Toast";
+import { normalizeExpiry } from "./alertExpiry";
 
 export function Inbox({
   notifications,
@@ -86,7 +87,9 @@ function InboxBody({
     clientId === undefined ? "skip" : clientId ? { clientId } : {},
   ) as PendingAlert[] | undefined;
   // Waiting alerts in full (the same fields as `pending`), so a snoozed one can open from Needs you.
-  const waiting = useQuery(anyApi.alerts.waiting, clientId ? { clientId } : "skip") as WaitingFullAlert[] | undefined;
+  const rawWaiting = useQuery(anyApi.alerts.waiting, clientId ? { clientId } : "skip") as WaitingWireAlert[] | undefined;
+  // Convex sends "no expiry" as null; the alert screens read it as undefined (see `alertExpiry.ts`).
+  const waiting = useMemo(() => rawWaiting?.map((alert) => normalizeExpiry(alert)), [rawWaiting]);
   const openedId = useOpenedQuestionId();
   // Alerts he left in a stack ("Leave the rest for later") stay off the screen until he is back in
   // the app after being away, so the stack he just closed does not open again at once.
@@ -416,6 +419,7 @@ function Blank() {
 
 /** A waiting alert in full (`alerts.waiting` now returns the alert's fields, as `alerts.pending` does). */
 type WaitingFullAlert = PendingAlert & { status: "pending" | "snoozed"; snoozedUntil: number | null };
+type WaitingWireAlert = Omit<WaitingFullAlert, "expiresAt"> & { expiresAt: number | null };
 
 class ScreenBoundary extends Component<{ children: ReactNode }, { message: string | null }> {
   state = { message: null as string | null };

@@ -53,6 +53,7 @@ import { Pill } from "./Pill";
 import { RichText } from "./RichText";
 import { ThemeProvider, useBotTheme, useOnWash, useTheme } from "./theme";
 import { clockDateText, clockText } from "../localSettings";
+import { expiryView, type ExpiryView, type SnoozeState } from "../alertExpiry";
 import { fontFamily, radii } from "./tokens";
 
 /** Paths copied from the prototype's `ICON` object (24 x 24 viewBox). */
@@ -87,7 +88,6 @@ export function Glyph({
 /** Night screen background (`.night{background:#100F0E}`), which the prototype keeps outside the tokens. */
 const NIGHT_BG = "#100F0E";
 const MAX_FONT_SCALE = 1.3;
-const EXPIRY_LOW_SECONDS = 300;
 
 /* ------------------------------------------------------------------ time */
 
@@ -111,41 +111,21 @@ export function ageLabel(createdAt: number | undefined, now: number): string {
   return `${Math.floor(hours / 24)} d ago`;
 }
 
-export interface ExpiryView {
-  /** "12 min left", "45 s left", or "Missed". */
-  label: string;
-  /** Share of the alert's life that is left, 0 to 1 (drives the short bar). */
-  fraction: number;
-  /** Under 5 minutes: the pill turns amber. */
-  low: boolean;
-  /** The time has passed: the alert can't be answered. */
-  expired: boolean;
-}
+export type { ExpiryView };
 
 /**
  * Counts down to `expiresAt` once a second (prototype's `[data-exp]` ticker). The bar's full
  * length is the time from `createdAt` to `expiresAt`, or the time left when the screen opened
  * if `createdAt` is unknown. Returns null for an alert that never expires.
  */
-export function useExpiry(expiresAt: number | undefined, createdAt?: number): ExpiryView | null {
+export function useExpiry(
+  expiresAt: number | null | undefined,
+  createdAt?: number,
+  snooze?: SnoozeState,
+): ExpiryView | null {
   const now = useNow(1000);
   const [opened] = useState(() => Date.now());
-  if (expiresAt === undefined) return null;
-  const total = Math.max(1000, expiresAt - (createdAt ?? opened));
-  const remaining = Math.max(0, expiresAt - now);
-  const seconds = remaining / 1000;
-  const expired = remaining <= 0;
-  const label = expired
-    ? "Missed"
-    : seconds >= 60
-      ? `${Math.ceil(seconds / 60)} min left`
-      : `${Math.ceil(seconds)} s left`;
-  return {
-    label,
-    fraction: Math.min(1, remaining / total),
-    low: expired || seconds < EXPIRY_LOW_SECONDS,
-    expired,
-  };
+  return expiryView({ expiresAt, createdAt, opened, now, snooze });
 }
 
 /* ------------------------------------------------------------------ wash */
@@ -293,7 +273,9 @@ function ExpiryPill({ expiry }: { expiry: ExpiryView }) {
   return (
     <View
       accessible
-      accessibilityLabel={expiry.expired ? "Missed" : `Expires in ${expiry.label.replace(" left", "")}`}
+      accessibilityLabel={
+        expiry.expired ? "Missed" : expiry.snoozed ? expiry.label : `Expires in ${expiry.label.replace(" left", "")}`
+      }
       style={[styles.exp, { backgroundColor: expiry.low ? t.warnbg : t.fill }]}
     >
       <Glyph d={ICON.clock} size={14} colour={colour} width={2.4} />

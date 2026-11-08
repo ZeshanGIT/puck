@@ -33,6 +33,7 @@ import { useTheme } from "../ui/theme";
 import { Toast, useToast } from "../ui/Toast";
 import { fontFamily } from "../ui/tokens";
 import { haptics } from "../ui/useTapTwice";
+import { snoozeOf } from "../alertExpiry";
 
 export interface A3SwipeProps {
   alert: PendingAlert;
@@ -95,7 +96,7 @@ export function A3Swipe({
 }: A3SwipeProps) {
   const { botId, botName } = alert;
   const bot = useMemo(() => botLook({ botId, botName }), [botId, botName]);
-  const expiry = useExpiry(alert.expiresAt, alert.createdAt);
+  const expiry = useExpiry(alert.expiresAt, alert.createdAt, snoozeOf(alert));
   const toast = useToast();
   const blob = useRef<BlobHandle>(null);
   const track = useRef<SwipeTrackHandle>(null);

@@ -64,6 +64,7 @@ import { SwipeTrack, type SwipeSide, type SwipeSideSpec, type SwipeTrackHandle }
 import { useBotTheme, useOnWash, useTheme } from "./theme";
 import { fontFamily, radii } from "./tokens";
 import { haptics, TapTwiceGroup } from "./useTapTwice";
+import { snoozeOf } from "../alertExpiry";
 
 /** What he answered, as the answered block shows it. */
 export interface StackAnswer {
@@ -135,7 +136,7 @@ export function StackCard(props: StackCardProps) {
   const answered = status !== "waiting";
   const urgent = alert.priority === "urgent" && !gone;
 
-  const expiry = useExpiry(alert.expiresAt, alert.createdAt);
+  const expiry = useExpiry(alert.expiresAt, alert.createdAt, snoozeOf(alert));
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 15000);

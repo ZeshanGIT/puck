@@ -32,6 +32,7 @@ import { useTheme } from "../ui/theme";
 import { Toast, useToast } from "../ui/Toast";
 import { fontFamily } from "../ui/tokens";
 import { haptics, TapTwiceGroup } from "../ui/useTapTwice";
+import { snoozeOf } from "../alertExpiry";
 
 export interface A1ChoiceSingleProps {
   alert: PendingAlert;
@@ -83,7 +84,7 @@ export function A1ChoiceSingle(props: A1ChoiceSingleProps) {
 function A1Body({ alert, waiting, onAnswer, onReply, onSnooze, night, readingAloud, clock, receipt, gone }: A1ChoiceSingleProps) {
   const { botId, botName } = alert;
   const bot = useMemo(() => botLook({ botId, botName }), [botId, botName]);
-  const expiry = useExpiry(alert.expiresAt, alert.createdAt);
+  const expiry = useExpiry(alert.expiresAt, alert.createdAt, snoozeOf(alert));
   const toast = useToast();
   const blob = useRef<BlobHandle>(null);
   const armedIds = useRef(new Set<string>());

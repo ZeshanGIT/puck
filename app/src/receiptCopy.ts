@@ -132,11 +132,10 @@ export function goneCopy(input: {
   switch (input.reason) {
     case "cancelled":
       return { title: `${input.botName} cancelled this`, sub: "They got what they needed in chat." };
-    case "expired":
-      return {
-        title: input.expiredAt === undefined ? "Expired" : `Expired at ${clockLabel(input.expiredAt)}`,
-        sub: null,
-      };
+    case "expired": {
+      const at = typeof input.expiredAt === "number" && input.expiredAt > 0 ? input.expiredAt : undefined;
+      return { title: at === undefined ? "Expired" : `Expired at ${clockLabel(at)}`, sub: null };
+    }
     case "answeredElsewhere": {
       const labels = input.answerLabels?.filter((label) => label.length > 0) ?? [];
       return {

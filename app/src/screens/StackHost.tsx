@@ -47,6 +47,7 @@ import { useAnswerReceipt } from "./A7Receipt";
 import { useAlertGone, type AlertGoneState } from "./A9Gone";
 import { A11Snooze } from "./A11Snooze";
 import { answerPayloadFor, deliverAnswer, useExpired } from "./AlertHost";
+import { expiryOf } from "../alertExpiry";
 import { AStack, type AStackSummaryContext } from "./AStack";
 import { StackSummary } from "./StackSummary";
 
@@ -441,10 +442,11 @@ function AlertWatcher({
 }) {
   const { questionId } = alert;
   const expired = useExpired(alert.expiresAt);
+  const expiredAt = expiryOf(alert.expiresAt);
   const ready = clientId !== null && ownName !== null;
   const server = useAlertGone({ clientId: missing && ready ? clientId : null, questionId, ownClientName: ownName });
   const gone: AlertGoneState | null =
-    server.gone ?? (expired && alert.expiresAt !== undefined ? { reason: "expired", expiredAt: alert.expiresAt } : null);
+    server.gone ?? (expired && expiredAt !== undefined ? { reason: "expired", expiredAt } : null);
   const waiting = missing && !gone && clientId !== null && (!ready || server.loading);
 
   // Give `alerts.state` a moment, then stop waiting for it.

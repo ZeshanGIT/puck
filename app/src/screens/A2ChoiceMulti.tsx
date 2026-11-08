@@ -43,6 +43,7 @@ import { useBotTheme, useTheme } from "../ui/theme";
 import { Toast, useToast } from "../ui/Toast";
 import { fontFamily, radii } from "../ui/tokens";
 import { haptics, useTapTwice } from "../ui/useTapTwice";
+import { snoozeOf } from "../alertExpiry";
 
 export interface A2ChoiceMultiProps {
   alert: PendingAlert;
@@ -89,7 +90,7 @@ export function A2ChoiceMulti({
 }: A2ChoiceMultiProps) {
   const { botId, botName } = alert;
   const bot = useMemo(() => botLook({ botId, botName }), [botId, botName]);
-  const expiry = useExpiry(alert.expiresAt, alert.createdAt);
+  const expiry = useExpiry(alert.expiresAt, alert.createdAt, snoozeOf(alert));
   const toast = useToast();
   const blob = useRef<BlobHandle>(null);
   const [choice, setChoice] = useState<ChoiceState>(emptyChoice);

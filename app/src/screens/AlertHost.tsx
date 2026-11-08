@@ -31,6 +31,7 @@ import { isQueuedLocally, submitOrQueue, type QueuedAnswer } from "../answerQueu
 import type { UploadedAttachment } from "../attachments";
 import { replyPayload } from "../choice";
 import { readClientId } from "../clientStore";
+import { expiryOf, hasExpired } from "../alertExpiry";
 import { subscribeSnoozeRequests, takeSnoozeOnOpen } from "../cardSnooze";
 import { shouldGoBack, type ReceiptViewState } from "../receiptCopy";
 import { useReadingAloud } from "../speak";
@@ -186,7 +187,7 @@ export async function deliverAnswer(input: {
     ...(payload.customReply ? { customReply: payload.customReply } : {}),
     ...(hasFiles && attachments ? { attachments } : {}),
     queuedAt: Date.now(),
-    ...(alert.expiresAt === undefined ? {} : { expiresAt: alert.expiresAt }),
+    ...(expiryOf(alert.expiresAt) === undefined ? {} : { expiresAt: expiryOf(alert.expiresAt) }),
   };
   const send = async (entry: QueuedAnswer) => {
     await record({
@@ -235,19 +236,20 @@ function answeredView(
 /** Longest `setTimeout` delay. */
 const MAX_TIMER_MS = 2_147_483_647;
 
-/** True once `expiresAt` has passed (it flips by itself at that moment). */
-export function useExpired(expiresAt: number | undefined): boolean {
-  const [expired, setExpired] = useState(() => expiresAt !== undefined && Date.now() >= expiresAt);
+/** True once `expiresAt` has passed (it flips by itself at that moment). Null or 0 means no expiry. */
+export function useExpired(expiresAt: number | null | undefined): boolean {
+  const at = expiryOf(expiresAt);
+  const [expired, setExpired] = useState(() => hasExpired(at, Date.now()));
   useEffect(() => {
-    if (expiresAt === undefined) return;
-    const left = expiresAt - Date.now();
+    if (at === undefined) return;
+    const left = at - Date.now();
     if (left <= 0) {
       setExpired(true);
       return;
     }
     const id = setTimeout(() => setExpired(true), Math.min(left, MAX_TIMER_MS));
     return () => clearTimeout(id);
-  }, [expiresAt]);
+  }, [at]);
   return expired;
 }
 
@@ -392,6 +394,7 @@ function ConnectedAlertHost({
 
   // ---- no longer needed (A9)
   const expired = useExpired(alert.expiresAt);
+  const expiredAt = expiryOf(alert.expiresAt);
   const server = useAlertGone({
     clientId: clientId && ownName !== null ? clientId : null,
     questionId,
@@ -401,7 +404,7 @@ function ConnectedAlertHost({
     answered || snoozedDone
       ? null
       : (server.gone ??
-        (expired && alert.expiresAt !== undefined ? { reason: "expired", expiredAt: alert.expiresAt } : null));
+        (expired && expiredAt !== undefined ? { reason: "expired", expiredAt } : null));
   const onGoneDone = useCallback(() => {
     hideAlert(questionId);
     leave();
@@ -452,6 +455,7 @@ function SampleAlertHost({
 }) {
   const [answered, setAnswered] = useState<AnsweredView | null>(null);
   const expired = useExpired(alert.expiresAt);
+  const expiredAt = expiryOf(alert.expiresAt);
   const wrapped = useCallback<AnswerHandler>(
     async (optionIds, customReply, attachments) => {
       setAnswered(answeredView(alert, optionIds, customReply?.trim() || undefined, attachments));
@@ -466,7 +470,7 @@ function SampleAlertHost({
     [alert, onAnswer],
   );
   const gone: AlertGoneState | null =
-    !answered && expired && alert.expiresAt !== undefined ? { reason: "expired", expiredAt: alert.expiresAt } : null;
+    !answered && expired && expiredAt !== undefined ? { reason: "expired", expiredAt } : null;
   return (
     <AlertScreen
       alert={alert}

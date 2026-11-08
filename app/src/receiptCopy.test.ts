@@ -91,6 +91,7 @@ describe("goneCopy", () => {
       sub: null,
     });
     expect(goneCopy({ reason: "expired", botName: "Sheldon" }).title).toBe("Expired");
+    expect(goneCopy({ reason: "expired", botName: "Sheldon", expiredAt: 0 }).title).toBe("Expired");
   });
 
   test("answered elsewhere names the client and the choice", () => {
