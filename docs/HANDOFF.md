@@ -2,6 +2,10 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## Card reply, gestures and shadow (2026-11-09)
+
+The compact card no longer has Dismiss or Snooze buttons; the gestures cover them. Swipe left snoozes (5, 10, then until back), swipe right reveals a reply field under the card. Letting go past a quarter of the width focuses the field and opens the keyboard; Send records the reply without opening Puck. The reply is written natively first (`pendingOverlayReplies`, SharedPreferences) and then sent through the answer queue (`src/cardReply.ts`); a send that fails or waits for sign-in stays queued, and only the offline screen flushes the queue today, so a queued card reply may wait until that screen runs. Swipe down turns the sheet white by 20% of the way to the bottom of the screen, carries shape and centre the whole way, and finishes by itself once past 40%. The snooze panel is one flat bot colour. The window now reserves room for the shadow so it is no longer clipped. Not compiled or run on the phone (native build pending the owner's go-ahead).
+
 ## State machines (2026-11-09)
 
 Implicit state machines were made explicit: `alert-lifecycle` (backend status writes), `app-session`, `alert-launch`, `pairing-flow`, `permissions-check`, `test-page`. Convention, inventory and generated diagrams are in `docs/state-machines.md`. No schema or wire format changed, so no Convex deploy is needed. Fixed on the way: stuck `freshSignIn` and inbox-cover latches, a launched notification alert that was never released (a later alert stayed under Needs you, or a blank screen), and the Working now ended-card timer. Not runtime-tested on a phone. Still implicit and listed in priority order in that doc: the answer attempt (A1, A2, A3, StackCard, AlertHost, StackHost), the client session, the ring lifecycle.
