@@ -2,11 +2,12 @@ import type { ClerkAccount } from "@puck/shared";
 import { ConvexProvider, useConvex } from "convex/react";
 import { anyApi } from "convex/server";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Linking, StyleSheet, View } from "react-native";
 import { Text } from "./src/ui/Text";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { appGate, nextStep, type OnboardingStatus, type OnboardingStep } from "./src/accountGate";
+import { appSessionTransition, initialAppSession, onboardingStatusOf } from "./src/appSessionMachine";
 import { useClerkAccount } from "./src/clerkAccount";
 import { convex } from "./src/client";
 import { useClientSession } from "./src/clientAuth";
@@ -524,25 +525,22 @@ function AppBody({
 }) {
   const clerk = useClerkAccount();
   const session = useClientSession({ clerkStatus: clerk.status, signOut: clerk.signOut });
-  const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
-  const [devWalkthrough, setDevWalkthrough] = useState(false);
-  const [step, setStep] = useState<OnboardingStep | null>(null);
-  const [freshSignIn, setFreshSignIn] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
+  // One reducer owns onboarding progress, the fresh sign-in latch, sign-out and the opening cover
+  // over the inbox (appSessionMachine.ts). The opening screen stays up until the inbox has its
+  // first data, or the safety timeout runs out.
+  const [session_, dispatch] = useReducer(appSessionTransition, initialAppSession);
+  const { devWalkthrough, step, freshSignIn, signingOut, inboxReady: inboxIsReady, timedOut } = session_;
   const convexClient = useConvex();
-  // The opening screen stays up until the inbox has its first data, or the safety timeout runs out.
-  const [inboxIsReady, setInboxIsReady] = useState(false);
-  const [timedOut, setTimedOut] = useState(false);
-  const onInboxReady = useCallback(() => setInboxIsReady(true), []);
+  const onInboxReady = useCallback(() => dispatch({ type: "inboxReady" }), []);
 
   useEffect(() => {
     let cancelled = false;
     readOnboardingComplete()
       .then((done) => {
-        if (!cancelled) setOnboardingDone(done);
+        if (!cancelled) dispatch({ type: "onboardingRead", done });
       })
       .catch(() => {
-        if (!cancelled) setOnboardingDone(false);
+        if (!cancelled) dispatch({ type: "onboardingRead", done: false });
       });
     return () => {
       cancelled = true;
@@ -554,24 +552,17 @@ function AppBody({
     let cancelled = false;
     readDevWalkthrough()
       .then((active) => {
-        if (!cancelled) setDevWalkthrough(active);
+        if (!cancelled) dispatch({ type: "devWalkthroughRead", active });
       })
       .catch(() => {
-        if (!cancelled) setDevWalkthrough(false);
+        if (!cancelled) dispatch({ type: "devWalkthroughRead", active: false });
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const onboardingStatus: OnboardingStatus =
-    devWalkthrough && __DEV__
-      ? "incomplete"
-      : onboardingDone === null
-        ? "unknown"
-        : onboardingDone
-          ? "complete"
-          : "incomplete";
+  const onboardingStatus: OnboardingStatus = onboardingStatusOf(session_, __DEV__);
   const gate = appGate({
     clerk: clerk.status,
     registration: session.status === "ready" ? "ready" : session.status === "pending" ? "pending" : "attention",
@@ -580,29 +571,38 @@ function AppBody({
     freshSignIn,
   });
 
+  // The safety timeout only runs while the inbox is the screen being waited for (not during sign-out).
   useEffect(() => {
-    if (gate !== "inbox" || inboxIsReady) return undefined;
-    const id = setTimeout(() => setTimedOut(true), INBOX_READY_TIMEOUT_MS);
+    if (gate !== "inbox" || inboxIsReady || signingOut) return undefined;
+    const id = setTimeout(() => dispatch({ type: "inboxTimedOut" }), INBOX_READY_TIMEOUT_MS);
     return () => clearTimeout(id);
-  }, [gate, inboxIsReady]);
-  // Signing out starts the next session from the opening screen again.
+  }, [gate, inboxIsReady, signingOut]);
+  // Leaving the inbox for any reason (a sign-out from the server, the dev replay) starts the next
+  // visit from the opening screen again.
   useEffect(() => {
-    if (signingOut) {
-      setInboxIsReady(false);
-      setTimedOut(false);
-    }
-  }, [signingOut]);
+    if (gate !== "inbox") dispatch({ type: "leftInbox" });
+  }, [gate]);
+  // Once the phone is registered, the sign-in on O1 is over.
+  const registered = session.status === "ready";
+  useEffect(() => {
+    if (registered) dispatch({ type: "registrationReady" });
+  }, [registered]);
 
   async function signedIn(account: ClerkAccount) {
-    setFreshSignIn(true);
-    await clerk.accept(account);
+    dispatch({ type: "signInStarted" });
+    try {
+      await clerk.accept(account);
+    } catch (error) {
+      dispatch({ type: "signInFailed" });
+      throw error;
+    }
   }
 
   async function signOut() {
     // Sign-out removes this phone's client row so it stops being paged (best effort, 3 s), clears the stored
     // client id and any answers still waiting to send (they belong to that row), then ends the Clerk session.
     // The opening screen covers the moments in between, so the inbox's queries never meet a missing row.
-    setSigningOut(true);
+    dispatch({ type: "signOutStarted" });
     try {
       await signOutPhone({
         removeClient: async () => {
@@ -610,8 +610,7 @@ function AppBody({
           if (clientId) await convexClient.mutation(anyApi.clients.remove, { clientId });
         },
         clearLocal: async () => {
-          setFreshSignIn(false);
-          setStep(null);
+          dispatch({ type: "localCleared" });
           await clearClientId();
           await clearAnswerQueue().catch(() => {});
         },
@@ -620,16 +619,14 @@ function AppBody({
     } catch (error) {
       console.error(readableError(error));
     } finally {
-      setSigningOut(false);
+      dispatch({ type: "signOutFinished" });
     }
   }
 
   async function walkThroughEveryStep() {
     if (!__DEV__) return;
     await startDevWalkthrough();
-    setDevWalkthrough(true);
-    setOnboardingDone(false);
-    setStep("welcome");
+    dispatch({ type: "walkThroughStarted" });
     onDevMenuChange(false);
   }
 
@@ -640,14 +637,12 @@ function AppBody({
     } catch (error) {
       console.error(readableError(error));
     }
-    setDevWalkthrough(false);
-    setOnboardingDone(true);
-    setStep(null);
+    dispatch({ type: "onboardingFinished" });
   }
 
   function advance(from: OnboardingStep) {
     const next = nextStep(from);
-    if (next) setStep(next);
+    if (next) dispatch({ type: "stepAdvanced", next });
     else void finishOnboarding();
   }
 
