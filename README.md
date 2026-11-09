@@ -1,5 +1,7 @@
 # Puck
 
+[![CI](https://github.com/ZeshanGIT/puck/actions/workflows/ci.yml/badge.svg)](https://github.com/ZeshanGIT/puck/actions/workflows/ci.yml)
+
 Puck is a pager for AI agents: an agent sends an alert, your phone rings with a full-screen, call-style notification, and your reply goes back to the agent.
 
 <p>

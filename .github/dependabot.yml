@@ -1,0 +1,10 @@
+# Keeps the SHA-pinned GitHub Actions current. App and backend dependencies are
+# upgraded by hand (Expo SDK alignment), so only Actions are watched here.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
