@@ -14,6 +14,7 @@ export function useLiveActivities(clientId: string | null | undefined): LiveActi
   const running = useQuery(anyApi.live.forUser, clientId ? { clientId } : "skip") as LiveActivity[] | undefined;
   const before = useRef<LiveActivity[]>([]);
   const [departed, setDeparted] = useState<LiveActivity[]>([]);
+  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
     if (running === undefined) return;
@@ -22,9 +23,21 @@ export function useLiveActivities(clientId: string | null | undefined): LiveActi
     if (left.length === 0) return;
     setDeparted((all) => [...all.filter((a) => !left.some((l) => l.activityId === a.activityId)), ...left]);
     const ids = left.map((a) => a.activityId);
-    const timer = setTimeout(() => setDeparted((all) => all.filter((a) => !ids.includes(a.activityId))), ENDED_CARD_MS);
-    return () => clearTimeout(timer);
+    // Each ended card keeps its own timer. Clearing it when `running` changes again would strand
+    // the card (the next change has nothing new to schedule), so timers only stop on unmount.
+    const timer = setTimeout(() => {
+      timers.current.delete(timer);
+      setDeparted((all) => all.filter((a) => !ids.includes(a.activityId)));
+    }, ENDED_CARD_MS);
+    timers.current.add(timer);
   }, [running]);
+  useEffect(() => {
+    const live = timers.current;
+    return () => {
+      for (const timer of live) clearTimeout(timer);
+      live.clear();
+    };
+  }, []);
 
   const lookups = useMemo(() => {
     const queries: Record<string, { query: typeof anyApi.live.forBot; args: { clientId: string; botId: string } }> = {};
