@@ -75,16 +75,25 @@ export interface OverlayBotLook {
   screen: string;
 }
 
+/**
+ * `#rgb` as `#rrggbb`. Android's `Color.parseColor` takes only six or eight digits, and the bot
+ * theme has short ones (`#fff`, `#000`); a card given one would not be drawn at all.
+ */
+export function hex6(colour: string): string {
+  const short = /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/.exec(colour);
+  return short ? `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}` : colour;
+}
+
 export function overlayBotLook(bot: BlobBot, dark: boolean): OverlayBotLook {
   const theme = botTheme({ colour: bot.colour }, { dark });
   return {
-    botColour: theme.bot,
-    botDeep: theme.botDeep,
-    onBot: theme.onBot,
-    blobFill: theme.blobFill,
-    blobRim: theme.blobOutline ?? "",
+    botColour: hex6(theme.bot),
+    botDeep: hex6(theme.botDeep),
+    onBot: hex6(theme.onBot),
+    blobFill: hex6(theme.blobFill),
+    blobRim: theme.blobOutline ? hex6(theme.blobOutline) : "",
     blobPath: SHAPES[bot.shape],
     blobTilt: bot.tilt,
-    screen: (dark ? darkTokens : lightTokens).bg,
+    screen: hex6((dark ? darkTokens : lightTokens).bg),
   };
 }

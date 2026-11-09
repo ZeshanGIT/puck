@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { darkTokens, lightTokens } from "./ui/tokens";
-import { overlayBotLook, overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
+import { hex6, overlayBotLook, overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
 import { SAMPLE_BOTS, SHAPES } from "./ui/blobShapes";
 
 describe("shouldShowOverlayCard", () => {
@@ -65,5 +65,28 @@ describe("overlayBotLook", () => {
     const dark = overlayBotLook(SAMPLE_BOTS.grok, true);
     expect(dark.blobRim).not.toBe("");
     expect(dark.blobFill).not.toBe("#111111");
+  });
+});
+
+describe("every colour the card gets is one Android can parse", () => {
+  const parseable = /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+  test("for every sample bot, light and dark", () => {
+    for (const bot of Object.values(SAMPLE_BOTS)) {
+      for (const dark of [false, true]) {
+        const look = overlayBotLook(bot, dark);
+        for (const colour of [look.botColour, look.botDeep, look.onBot, look.blobFill, look.screen]) {
+          expect(colour).toMatch(parseable);
+        }
+        if (look.blobRim) expect(look.blobRim).toMatch(parseable);
+        const palette = overlayPalette(dark, "urgent");
+        for (const colour of Object.values(palette)) expect(colour).toMatch(parseable);
+      }
+    }
+  });
+
+  test("hex6 expands short codes and leaves others alone", () => {
+    expect(hex6("#fff")).toBe("#ffffff");
+    expect(hex6("#0a3")).toBe("#00aa33");
+    expect(hex6("#3d8fd6")).toBe("#3d8fd6");
   });
 });

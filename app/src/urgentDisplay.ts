@@ -259,12 +259,14 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings): Pr
 async function showCard(alert: FullScreenAlert, settings: LocalSettings): Promise<void> {
   const dark = themeIsDark(settings.theme, await systemIsDark());
   const bot = botLook({ botId: alert.botId ?? alert.botName, botName: alert.botName });
-  showOverlayCard({
+  const shown = showOverlayCard({
     questionId: alert.questionId,
     ...overlayCardText(alert),
     ...overlayPalette(dark, alert.priority),
     ...overlayBotLook(bot, dark),
   });
+  // A refused card leaves only the notification, which is hard to tell from "no card was tried".
+  if (!shown) console.warn(`overlay card was not shown for ${alert.questionId}`);
 }
 
 /** The card was dismissed or snoozed: stop this alert's voice and quiet its ring, keeping it in the shade. */
