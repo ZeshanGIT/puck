@@ -1,12 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { requestSnoozeOnOpen, subscribeSnoozeRequests, takeSnoozeOnOpen } from "./cardSnooze";
+import {
+  cardSnoozeFromNative,
+  cardSnoozeUntil,
+  requestSnoozeOnOpen,
+  subscribeSnoozeRequests,
+  takeSnoozeOnOpen,
+} from "./cardSnooze";
 
 describe("snooze requested from the compact card", () => {
   test("is taken once, by the alert it names", () => {
     requestSnoozeOnOpen("q_SNOOZE000001");
-    expect(takeSnoozeOnOpen("q_OTHER0000001")).toBe(false);
-    expect(takeSnoozeOnOpen("q_SNOOZE000001")).toBe(true);
-    expect(takeSnoozeOnOpen("q_SNOOZE000001")).toBe(false);
+    expect(takeSnoozeOnOpen("q_OTHER0000001")).toBeNull();
+    expect(takeSnoozeOnOpen("q_SNOOZE000001")).toEqual({ kind: "choose" });
+    expect(takeSnoozeOnOpen("q_SNOOZE000001")).toBeNull();
+  });
+
+  test("keeps the length the swipe picked", () => {
+    requestSnoozeOnOpen("q_SNOOZE000004", { kind: "timed", minutes: 10 });
+    expect(takeSnoozeOnOpen("q_SNOOZE000004")).toEqual({ kind: "timed", minutes: 10 });
   });
 
   test("notifies a screen that is already showing the alert", () => {
@@ -21,5 +32,21 @@ describe("snooze requested from the compact card", () => {
     expect(calls).toBe(1);
     takeSnoozeOnOpen("q_SNOOZE000002");
     takeSnoozeOnOpen("q_SNOOZE000003");
+  });
+});
+
+describe("what the native card sends", () => {
+  test("maps minutes, until I'm back and the plain Snooze button", () => {
+    expect(cardSnoozeFromNative(5)).toEqual({ kind: "timed", minutes: 5 });
+    expect(cardSnoozeFromNative(10)).toEqual({ kind: "timed", minutes: 10 });
+    expect(cardSnoozeFromNative(-1)).toEqual({ kind: "timed", minutes: null });
+    expect(cardSnoozeFromNative(0)).toEqual({ kind: "choose" });
+    expect(cardSnoozeFromNative(undefined)).toEqual({ kind: "choose" });
+    expect(cardSnoozeFromNative(Number.NaN)).toEqual({ kind: "choose" });
+  });
+
+  test("turns minutes into the until that answers.snooze takes", () => {
+    expect(cardSnoozeUntil(5, 1_000)).toBe(1_000 + 300_000);
+    expect(cardSnoozeUntil(null, 1_000)).toBeNull();
   });
 });

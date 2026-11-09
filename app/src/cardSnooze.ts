@@ -1,17 +1,40 @@
 /**
- * Alerts whose compact card was snoozed. The app opens each one on its snooze choices, once: a
- * request made while the alert is already on screen is also picked up through the listeners.
+ * Alerts whose compact card was snoozed. The app opens each one once: on its snooze choices (the
+ * Snooze button), or straight into a snooze of the length the swipe picked (5 minutes, 10 minutes,
+ * or until the person is back). A request made while the alert is already on screen is also picked
+ * up through the listeners.
  */
-const pending = new Set<string>();
+
+/** What the card asked for: the choices sheet, or a snooze for `minutes` (null: until I'm back). */
+export type CardSnoozeRequest = { kind: "choose" } | { kind: "timed"; minutes: number | null };
+
+/** The native card sends 0 for "show the choices", -1 for "until I'm back", else the minutes. */
+export const CARD_SNOOZE_UNTIL_BACK = -1;
+
+export function cardSnoozeFromNative(minutes: number | undefined): CardSnoozeRequest {
+  if (minutes === CARD_SNOOZE_UNTIL_BACK) return { kind: "timed", minutes: null };
+  if (typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0) return { kind: "timed", minutes };
+  return { kind: "choose" };
+}
+
+/** The `until` for `answers.snooze` for a timed card snooze: epoch ms, or null for "until I'm back". */
+export function cardSnoozeUntil(minutes: number | null, now: number): number | null {
+  return minutes === null ? null : now + minutes * 60_000;
+}
+
+const pending = new Map<string, CardSnoozeRequest>();
 const listeners = new Set<() => void>();
 
-export function requestSnoozeOnOpen(questionId: string): void {
-  pending.add(questionId);
+export function requestSnoozeOnOpen(questionId: string, request: CardSnoozeRequest = { kind: "choose" }): void {
+  pending.set(questionId, request);
   for (const listener of listeners) listener();
 }
 
-export function takeSnoozeOnOpen(questionId: string): boolean {
-  return pending.delete(questionId);
+/** The request for this alert, once; null when the card asked for nothing. */
+export function takeSnoozeOnOpen(questionId: string): CardSnoozeRequest | null {
+  const request = pending.get(questionId) ?? null;
+  pending.delete(questionId);
+  return request;
 }
 
 export function subscribeSnoozeRequests(listener: () => void): () => void {

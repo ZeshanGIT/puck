@@ -186,7 +186,11 @@ class FullScreenAccessModule : Module() {
       intent.getStringExtra(OverlayCard.EXTRA_QUESTION_ID)?.let { id ->
         sendEvent(
           "onOverlayOpen",
-          mapOf("questionId" to id, "snooze" to intent.getBooleanExtra(OverlayCard.EXTRA_SNOOZE, false)),
+          mapOf(
+            "questionId" to id,
+            "snooze" to intent.getBooleanExtra(OverlayCard.EXTRA_SNOOZE, false),
+            "snoozeMinutes" to intent.getIntExtra(OverlayCard.EXTRA_SNOOZE_MINUTES, 0),
+          ),
         )
       }
     }
@@ -236,7 +240,7 @@ class FullScreenAccessModule : Module() {
     // The alert a tap on the compact card opened on a cold start, and whether Snooze was chosen; taken once.
     Function("takeOverlayOpen") {
       OverlayCard.takeOpened(appContext.currentActivity?.intent)?.let { opened ->
-        mapOf("questionId" to opened.questionId, "snooze" to opened.snooze)
+        mapOf("questionId" to opened.questionId, "snooze" to opened.snooze, "snoozeMinutes" to opened.snoozeMinutes)
       }
     }
   }

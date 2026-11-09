@@ -32,7 +32,7 @@ import type { UploadedAttachment } from "../attachments";
 import { replyPayload } from "../choice";
 import { readClientId } from "../clientStore";
 import { expiryOf, hasExpired } from "../alertExpiry";
-import { subscribeSnoozeRequests, takeSnoozeOnOpen } from "../cardSnooze";
+import { cardSnoozeUntil, subscribeSnoozeRequests, takeSnoozeOnOpen } from "../cardSnooze";
 import { shouldGoBack, type ReceiptViewState } from "../receiptCopy";
 import { useReadingAloud } from "../speak";
 import { useAnnounceNewAlerts } from "../ui/announce";
@@ -530,11 +530,19 @@ function AlertScreen({
   const { questionId } = alert;
   useEffect(() => {
     const checkSnoozeRequest = () => {
-      if (takeSnoozeOnOpen(questionId)) setSnoozeOpen(true);
+      const request = takeSnoozeOnOpen(questionId);
+      if (!request) return;
+      if (request.kind === "choose") {
+        setSnoozeOpen(true);
+        return;
+      }
+      // A swipe on the card already picked the length: snooze now, and fall back to the choices
+      // (with their error message) when it cannot be saved, such as offline or signed out.
+      onSnoozeChoose(cardSnoozeUntil(request.minutes, Date.now())).catch(() => setSnoozeOpen(true));
     };
     checkSnoozeRequest();
     return subscribeSnoozeRequests(checkSnoozeRequest);
-  }, [questionId]);
+  }, [questionId, onSnoozeChoose]);
   const { botId, botName: alertBotName } = alert;
   const bot = useMemo(() => botLook({ botId, botName: alertBotName }), [botId, alertBotName]);
   // Over the lock screen the A9 card closes by itself, so it never holds the lock screen.
