@@ -1,5 +1,7 @@
 import {
   cancelStep,
+  decideAlert,
+  initialAlertStatus,
   isQuestionId,
   isoUtc,
   releaseStep,
@@ -79,7 +81,7 @@ async function insertAlert(ctx: MutationCtx, botDocId: Id<"bots">, args: NewAler
 
   const now = Date.now();
   const scheduledFor = args.scheduledFor === null ? undefined : args.scheduledFor;
-  const status = scheduledFor !== undefined && scheduledFor > now ? "scheduled" : "pending";
+  const status = initialAlertStatus(scheduledFor ?? null, now);
   const alertId = await ctx.db.insert("alerts", {
     questionId,
     botId: botDocId,
@@ -259,9 +261,11 @@ export const wakeSnoozed = mutationGeneric({
       .take(100);
     let woken = 0;
     for (const alert of rows) {
-      if (alert.snoozedByClientId !== client._id || alert.snoozedUntil !== undefined) continue;
+      if (alert.snoozedByClientId !== client._id) continue;
+      const decision = decideAlert(alert.status, { type: "wake", untimed: alert.snoozedUntil === undefined });
+      if (!decision.changed) continue;
       await ctx.db.patch(alert._id, {
-        status: "pending",
+        status: decision.status,
         updatedAt: Date.now(),
         snoozedByClientId: undefined,
       });

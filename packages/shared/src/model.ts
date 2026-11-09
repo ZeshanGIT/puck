@@ -1,5 +1,6 @@
 // Alert and answer shapes shared by the Convex backend, the Expo app and the CLI.
 // Plain TypeScript with no runtime dependencies.
+import { decideAlert } from "./alertLifecycle";
 
 /** An alert can offer at most this many options. */
 export const MAX_OPTIONS = 4;
@@ -166,7 +167,9 @@ export function snoozeReleaseStep(
   snoozedUntil: number | null,
   scheduledUntil: number,
 ): SnoozeReleaseStep {
-  return status === "snoozed" && snoozedUntil === scheduledUntil ? "pending" : "skip";
+  return decideAlert(status, { type: "snoozeElapsed", current: snoozedUntil === scheduledUntil }).changed
+    ? "pending"
+    : "skip";
 }
 
 export type GoneReason = "cancelled" | "expired" | "answeredElsewhere";

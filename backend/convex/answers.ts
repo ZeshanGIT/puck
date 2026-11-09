@@ -1,5 +1,6 @@
 import {
   AlertValidationError,
+  decideAlert,
   receiptState,
   resolveAnsweredAt,
   validateAnswer,
@@ -45,8 +46,8 @@ export const record = mutationGeneric({
       .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))
       .unique();
     if (!alert) throw new Error("alert not found");
-    if (alert.status === "answered") throw new Error("alert is already answered");
-    if (alert.status === "cancelled") throw new Error("alert is cancelled");
+    const decision = decideAlert(alert.status, { type: "answer" });
+    if (decision.rejection !== null) throw new Error(decision.rejection);
     const now = Date.now();
     const answeredAt = resolveAnsweredAt(args.answeredAt, now);
     // Past `expiresAt` the alert is Missed and can't be answered (an answer given in time that
@@ -94,7 +95,7 @@ export const record = mutationGeneric({
       ...(attachments ? { attachments } : {}),
     });
     await ctx.db.patch(alert._id, {
-      status: "answered",
+      status: decision.status,
       updatedAt: now,
       ...(client ? { answeredByClientId: client._id } : {}),
     });
@@ -129,9 +130,8 @@ export const snooze = mutationGeneric({
       .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))
       .unique();
     if (!alert) throw new Error("alert not found");
-    if (alert.status === "answered") throw new Error("alert is already answered");
-    if (alert.status === "cancelled") throw new Error("alert is cancelled");
-    if (alert.status !== "pending" && alert.status !== "snoozed") throw new Error("alert is not pending");
+    const decision = decideAlert(alert.status, { type: "snooze" });
+    if (decision.rejection !== null) throw new Error(decision.rejection);
     const now = Date.now();
     let until: number | null;
     try {
@@ -141,7 +141,7 @@ export const snooze = mutationGeneric({
       throw error;
     }
     await ctx.db.patch(alert._id, {
-      status: "snoozed",
+      status: decision.status,
       updatedAt: now,
       snoozedUntil: until ?? undefined,
       snoozedByClientId: client._id,

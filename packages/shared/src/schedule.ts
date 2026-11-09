@@ -1,3 +1,4 @@
+import { decideAlert } from "./alertLifecycle";
 import type { AlertStatus } from "./model";
 
 export type ReleaseStep = "pending" | "wait" | "skip";
@@ -8,15 +9,15 @@ export type ReleaseStep = "pending" | "wait" | "skip";
  */
 export function releaseStep(status: AlertStatus, scheduledFor: number | null, now: number): ReleaseStep {
   if (status !== "scheduled") return "skip";
-  if (scheduledFor !== null && scheduledFor > now) return "wait";
-  return "pending";
+  const due = scheduledFor === null || scheduledFor <= now;
+  return decideAlert(status, { type: "release", due }).changed ? "pending" : "wait";
 }
 
 export type CancelStep = "cancelled" | "unchanged" | "rejected";
 
 /** Pending, scheduled and snoozed alerts can be cancelled (J9). An answer cannot be undone. */
 export function cancelStep(status: AlertStatus): CancelStep {
-  if (status === "scheduled" || status === "pending" || status === "snoozed") return "cancelled";
-  if (status === "cancelled") return "unchanged";
-  return "rejected";
+  const decision = decideAlert(status, { type: "cancel" });
+  if (decision.rejection !== null) return "rejected";
+  return decision.changed ? "cancelled" : "unchanged";
 }

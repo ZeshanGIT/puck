@@ -2,6 +2,7 @@ import {
   AlertValidationError,
   PENDING_BOT_CAP,
   botPublicId,
+  decideAlert,
   formatPairingCode,
   tooManyPendingBots,
   validatePairingInput,
@@ -570,8 +571,9 @@ export const remove = mutationGeneric({
       .order("desc")
       .take(500);
     for (const alert of alerts) {
-      if (alert.status !== "pending" && alert.status !== "scheduled" && alert.status !== "snoozed") continue;
-      await ctx.db.patch(alert._id, { status: "cancelled", updatedAt: now });
+      const decision = decideAlert(alert.status, { type: "cancel" });
+      if (!decision.changed) continue;
+      await ctx.db.patch(alert._id, { status: decision.status, updatedAt: now });
       // A scheduled alert was never pushed, so there is nothing on a phone to drop.
       if (alert.status !== "scheduled") {
         await ctx.scheduler.runAfter(0, internal.push.sendDismiss, { questionId: alert.questionId });

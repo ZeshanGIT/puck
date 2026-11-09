@@ -81,6 +81,16 @@ export {
 } from "./live";
 export type { LiveCommand, LiveState } from "./live";
 export { cancelStep, releaseStep } from "./schedule";
+export {
+  alertLifecycle,
+  decideAlert,
+  initialAlertStatus,
+  isFinalAlertStatus,
+  isWaitingAlertStatus,
+} from "./alertLifecycle";
+export type { AlertDecision, AlertEvent } from "./alertLifecycle";
+export { checkMachine, defineMachine, describeMachine, mermaidFor, runMachine } from "./machine";
+export type { Machine, MachineSpec, MachineTransitionRow } from "./machine";
 export type { CancelStep, ReleaseStep } from "./schedule";
 export { buildAnswerPayload, buildSnoozedPayload } from "./payload";
 export {
