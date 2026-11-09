@@ -13,11 +13,18 @@
  */
 import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { BackHandler, StyleSheet, View } from "react-native";
 import { Text } from "../ui/Text";
 import { OnboardingFrame } from "../onboarding/parts";
 import { clearPairingNotification } from "../pairingDisplay";
+import {
+  backAction,
+  initialPairingFlow,
+  keypadBusy,
+  pairingFlowTransition,
+  typedCodeToLookUp,
+} from "../pairingFlowMachine";
 import {
   botNameFromId,
   findRequestByBotId,
@@ -52,11 +59,6 @@ export type PairingStart =
   | { kind: "approve"; botId: string }
   | { kind: "meet"; bot: BlobBot };
 
-type Step =
-  | { kind: "code" }
-  | { kind: "approve"; botId: string; showCode: boolean }
-  | { kind: "meet"; bot: BlobBot };
-
 export interface PairingHostProps {
   source: PairingSource;
   start: PairingStart;
@@ -78,29 +80,24 @@ function useNow(intervalMs: number): number {
 
 export function PairingHost({ source, start, onClose, onPaired }: PairingHostProps) {
   const now = useNow(15_000);
-  const [step, setStep] = useState<Step>(() =>
-    start.kind === "approve" ? { kind: "approve", botId: start.botId, showCode: true } : start,
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  // A typed code waits here until the list of requests is known, so a request is never skipped by being early.
-  const [typed, setTyped] = useState<string | null>(null);
+  const [state, dispatch] = useReducer(pairingFlowTransition, start, initialPairingFlow);
+  const { step, busy, error } = state;
   const { requests, approve, reject } = source;
   // The request B4 shows stays on screen while it is being approved, after it has left the list.
+  // It is read from the live list during render, so it stays a ref rather than part of the machine state.
   const shown = useRef<PairingRequest | null>(null);
 
   // Android's back gesture does what the Back control does.
   // From B4 reached by typing, Back returns to the keypad; otherwise it closes the flow.
-  const typedApprove = step.kind === "approve" && !step.showCode;
+  const back = backAction(state);
   const goBack = useCallback(() => {
-    if (busy) return;
-    if (typedApprove) {
-      setError(null);
-      setStep({ kind: "code" });
+    if (back === "ignore") return;
+    if (back === "keypad") {
+      dispatch({ type: "back" });
       return;
     }
     onClose();
-  }, [busy, onClose, typedApprove]);
+  }, [back, onClose]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       goBack();
@@ -109,39 +106,38 @@ export function PairingHost({ source, start, onClose, onPaired }: PairingHostPro
     return () => subscription.remove();
   }, [goBack]);
 
-  const onCode = useCallback((code: string) => {
-    setError(null);
-    setTyped(code);
-  }, []);
+  const onCode = useCallback((code: string) => dispatch({ type: "codeTyped", code }), []);
 
+  // A typed code waits in the state until the list of requests is known, so a request is never skipped by being early.
+  const typedCode = typedCodeToLookUp(state);
   useEffect(() => {
-    if (typed === null || requests === undefined || step.kind !== "code") return;
-    const code = typed;
-    const match = findRequestByCode(requests, code, Date.now());
-    setTyped(null);
+    if (typedCode === null || requests === undefined) return;
+    const match = findRequestByCode(requests, typedCode, Date.now());
     if (match) {
       shown.current = match;
-      setStep({ kind: "approve", botId: match.botId, showCode: false });
+      dispatch({ type: "codeLookedUp", botId: match.botId });
       return;
     }
-    setBusy(true);
-    approve(code)
+    dispatch({ type: "codeLookedUp", botId: null });
+    approve(typedCode)
       .then((result) => {
         void clearPairingNotification(result.botId);
-        setStep({ kind: "meet", bot: botLook({ botId: result.botId, botName: botNameFromId(result.botId) }) });
+        dispatch({
+          type: "approveSucceeded",
+          bot: botLook({ botId: result.botId, botName: botNameFromId(result.botId) }),
+        });
       })
-      .catch((caught: unknown) => setError(pairingErrorText(readableError(caught))))
-      .finally(() => setBusy(false));
-  }, [typed, requests, step.kind, approve]);
+      .catch((caught: unknown) => dispatch({ type: "failed", message: pairingErrorText(readableError(caught)) }));
+  }, [typedCode, requests, approve]);
 
   if (step.kind === "code") {
     // A typed code on a signed-in phone waits for the list; show the keypad as busy meanwhile.
     return (
       <B3PairCode
         error={error}
-        busy={busy || typed !== null}
+        busy={keypadBusy(state)}
         onSubmit={onCode}
-        onEdit={() => setError(null)}
+        onEdit={() => dispatch({ type: "codeEdited" })}
         onBack={goBack}
       />
     );
@@ -167,19 +163,23 @@ export function PairingHost({ source, start, onClose, onPaired }: PairingHostPro
   if (request === null) return <NoLongerOpen onBack={goBack} />;
 
   const decide = (action: "approve" | "reject") => {
-    setError(null);
-    setBusy(true);
-    const run =
-      action === "approve"
-        ? approve(request.pairingCode).then(() => {
-            void clearPairingNotification(request.botId);
-            setStep({ kind: "meet", bot: requestLook(request) });
-          })
-        : reject(request.botId).then(() => {
-            void clearPairingNotification(request.botId);
-            onClose("Rejected. The terminal was told.");
-          });
-    run.catch((caught: unknown) => setError(pairingErrorText(readableError(caught)))).finally(() => setBusy(false));
+    dispatch({ type: action === "approve" ? "approveStarted" : "rejectStarted" });
+    if (action === "approve") {
+      approve(request.pairingCode)
+        .then(() => {
+          void clearPairingNotification(request.botId);
+          dispatch({ type: "approveSucceeded", bot: requestLook(request) });
+        })
+        .catch((caught: unknown) => dispatch({ type: "failed", message: pairingErrorText(readableError(caught)) }));
+      return;
+    }
+    reject(request.botId)
+      .then(() => {
+        void clearPairingNotification(request.botId);
+        onClose("Rejected. The terminal was told.");
+        dispatch({ type: "rejectSucceeded" });
+      })
+      .catch((caught: unknown) => dispatch({ type: "failed", message: pairingErrorText(readableError(caught)) }));
   };
 
   return (
