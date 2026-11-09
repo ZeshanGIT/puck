@@ -26,7 +26,8 @@ import {
 } from "./localSettings";
 import { handleLivePush } from "./liveNotification";
 import { systemIsDark } from "./overlayCard";
-import { overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
+import { overlayBotLook, overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
+import { botLook } from "./ui/botLook";
 import { livePush } from "./livePayload";
 import { openPairingFromNotificationData } from "./pairingOpen";
 import { displayPairing } from "./pairingDisplay";
@@ -257,7 +258,13 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings): Pr
 /** On an unlocked phone the alert also shows as a compact card over other apps (when allowed). */
 async function showCard(alert: FullScreenAlert, settings: LocalSettings): Promise<void> {
   const dark = themeIsDark(settings.theme, await systemIsDark());
-  showOverlayCard({ questionId: alert.questionId, ...overlayCardText(alert), ...overlayPalette(dark, alert.priority) });
+  const bot = botLook({ botId: alert.botId ?? alert.botName, botName: alert.botName });
+  showOverlayCard({
+    questionId: alert.questionId,
+    ...overlayCardText(alert),
+    ...overlayPalette(dark, alert.priority),
+    ...overlayBotLook(bot, dark),
+  });
 }
 
 /** The card was dismissed or snoozed: stop this alert's voice and quiet its ring, keeping it in the shade. */

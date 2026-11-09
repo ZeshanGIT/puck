@@ -11,16 +11,7 @@ type FullScreenNative = {
   watchVolumeKeys?: () => boolean;
   requestUnlock?: () => Promise<string>;
   canDrawOverlay?: () => boolean;
-  showOverlayCard?: (
-    questionId: string,
-    label: string,
-    title: string,
-    body: string,
-    background: string,
-    ink: string,
-    ink2: string,
-    accent: string,
-  ) => boolean;
+  showOverlayCard?: (card: Record<string, string | number>) => boolean;
   hideOverlayCard?: (questionId: string) => boolean;
   takeOverlayOpen?: () => { questionId: string; snooze: boolean; snoozeMinutes?: number } | null;
   addListener?: (
@@ -189,23 +180,23 @@ export interface OverlayCardContent {
   ink: string;
   ink2: string;
   accent: string;
+  /** The bot's base colour and its deep edge colour, and the text colour that sits on the bot colour. */
+  botColour: string;
+  botDeep: string;
+  onBot: string;
+  /** The blob: body fill, rim ("" for none), body path in a 100 x 100 box, and tilt in degrees. */
+  blobFill: string;
+  blobRim: string;
+  blobPath: string;
+  blobTilt: number;
+  /** The colour the card grows into when it is pulled down: the app's screen background. */
+  screen: string;
 }
 
 /** Shows the compact card for an alert, replacing one already up. False without the permission. Never throws. */
 export function showOverlayCard(card: OverlayCardContent): boolean {
   try {
-    return (
-      nativeModule()?.showOverlayCard?.(
-        card.questionId,
-        card.label,
-        card.title,
-        card.body,
-        card.background,
-        card.ink,
-        card.ink2,
-        card.accent,
-      ) === true
-    );
+    return nativeModule()?.showOverlayCard?.({ ...card }) === true;
   } catch {
     return false;
   }

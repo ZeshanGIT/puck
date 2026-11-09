@@ -202,28 +202,29 @@ class FullScreenAccessModule : Module() {
     }
 
     // Shows the compact card for one alert, replacing any card already up. False without the permission.
-    Function("showOverlayCard") {
-        questionId: String,
-        label: String,
-        title: String,
-        body: String,
-        background: String,
-        ink: String,
-        ink2: String,
-        accent: String ->
+    Function("showOverlayCard") { card: Map<String, Any?> ->
       val context = appContext.reactContext ?: return@Function false
+      fun text(key: String): String = card[key] as? String ?: throw IllegalArgumentException(key)
       try {
         OverlayCard.show(
           context,
           OverlayCard.Spec(
-            questionId = questionId,
-            label = label,
-            title = title,
-            body = body,
-            background = Color.parseColor(background),
-            ink = Color.parseColor(ink),
-            ink2 = Color.parseColor(ink2),
-            accent = Color.parseColor(accent),
+            questionId = text("questionId"),
+            label = text("label"),
+            title = text("title"),
+            body = text("body"),
+            background = Color.parseColor(text("background")),
+            ink = Color.parseColor(text("ink")),
+            ink2 = Color.parseColor(text("ink2")),
+            accent = Color.parseColor(text("accent")),
+            botColour = Color.parseColor(text("botColour")),
+            botDeep = Color.parseColor(text("botDeep")),
+            onBot = Color.parseColor(text("onBot")),
+            blobFill = Color.parseColor(text("blobFill")),
+            blobRim = (card["blobRim"] as? String)?.takeIf { it.isNotEmpty() }?.let { Color.parseColor(it) },
+            blobPath = text("blobPath"),
+            blobTilt = (card["blobTilt"] as? Number)?.toFloat() ?: 0f,
+            screen = Color.parseColor(text("screen")),
           ),
         )
       } catch (error: IllegalArgumentException) {

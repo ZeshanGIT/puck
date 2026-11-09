@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { darkTokens, lightTokens } from "./ui/tokens";
-import { overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
+import { overlayBotLook, overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
+import { SAMPLE_BOTS, SHAPES } from "./ui/blobShapes";
 
 describe("shouldShowOverlayCard", () => {
   test("an unlocked phone with the permission shows the card", () => {
@@ -45,5 +46,24 @@ describe("overlayPalette", () => {
     });
     expect(overlayPalette(true, "urgent").background).toBe(darkTokens.card);
     expect(overlayPalette(true, "urgent").accent).toBe(darkTokens.danger);
+  });
+});
+
+describe("overlayBotLook", () => {
+  test("carries the bot's blob, its colours and the screen the card grows into", () => {
+    const light = overlayBotLook(SAMPLE_BOTS.puck, false);
+    expect(light.blobPath).toBe(SHAPES.round);
+    expect(light.blobTilt).toBe(3);
+    expect(light.botColour).toBe("#3d8fd6");
+    expect(light.screen).toBe(lightTokens.bg);
+    expect(light.blobRim).toBe("");
+    expect(overlayBotLook(SAMPLE_BOTS.puck, true).screen).toBe(darkTokens.bg);
+  });
+
+  test("the black bot gets a light rim and a dark body on dark surfaces only", () => {
+    expect(overlayBotLook(SAMPLE_BOTS.grok, false).blobRim).toBe("");
+    const dark = overlayBotLook(SAMPLE_BOTS.grok, true);
+    expect(dark.blobRim).not.toBe("");
+    expect(dark.blobFill).not.toBe("#111111");
   });
 });

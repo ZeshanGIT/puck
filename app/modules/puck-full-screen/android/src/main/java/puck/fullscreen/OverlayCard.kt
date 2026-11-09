@@ -1,12 +1,16 @@
 package puck.fullscreen
 
+import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PixelFormat
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -21,27 +25,34 @@ import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
-import android.view.animation.PathInterpolator
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
+import androidx.core.graphics.PathParser
 import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sign
+import kotlin.random.Random
 
 /**
  * The compact alert card, drawn over other apps. It needs the overlay permission the person grants
  * on Android's "Display over other apps" page; without it nothing is drawn and the notification
  * carries the alert alone. One card at a time. It never takes focus, and touches outside it reach
- * the app underneath. Gestures:
+ * the app underneath. The card wears the bot: its blob (with eyes that glance and blink) and a wash
+ * of its colour. Gestures:
  *
- * - Tap, or swipe down: opens Puck on that alert. A swipe down grows the card into a full-screen
- *   sheet first, so the card feels like it becomes the app.
- * - Swipe sideways: snoozes. The longer the swipe, the longer the snooze, shown under the card as it
- *   moves: 5 minutes, then 10 minutes, then until the person is back. Lifting the finger picks the
- *   length showing; a short swipe springs back and does nothing.
+ * - Tap: opens Puck on that alert.
+ * - Pull down: the card grows with the finger into a full-screen sheet (white, or dark in the dark
+ *   theme). Let go past a short pull and the sheet finishes growing while Puck opens beneath it and
+ *   the sheet fades away onto the alert; let go early and the card springs back.
+ * - Swipe sideways: snoozes. The card slides aside and the length shows under it in the bot's colour:
+ *   5 minutes, then 10 minutes, then until the person is back. Lifting the finger picks the length
+ *   showing; a short swipe springs back and does nothing.
  * - Swipe up (or Dismiss): removes the card and stops the ring. The alert stays in the shade.
  * - The Snooze button removes the card and opens Puck on that alert's snooze choices.
  */
@@ -62,15 +73,19 @@ internal object OverlayCard {
   private const val UNTIL_BACK_FRACTION = 0.65f
 
   private const val SETTLE_MS = 150L
-  private const val EXPAND_MS = 380L
-  private const val OPEN_AT = 0.5f
-  private const val COVER_HOLD_MS = 420L
-  private const val COVER_FADE_MS = 240L
+  private const val COVER_HOLD_MS = 380L
+  private const val COVER_FADE_MS = 320L
   private const val COVER_SAFETY_MS = 4000L
   private const val FLING_UP = -1200f
   private const val FLING_DOWN = 1500f
   private const val TOP_MARGIN_DP = 44
   private const val ROOM_BELOW_DP = 72
+  private const val CORNER_DP = 22
+
+  // A pull down reaches the full screen after this share of the screen height, and lets go into the
+  // app once it has passed this share of that distance.
+  private const val FULL_PULL_FRACTION = 0.5f
+  private const val OPEN_PROGRESS = 0.18f
 
   data class Spec(
     val questionId: String,
@@ -81,6 +96,14 @@ internal object OverlayCard {
     val ink: Int,
     val ink2: Int,
     val accent: Int,
+    val botColour: Int,
+    val botDeep: Int,
+    val onBot: Int,
+    val blobFill: Int,
+    val blobRim: Int?,
+    val blobPath: String,
+    val blobTilt: Float,
+    val screen: Int,
   )
 
   data class Opened(val questionId: String, val snooze: Boolean, val snoozeMinutes: Int)
@@ -105,13 +128,6 @@ internal object OverlayCard {
     else -> SNOOZE_UNTIL_BACK
   }
 
-  private fun snoozeLabel(minutes: Int): String = when (minutes) {
-    5 -> "Snooze 5 minutes"
-    10 -> "Snooze 10 minutes"
-    SNOOZE_UNTIL_BACK -> "Snooze until I'm back"
-    else -> "Keep going to snooze"
-  }
-
   fun canDraw(context: Context): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
 
@@ -120,6 +136,7 @@ internal object OverlayCard {
     val app = context.applicationContext
     main.post {
       removeView()
+      cover?.let { removeCover(it) }
       val root = buildView(app, card)
       val layoutParams = WindowManager.LayoutParams(
         WindowManager.LayoutParams.MATCH_PARENT,
@@ -138,6 +155,7 @@ internal object OverlayCard {
         view = root
         params = layoutParams
         shownId = card.questionId
+        enter(root)
       } catch (error: RuntimeException) {
         // The permission was taken back, or the window manager refused the view: no card.
         view = null
@@ -146,6 +164,20 @@ internal object OverlayCard {
       }
     }
     return true
+  }
+
+  /** The card drops in from its top edge with a little bounce, and the blob pops after it. */
+  private fun enter(root: View) {
+    val box = root.findViewWithTag<View>(TAG_BOX) ?: return
+    val blob = root.findViewWithTag<View>(TAG_BLOB)
+    box.alpha = 0f
+    box.translationY = -dp(root.context, 28).toFloat()
+    box.animate().alpha(1f).translationY(0f).setDuration(380).setInterpolator(OvershootInterpolator(1.0f)).start()
+    blob?.let {
+      it.scaleX = 0.4f
+      it.scaleY = 0.4f
+      it.animate().scaleX(1f).scaleY(1f).setStartDelay(140).setDuration(420).setInterpolator(OvershootInterpolator(2.4f)).start()
+    }
   }
 
   /** Removes the card when it shows `questionId`, or any card when `questionId` is null. */
@@ -217,52 +249,95 @@ internal object OverlayCard {
     onAction?.invoke(questionId, action)
   }
 
-  private class Parts(val root: FrameLayout, val box: View, val underlay: TextView)
+  private const val TAG_BOX = "puck-card-box"
+  private const val TAG_BLOB = "puck-card-blob"
+
+  /** The pieces of the sideways reveal that change while the card is dragged. */
+  private class Reveal(
+    val layout: LinearLayout,
+    val emoji: TextView,
+    val big: TextView,
+    val small: TextView,
+  )
+
+  private class Parts(val root: FrameLayout, val box: View, val reveal: Reveal)
 
   private fun buildView(context: Context, card: Spec): View {
+    val corner = dp(context, CORNER_DP).toFloat()
     val box = LinearLayout(context).apply {
+      tag = TAG_BOX
       orientation = LinearLayout.VERTICAL
-      setPadding(dp(context, 16), dp(context, 14), dp(context, 16), dp(context, 14))
-      background = GradientDrawable().apply {
-        setColor(card.background)
-        cornerRadius = dp(context, 18).toFloat()
-      }
+      setPadding(dp(context, 16), dp(context, 14), dp(context, 16), dp(context, 12))
+      // A wash of the bot's colour that fades to the card colour, like the cards in the app.
+      background = GradientDrawable(
+        GradientDrawable.Orientation.LEFT_RIGHT,
+        intArrayOf(ColorUtils.blendARGB(card.background, card.botColour, 0.2f), card.background),
+      ).apply { cornerRadius = corner }
       elevation = dp(context, 10).toFloat()
       setOnClickListener { openApp(context, card.questionId, snooze = false); removeView() }
     }
-    box.addView(line(context, card.label, card.accent, 12f, bold = true))
-    box.addView(line(context, card.title, card.ink, 16f, bold = true, maxLines = 1))
-    box.addView(line(context, card.body, card.ink2, 14f, maxLines = 2))
-    box.addView(line(context, "Sideways: snooze   Up: hide   Down: open", card.ink2, 12f, topPaddingDp = 6))
+
+    val blob = BlobView(context, card).apply { tag = TAG_BLOB }
+    val texts = LinearLayout(context).apply {
+      orientation = LinearLayout.VERTICAL
+      addView(line(context, card.label.uppercase(), card.accent, 11f, bold = true))
+      addView(line(context, card.title, card.ink, 17f, bold = true, maxLines = 1))
+      addView(line(context, card.body, card.ink2, 14f, maxLines = 2, topPaddingDp = 1))
+    }
+    val top = LinearLayout(context).apply {
+      orientation = LinearLayout.HORIZONTAL
+      gravity = Gravity.CENTER_VERTICAL
+      addView(blob, LinearLayout.LayoutParams(dp(context, 56), dp(context, 56)).apply { marginEnd = dp(context, 14) })
+      addView(texts, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+    }
+    box.addView(top)
+    box.addView(line(context, "◀ snooze ▶    ▲ hide    ▼ open", card.ink2, 11f, topPaddingDp = 8))
     box.addView(actionRow(context, card))
 
-    // Under the card: what a sideways swipe would pick, revealed as the card moves aside.
-    val underlay = TextView(context).apply {
-      setTextColor(card.ink)
+    // Under the card, the bot's colour and what a sideways swipe would pick.
+    val emoji = TextView(context).apply {
+      text = "💤"
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 30f)
+    }
+    val big = TextView(context).apply {
+      setTextColor(card.onBot)
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 36f)
+      typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+      setPadding(dp(context, 12), 0, dp(context, 6), 0)
+    }
+    val small = TextView(context).apply {
+      setTextColor(card.onBot)
       setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
       typeface = Typeface.DEFAULT_BOLD
-      setPadding(dp(context, 24), 0, dp(context, 24), 0)
-      gravity = Gravity.CENTER_VERTICAL or Gravity.START
-      background = GradientDrawable().apply {
-        setColor(ColorUtils.blendARGB(card.background, card.accent, 0.22f))
-        cornerRadius = dp(context, 18).toFloat()
-      }
-      visibility = View.INVISIBLE
     }
+    val layout = LinearLayout(context).apply {
+      orientation = LinearLayout.HORIZONTAL
+      gravity = Gravity.CENTER_VERTICAL or Gravity.START
+      setPadding(dp(context, 26), 0, dp(context, 26), 0)
+      background = GradientDrawable(
+        GradientDrawable.Orientation.LEFT_RIGHT,
+        intArrayOf(card.botColour, card.botDeep),
+      ).apply { cornerRadius = corner }
+      visibility = View.INVISIBLE
+      addView(emoji)
+      addView(big)
+      addView(small)
+    }
+    val reveal = Reveal(layout, emoji, big, small)
 
     val root = FrameLayout(context).apply {
       setPadding(dp(context, 12), 0, dp(context, 12), 0)
-      addView(underlay, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+      addView(layout, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
       addView(box, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
     }
-    attachGestures(context, Parts(root, box, underlay), card)
+    attachGestures(context, Parts(root, box, reveal), card)
     return root
   }
 
   private fun actionRow(context: Context, card: Spec): View = LinearLayout(context).apply {
     orientation = LinearLayout.HORIZONTAL
     gravity = Gravity.END
-    setPadding(0, dp(context, 6), 0, 0)
+    setPadding(0, dp(context, 2), 0, 0)
     addView(action(context, "Dismiss", card.ink2) { release(context, card.questionId, ACTION_DISMISS) })
     addView(action(context, "Snooze", card.accent) {
       release(context, card.questionId, ACTION_SNOOZE)
@@ -285,12 +360,40 @@ internal object OverlayCard {
       setOnClickListener { onClick() }
     }
 
+  /** Sets the reveal's text for a snooze length and which side it sits on. */
+  private fun setReveal(reveal: Reveal, minutes: Int, towardRight: Boolean, bump: Boolean) {
+    when (minutes) {
+      5, 10 -> {
+        reveal.big.text = minutes.toString()
+        reveal.small.text = "minutes"
+      }
+      SNOOZE_UNTIL_BACK -> {
+        reveal.big.text = "∞"
+        reveal.small.text = "until I'm back"
+      }
+      else -> {
+        reveal.big.text = ""
+        reveal.small.text = "keep going"
+      }
+    }
+    reveal.layout.gravity = Gravity.CENTER_VERTICAL or (if (towardRight) Gravity.START else Gravity.END)
+    if (bump && minutes != 0) {
+      reveal.big.scaleX = 1.4f
+      reveal.big.scaleY = 1.4f
+      reveal.big.animate().scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(OvershootInterpolator(3f)).start()
+      reveal.emoji.rotation = -18f
+      reveal.emoji.animate().rotation(0f).setDuration(320).setInterpolator(OvershootInterpolator(3f)).start()
+    }
+  }
+
   private enum class Axis { NONE, HORIZONTAL, VERTICAL }
 
   /**
    * One finger on the card. The first move past the touch slop picks the axis: sideways reveals and
    * picks a snooze length, vertical hides (up) or opens (down). Positions use raw screen
-   * coordinates, so growing the window while a vertical drag runs does not disturb them.
+   * coordinates, so changes to the card's own window while a drag runs do not disturb them. The
+   * pull-down is drawn by a separate full-screen window, so it is never cut off by the card's
+   * window; the card window stays under the finger to keep receiving the touch.
    */
   private fun attachGestures(context: Context, parts: Parts, card: Spec) {
     val box = parts.box
@@ -300,6 +403,7 @@ internal object OverlayCard {
     var axis = Axis.NONE
     var minutes = 0
     var tracker: VelocityTracker? = null
+    var expander: Expander? = null
 
     fun finish() {
       tracker?.recycle()
@@ -310,7 +414,7 @@ internal object OverlayCard {
 
     fun settleBack() {
       box.animate().translationX(0f).translationY(0f).alpha(1f).setDuration(SETTLE_MS)
-        .withEndAction { parts.underlay.visibility = View.INVISIBLE; setRoom(parts.root, false) }
+        .withEndAction { parts.reveal.layout.visibility = View.INVISIBLE; setRoom(parts.root, false) }
         .start()
     }
 
@@ -321,6 +425,8 @@ internal object OverlayCard {
           downY = event.rawY
           axis = Axis.NONE
           minutes = 0
+          expander = null
+          box.animate().cancel()
           tracker?.recycle()
           tracker = VelocityTracker.obtain().also { it.addMovement(event) }
           true
@@ -331,27 +437,36 @@ internal object OverlayCard {
           val dy = event.rawY - downY
           if (axis == Axis.NONE && (abs(dx) > slop || abs(dy) > slop)) {
             axis = if (abs(dy) > abs(dx)) Axis.VERTICAL else Axis.HORIZONTAL
-            // Room above and below, so a vertical drag is not cut off at the card's own edges.
-            if (axis == Axis.VERTICAL) setRoom(parts.root, true)
-            if (axis == Axis.HORIZONTAL) parts.underlay.visibility = View.VISIBLE
+            if (axis == Axis.VERTICAL) {
+              if (dy > 0) {
+                expander = Expander(context, box, card).also { it.begin() }
+              } else {
+                // Room above, so an upward drag is not cut off at the card's own top edge.
+                setRoom(parts.root, true)
+              }
+            }
+            if (axis == Axis.HORIZONTAL) {
+              setReveal(parts.reveal, 0, dx > 0, bump = false)
+              parts.reveal.layout.visibility = View.VISIBLE
+            }
           }
           when (axis) {
             Axis.HORIZONTAL -> {
               box.translationX = dx
               box.alpha = 1f - 0.25f * min(abs(dx) / box.width, 1f)
               val next = snoozeMinutesFor(abs(dx) / box.width)
-              if (next != minutes) {
+              val changed = next != minutes
+              if (changed) {
                 minutes = next
-                parts.underlay.text = snoozeLabel(next)
-                parts.underlay.gravity = Gravity.CENTER_VERTICAL or (if (dx > 0) Gravity.START else Gravity.END)
                 box.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-              } else if (dx != 0f) {
-                parts.underlay.gravity = Gravity.CENTER_VERTICAL or (if (dx > 0) Gravity.START else Gravity.END)
               }
+              if (changed || dx != 0f) setReveal(parts.reveal, minutes, dx > 0, bump = changed)
             }
             Axis.VERTICAL -> {
-              // Up follows the finger and fades; down is held back so it reads as a pull, not a drop.
-              if (dy < 0) {
+              val grow = expander
+              if (grow != null) {
+                grow.update(max(dy, 0f) / (grow.screenH * FULL_PULL_FRACTION))
+              } else if (dy < 0) {
                 box.translationY = dy
                 box.alpha = 1f - min(abs(dy) / (box.height * 1.4f), 0.85f)
               } else {
@@ -369,6 +484,7 @@ internal object OverlayCard {
           val vy = tracker?.yVelocity ?: 0f
           val dx = event.rawX - downX
           val dy = event.rawY - downY
+          val grow = expander
           when (axis) {
             Axis.NONE -> box.performClick()
             Axis.HORIZONTAL -> {
@@ -388,6 +504,8 @@ internal object OverlayCard {
               }
             }
             Axis.VERTICAL -> when {
+              grow != null ->
+                if (grow.progress > OPEN_PROGRESS || vy > FLING_DOWN) grow.complete() else grow.cancel()
               dy < 0 && (-dy > box.height * 0.4f || vy < FLING_UP) -> {
                 box.animate()
                   .translationY(-(box.height + dp(context, TOP_MARGIN_DP)).toFloat())
@@ -396,15 +514,17 @@ internal object OverlayCard {
                   .withEndAction { release(context, card.questionId, ACTION_DISMISS) }
                   .start()
               }
-              dy > 0 && (dy > dp(context, 56) || vy > FLING_DOWN) -> expandAndOpen(context, box, card)
               else -> settleBack()
             }
           }
+          expander = null
           finish()
           true
         }
         MotionEvent.ACTION_CANCEL -> {
-          if (axis != Axis.NONE) settleBack()
+          val grow = expander
+          if (grow != null) grow.cancel() else if (axis != Axis.NONE) settleBack()
+          expander = null
           finish()
           true
         }
@@ -414,9 +534,9 @@ internal object OverlayCard {
   }
 
   /**
-   * Gives a vertical drag space: the window starts at the top of the screen with the card's usual
-   * gap as padding, and keeps extra room below. Touches in that room belong to the card window
-   * only while a drag lasts; `on = false` puts the window back to the card's own size.
+   * Gives an upward drag space: the window starts at the top of the screen with the card's usual
+   * gap as padding. Touches in that gap belong to the card window only while a drag lasts; `on =
+   * false` puts the window back to the card's own size.
    */
   private fun setRoom(root: FrameLayout, on: Boolean) {
     val current = params ?: return
@@ -451,96 +571,129 @@ internal object OverlayCard {
   }
 
   /**
-   * The swipe-down transition. A full-screen sheet in the card's colour starts exactly where the
-   * card is, with a picture of the card on it, and grows to fill the screen while the picture fades
-   * and the corners square off. Puck is started about half way through, so it is drawing under the
-   * sheet when the sheet is done; the sheet then holds a moment and fades away onto the alert.
+   * The pull-down transition, drawn in its own full-screen window so nothing clips it. A sheet that
+   * starts exactly as the card (a picture of it on the card colour) grows with `progress` (0 to 1)
+   * to fill the screen in the app's background colour while the picture fades and the corners
+   * square off. [complete] finishes the growth, starts Puck beneath, holds a moment and fades the
+   * sheet away so the alert appears to come in through it. [cancel] shrinks it back onto the card.
    */
-  private fun expandAndOpen(context: Context, box: View, card: Spec) {
-    val width = box.width
-    val height = box.height
-    if (width <= 0 || height <= 0) {
-      openApp(context, card.questionId, snooze = false)
-      removeView()
-      return
-    }
-    val snapshot = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    box.draw(Canvas(snapshot))
-    val at = IntArray(2)
-    box.getLocationOnScreen(at)
-    val (screenW, screenH) = screenSize(context)
-    val radiusFrom = dp(context, 18).toFloat()
-
-    val fillBackground = GradientDrawable().apply {
+  private class Expander(private val context: Context, private val box: View, private val card: Spec) {
+    private val width = box.width
+    private val height = box.height
+    private val at = IntArray(2)
+    val screenW: Int
+    val screenH: Int
+    private val radiusFrom = dp(context, CORNER_DP).toFloat()
+    private val fillBackground = GradientDrawable().apply {
       setColor(card.background)
       cornerRadius = radiusFrom
     }
-    val picture = ImageView(context).apply { setImageBitmap(snapshot) }
-    val fill = FrameLayout(context).apply {
-      background = fillBackground
-      addView(picture, FrameLayout.LayoutParams(width, height, Gravity.TOP or Gravity.START))
+    private val picture = ImageView(context)
+    private val fill = FrameLayout(context)
+    private val sheet = FrameLayout(context)
+    private val colours = ArgbEvaluator()
+    private var ready = false
+    var progress = 0f
+      private set
+
+    init {
+      val size = screenSize(context)
+      screenW = size.first
+      screenH = size.second
     }
-    val sheet = FrameLayout(context).apply {
-      addView(
+
+    fun begin() {
+      if (width <= 0 || height <= 0) return
+      val snapshot = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+      box.draw(Canvas(snapshot))
+      box.getLocationOnScreen(at)
+      picture.setImageBitmap(snapshot)
+      fill.background = fillBackground
+      fill.addView(picture, FrameLayout.LayoutParams(width, height, Gravity.TOP or Gravity.START))
+      sheet.addView(
         fill,
         FrameLayout.LayoutParams(width, height).apply {
           leftMargin = at[0]
           topMargin = at[1]
         },
       )
-    }
-    val sheetParams = WindowManager.LayoutParams(
-      WindowManager.LayoutParams.MATCH_PARENT,
-      WindowManager.LayoutParams.MATCH_PARENT,
-      overlayType(),
-      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-      PixelFormat.TRANSLUCENT,
-    ).apply { gravity = Gravity.TOP or Gravity.START }
-
-    val manager = windowManager(context)
-    try {
-      cover?.let { manager.removeView(it) }
-    } catch (error: RuntimeException) {
-      // Already gone.
-    }
-    cover = null
-    try {
-      manager.addView(sheet, sheetParams)
-    } catch (error: RuntimeException) {
-      openApp(context, card.questionId, snooze = false)
-      removeView()
-      return
-    }
-    cover = sheet
-    // The sheet is up and looks like the card, so the card can go without a visible change.
-    sheet.post { removeView() }
-
-    var opened = false
-    ValueAnimator.ofFloat(0f, 1f).apply {
-      duration = EXPAND_MS
-      interpolator = PathInterpolator(0.2f, 0f, 0f, 1f)
-      addUpdateListener { animator ->
-        val t = animator.animatedValue as Float
-        val lp = fill.layoutParams as FrameLayout.LayoutParams
-        lp.leftMargin = lerp(at[0], 0, t)
-        lp.topMargin = lerp(at[1], 0, t)
-        lp.width = lerp(width, screenW, t)
-        lp.height = lerp(height, screenH, t)
-        fill.layoutParams = lp
-        fillBackground.cornerRadius = radiusFrom * (1f - t)
-        picture.alpha = 1f - min(1f, t * 2.5f)
-        if (!opened && t >= OPEN_AT) {
-          opened = true
-          openApp(context, card.questionId, snooze = false)
-        }
+      val sheetParams = WindowManager.LayoutParams(
+        WindowManager.LayoutParams.MATCH_PARENT,
+        WindowManager.LayoutParams.MATCH_PARENT,
+        overlayType(),
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+          WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+          WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+          WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+        PixelFormat.TRANSLUCENT,
+      ).apply { gravity = Gravity.TOP or Gravity.START }
+      try {
+        windowManager(context).addView(sheet, sheetParams)
+      } catch (error: RuntimeException) {
+        return
       }
-      start()
+      cover?.let { if (it !== sheet) removeCover(it) }
+      cover = sheet
+      ready = true
+      // The sheet shows the card now; the card's own window keeps the touch but draws nothing.
+      sheet.post { box.alpha = 0f }
     }
-    main.postDelayed({ fadeOutCover(sheet) }, EXPAND_MS + COVER_HOLD_MS)
-    main.postDelayed({ removeCover(sheet) }, COVER_SAFETY_MS)
+
+    fun update(p: Float) {
+      if (!ready) return
+      val t = p.coerceIn(0f, 1f)
+      progress = t
+      val lp = fill.layoutParams as FrameLayout.LayoutParams
+      val left = lerp(at[0], 0, t)
+      val top = lerp(at[1], 0, t)
+      lp.leftMargin = left
+      lp.topMargin = top
+      lp.width = lerp(at[0] + width, screenW, t) - left
+      lp.height = lerp(at[1] + height, screenH, t) - top
+      fill.layoutParams = lp
+      fillBackground.cornerRadius = radiusFrom * (1f - t)
+      fillBackground.setColor(colours.evaluate(min(1f, t * 1.4f), card.background, card.screen) as Int)
+      picture.alpha = 1f - min(1f, t * 3f)
+    }
+
+    private fun animateTo(target: Float, durationMs: Long, onEnd: () -> Unit) {
+      ValueAnimator.ofFloat(progress, target).apply {
+        duration = durationMs
+        interpolator = DecelerateInterpolator(1.6f)
+        addUpdateListener { update(it.animatedValue as Float) }
+        addListener(object : android.animation.AnimatorListenerAdapter() {
+          override fun onAnimationEnd(animation: android.animation.Animator) = onEnd()
+        })
+        start()
+      }
+    }
+
+    /** Let go past the mark: finish growing, open Puck beneath, hold, fade the sheet away. */
+    fun complete() {
+      if (!ready) {
+        openApp(context, card.questionId, snooze = false)
+        removeView()
+        return
+      }
+      openApp(context, card.questionId, snooze = false)
+      main.post { removeView() }
+      animateTo(1f, 180L + (320L * (1f - progress)).toLong()) {
+        main.postDelayed({ fadeOutCover(sheet) }, COVER_HOLD_MS)
+      }
+      main.postDelayed({ removeCover(sheet) }, COVER_SAFETY_MS)
+    }
+
+    /** Let go early: shrink back onto the card and hand the touch back to it. */
+    fun cancel() {
+      if (!ready) {
+        box.alpha = 1f
+        return
+      }
+      animateTo(0f, 200L) {
+        box.alpha = 1f
+        removeCover(sheet)
+      }
+    }
   }
 
   private fun fadeOutCover(sheet: View) {
@@ -558,6 +711,102 @@ internal object OverlayCard {
   }
 
   private fun lerp(from: Int, to: Int, t: Float): Int = (from + (to - from) * t).toInt()
+
+  /**
+   * The bot's blob, the same body and eyes as the app's: the body path in a 100 x 100 box, tilted,
+   * with two white eyes that glance about and blink now and then.
+   */
+  private class BlobView(context: Context, private val card: Spec) : View(context) {
+    private val body: Path = try {
+      PathParser.createPathFromPathData(card.blobPath) ?: Path().apply { addCircle(50f, 50f, 43f, Path.Direction.CW) }
+    } catch (error: RuntimeException) {
+      Path().apply { addCircle(50f, 50f, 43f, Path.Direction.CW) }
+    }
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = card.blobFill; style = Paint.Style.FILL }
+    private val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = card.blobRim ?: 0
+      style = Paint.Style.STROKE
+      strokeWidth = 2f
+    }
+    private val eyePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); style = Paint.Style.FILL }
+    private val eyes = listOf(RectF(56f, 25f, 64.5f, 45f), RectF(70f, 26f, 78.5f, 46f))
+    private var eyeX = 0f
+    private var eyeY = 0f
+    private var eyeScaleY = 1f
+    private var glance: ValueAnimator? = null
+    private var blink: ValueAnimator? = null
+
+    private val tick = object : Runnable {
+      override fun run() {
+        val roll = Random.nextFloat()
+        if (roll < 0.55f) {
+          glanceTo(Random.nextFloat() * 8f - 4f, Random.nextFloat() * 6f - 3f)
+        } else if (roll < 0.83f) {
+          blinkOnce()
+        }
+        postDelayed(this, 1700L)
+      }
+    }
+
+    private fun glanceTo(x: Float, y: Float) {
+      glance?.cancel()
+      val fromX = eyeX
+      val fromY = eyeY
+      glance = ValueAnimator.ofFloat(0f, 1f).apply {
+        duration = 380L
+        addUpdateListener {
+          val t = it.animatedValue as Float
+          eyeX = fromX + (x - fromX) * t
+          eyeY = fromY + (y - fromY) * t
+          invalidate()
+        }
+        start()
+      }
+    }
+
+    private fun blinkOnce() {
+      blink?.cancel()
+      blink = ValueAnimator.ofFloat(1f, 0.12f, 1f).apply {
+        duration = 220L
+        addUpdateListener { eyeScaleY = it.animatedValue as Float; invalidate() }
+        start()
+      }
+    }
+
+    override fun onAttachedToWindow() {
+      super.onAttachedToWindow()
+      postDelayed(tick, 900L)
+    }
+
+    override fun onDetachedFromWindow() {
+      removeCallbacks(tick)
+      glance?.cancel()
+      blink?.cancel()
+      super.onDetachedFromWindow()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+      val unit = min(width, height) / 100f
+      canvas.save()
+      canvas.scale(unit, unit)
+      canvas.save()
+      canvas.rotate(card.blobTilt, 50f, 50f)
+      canvas.drawPath(body, fillPaint)
+      if (card.blobRim != null) canvas.drawPath(body, rimPaint)
+      canvas.restore()
+      canvas.save()
+      canvas.translate(eyeX, eyeY)
+      canvas.rotate(-12f, 66f, 36f)
+      for (eye in eyes) {
+        canvas.save()
+        canvas.scale(1f, eyeScaleY, eye.centerX(), eye.centerY())
+        canvas.drawRoundRect(eye, 4.25f, 4.25f, eyePaint)
+        canvas.restore()
+      }
+      canvas.restore()
+      canvas.restore()
+    }
+  }
 
   private fun line(
     context: Context,
