@@ -28,7 +28,7 @@
     "expo-status-bar": "~58.0.4",
     "expo-system-ui": "~58.0.7",
     "expo-task-manager": "~58.0.12",
-    "puck-full-screen": "./modules/puck-full-screen",
+    "puck-full-screen": "workspace:*",
     "react": "19.3.0",
     "react-native": "0.88.0",
     "react-native-gesture-handler": "~3.3.0",
