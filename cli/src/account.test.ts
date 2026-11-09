@@ -146,6 +146,9 @@ describe("login command", () => {
         cancelAlert: async () => {
           throw new Error("backend");
         },
+        getAlert: async () => {
+          throw new Error("backend");
+        },
       },
     };
     const names = createProgram(runtime).commands.map((command) => command.name());

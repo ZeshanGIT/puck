@@ -45,6 +45,9 @@ function fakeBackend(statuses: PairingStatus[], seen: { colour?: string; addedFr
     async cancelAlert() {
       throw new Error("not used");
     },
+    async getAlert() {
+      throw new Error("not used");
+    },
   };
 }
 

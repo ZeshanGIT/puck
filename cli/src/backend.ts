@@ -29,10 +29,41 @@ export interface AlertBody extends AlertExtras {
 export interface ListedAlert {
   questionId: string;
   question: string;
-  status: "scheduled" | "pending" | "answered" | "cancelled";
+  status: AlertStatusName;
   priority: "normal" | "urgent";
   scheduledFor: number | null;
   createdAt: number;
+}
+
+export type AlertStatusName = "scheduled" | "pending" | "answered" | "cancelled" | "snoozed";
+
+const ALERT_STATUS_NAMES: readonly string[] = ["scheduled", "pending", "answered", "cancelled", "snoozed"];
+const DELIVERY_NAMES: readonly string[] = ["pending", "sent", "delivered", "failed"];
+
+/** The reply stored for an alert, as `GET /alerts/<id>` returns it. */
+export interface AlertAnswerView {
+  answers: Array<{ id: string; label: string }>;
+  customReply: string | null;
+  answeredAt: string;
+  source: string;
+  deliveryStatus: "pending" | "sent" | "delivered" | "failed";
+  deliveryAttempts: number;
+  lastError: string | null;
+}
+
+/** One alert and its answer (null until the person replies), from `GET /alerts/<id>`. */
+export interface AlertStatusView {
+  questionId: string;
+  question: string;
+  botId: string;
+  status: AlertStatusName;
+  priority: "normal" | "urgent";
+  selectionMode: "single" | "multi";
+  presentation: "choice" | "swipe";
+  options: Array<{ id: string; label: string }>;
+  scheduledFor: number | null;
+  createdAt: number;
+  answer: AlertAnswerView | null;
 }
 
 export interface Backend {
@@ -45,6 +76,8 @@ export interface Backend {
   postStatus(siteUrl: string, botId: string, secret: string, body: LiveCommand): Promise<void>;
   listAlerts(siteUrl: string, botId: string, secret: string): Promise<ListedAlert[]>;
   cancelAlert(siteUrl: string, botId: string, secret: string, questionId: string): Promise<void>;
+  /** `GET /alerts/<id>`: the alert's status and the answer the person gave, if any. */
+  getAlert(siteUrl: string, botId: string, secret: string, questionId: string): Promise<AlertStatusView>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -186,7 +219,8 @@ export const liveBackend: Backend = {
         !isRecord(item) ||
         typeof item.questionId !== "string" ||
         typeof item.question !== "string" ||
-        (item.status !== "scheduled" && item.status !== "pending" && item.status !== "answered" && item.status !== "cancelled") ||
+        typeof item.status !== "string" ||
+        !ALERT_STATUS_NAMES.includes(item.status) ||
         (item.priority !== "normal" && item.priority !== "urgent") ||
         (item.scheduledFor !== null && typeof item.scheduledFor !== "number") ||
         typeof item.createdAt !== "number"
@@ -196,7 +230,7 @@ export const liveBackend: Backend = {
       return {
         questionId: item.questionId,
         question: item.question,
-        status: item.status,
+        status: item.status as AlertStatusName,
         priority: item.priority,
         scheduledFor: item.scheduledFor,
         createdAt: item.createdAt,
@@ -207,7 +241,82 @@ export const liveBackend: Backend = {
   async cancelAlert(siteUrl, botId, secret, questionId) {
     await botRequest(siteUrl, `/alerts/${questionId}/cancel`, "POST", botId, secret);
   },
+
+  async getAlert(siteUrl, botId, secret, questionId) {
+    const parsed = await botRequest(siteUrl, `/alerts/${questionId}`, "GET", botId, secret);
+    return parseAlertStatus(parsed);
+  },
 };
+
+function parseChoices(value: unknown): Array<{ id: string; label: string }> | null {
+  if (!Array.isArray(value)) return null;
+  const choices: Array<{ id: string; label: string }> = [];
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.id !== "string") return null;
+    choices.push({ id: item.id, label: typeof item.label === "string" ? item.label : item.id });
+  }
+  return choices;
+}
+
+/** Checks the `GET /alerts/<id>` body and keeps only the fields the CLI shows. */
+export function parseAlertStatus(value: unknown): AlertStatusView {
+  const bad = () => new CliError("alert response was not an alert");
+  if (!isRecord(value)) throw bad();
+  const options = parseChoices(value.options);
+  if (
+    typeof value.questionId !== "string" ||
+    typeof value.question !== "string" ||
+    typeof value.botId !== "string" ||
+    typeof value.status !== "string" ||
+    !ALERT_STATUS_NAMES.includes(value.status) ||
+    (value.priority !== "normal" && value.priority !== "urgent") ||
+    (value.selectionMode !== "single" && value.selectionMode !== "multi") ||
+    (value.presentation !== "choice" && value.presentation !== "swipe") ||
+    options === null ||
+    (value.scheduledFor !== null && typeof value.scheduledFor !== "number") ||
+    typeof value.createdAt !== "number"
+  ) {
+    throw bad();
+  }
+  let answer: AlertAnswerView | null = null;
+  if (value.answer !== null && value.answer !== undefined) {
+    const raw = value.answer;
+    const choices = isRecord(raw) ? parseChoices(raw.answers) : null;
+    if (
+      !isRecord(raw) ||
+      choices === null ||
+      (raw.customReply !== null && typeof raw.customReply !== "string") ||
+      typeof raw.answeredAt !== "string" ||
+      typeof raw.deliveryStatus !== "string" ||
+      !DELIVERY_NAMES.includes(raw.deliveryStatus) ||
+      typeof raw.deliveryAttempts !== "number"
+    ) {
+      throw bad();
+    }
+    answer = {
+      answers: choices,
+      customReply: raw.customReply as string | null,
+      answeredAt: raw.answeredAt,
+      source: typeof raw.source === "string" ? raw.source : "app",
+      deliveryStatus: raw.deliveryStatus as AlertAnswerView["deliveryStatus"],
+      deliveryAttempts: raw.deliveryAttempts,
+      lastError: typeof raw.lastError === "string" ? raw.lastError : null,
+    };
+  }
+  return {
+    questionId: value.questionId,
+    question: value.question,
+    botId: value.botId,
+    status: value.status as AlertStatusName,
+    priority: value.priority,
+    selectionMode: value.selectionMode,
+    presentation: value.presentation,
+    options,
+    scheduledFor: value.scheduledFor as number | null,
+    createdAt: value.createdAt,
+    answer,
+  };
+}
 
 async function botRequest(siteUrl: string, path: string, method: "GET" | "POST", botId: string, secret: string): Promise<unknown> {
   let response: Response;

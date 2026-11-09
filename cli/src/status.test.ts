@@ -45,6 +45,9 @@ function fake(posted: LiveCommand[]): Backend {
     async cancelAlert() {
       throw new Error("not used");
     },
+    async getAlert() {
+      throw new Error("not used");
+    },
   };
 }
 

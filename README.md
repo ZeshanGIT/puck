@@ -128,3 +128,21 @@ bun run build            # compile to cli/bin/puck (git-ignored)
 ```
 
 Commands (`send`, `ask`, `schedule`, `list`, `cancel`) are stubs that print "not implemented yet". The answer is not posted to a URL passed on the command line; Convex posts it to the webhook registered for that bot. Until the CLI calls the API, test the HTTP routes with `curl`.
+
+### Check an answer: `puck answer`
+
+```sh
+puck answer <alert-id> [--bot <bot-id>] [--json]
+```
+
+Reads one alert of that bot (`GET /alerts/<id>`, bot-secret auth) and prints the reply the person gave, so an agent can confirm a reply reached Puck. Output:
+
+```text
+q_01HV7K3M2ZABCDEF  answered  Ship it?
+answer: Yes (yes)
+reply: go ahead                      # only with a typed reply
+answered: 2026-11-09 14:05
+delivery: delivered (1 attempt)      # webhook delivery; an `error:` line follows when it failed
+```
+
+Without an answer it prints `no answer yet`, `snoozed, no answer yet` or `cancelled` under the first line. `--json` prints the validated alert and answer as JSON. `puck list` now also lists snoozed alerts.

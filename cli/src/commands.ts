@@ -11,7 +11,7 @@ import {
   type LiveCommand,
   type PairingInput,
 } from "@puck/shared";
-import type { AlertBody, Backend, ListedAlert, PairingStatus } from "./backend";
+import type { AlertBody, AlertStatusView, Backend, ListedAlert, PairingStatus } from "./backend";
 import { loadConfig } from "./config";
 import { CliError } from "./errors";
 import { readBotKey, writeBotKey } from "./keyfile";
@@ -220,6 +220,43 @@ export async function cancelAlert(questionId: string, bot: string | undefined, r
   const { config, botId, secret } = await openBot(bot, runtime);
   await runtime.backend.cancelAlert(config.siteUrl, botId, secret, questionId);
   return `cancelled ${questionId}\n`;
+}
+
+/**
+ * `puck answer <id>`: what the person replied to one alert, so an agent can check a reply made it
+ * through. `json` prints the validated view instead of text.
+ */
+export async function getAnswer(
+  questionId: string,
+  bot: string | undefined,
+  runtime: Runtime,
+  json = false,
+): Promise<string> {
+  if (!isQuestionId(questionId)) throw new CliError("alert id is not valid");
+  const { config, botId, secret } = await openBot(bot, runtime);
+  const view = await runtime.backend.getAlert(config.siteUrl, botId, secret, questionId);
+  return json ? `${JSON.stringify(view, null, 2)}\n` : formatAnswer(view);
+}
+
+export function formatAnswer(view: AlertStatusView): string {
+  const lines = [`${view.questionId}  ${view.status}  ${view.question}`];
+  const answer = view.answer;
+  if (answer) {
+    if (answer.answers.length > 0) {
+      lines.push(`answer: ${answer.answers.map((choice) => (choice.label === choice.id ? choice.id : `${choice.label} (${choice.id})`)).join(", ")}`);
+    }
+    if (answer.customReply !== null && answer.customReply !== "") lines.push(`reply: ${answer.customReply}`);
+    lines.push(`answered: ${formatLocal(Date.parse(answer.answeredAt))}`);
+    lines.push(`delivery: ${answer.deliveryStatus} (${answer.deliveryAttempts} attempt${answer.deliveryAttempts === 1 ? "" : "s"})`);
+    if (answer.lastError) lines.push(`error: ${answer.lastError}`);
+  } else if (view.status === "cancelled") {
+    lines.push("cancelled");
+  } else if (view.status === "snoozed") {
+    lines.push("snoozed, no answer yet");
+  } else {
+    lines.push("no answer yet");
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 /**

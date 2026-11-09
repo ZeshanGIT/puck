@@ -46,6 +46,9 @@ async function postedBody(alert: unknown): Promise<AlertBody> {
       async cancelAlert() {
         throw new Error("not used");
       },
+      async getAlert() {
+        throw new Error("not used");
+      },
     };
     const runtime: Runtime = {
       env: {},

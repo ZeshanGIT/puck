@@ -5,6 +5,7 @@ import { liveBackend } from "./backend";
 import {
   addBot,
   cancelAlert,
+  getAnswer,
   listAlerts,
   scheduleAlert,
   sendAlert,
@@ -142,6 +143,16 @@ export function createProgram(runtime: Runtime = defaultRuntime()): Command {
     .option("--bot <bot-id>", "bot id, or the default in config.json")
     .action(async (id: string, options: { bot?: string }) => {
       runtime.stdout(await cancelAlert(id, options.bot, runtime));
+    });
+
+  program
+    .command("answer")
+    .description("show the answer the person gave to an alert")
+    .argument("<id>", "alert id")
+    .option("--bot <bot-id>", "bot id, or the default in config.json")
+    .option("--json", "print the alert and answer as JSON")
+    .action(async (id: string, options: { bot?: string; json?: boolean }) => {
+      runtime.stdout(await getAnswer(id, options.bot, runtime, options.json === true));
     });
 
   const botCmd = program.command("bot").description("change a paired bot without re-pairing");

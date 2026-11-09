@@ -3,9 +3,9 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import type { AlertBody, Backend } from "./backend";
+import type { AlertBody, AlertStatusView, Backend } from "./backend";
 
-import { addBot, cancelAlert, listAlerts, scheduleAlert, sendAlert, type Runtime } from "./commands";
+import { addBot, cancelAlert, getAnswer, listAlerts, scheduleAlert, sendAlert, type Runtime } from "./commands";
 import { loadConfig, siteUrlFromDeployment } from "./config";
 import { optionIdFromLabel, optionsFromLabels } from "./ids";
 import { readBotKey } from "./keyfile";
@@ -130,6 +130,9 @@ describe("puck add", () => {
         async cancelAlert() {
           throw new Error("not used");
         },
+        async getAlert() {
+          throw new Error("not used");
+        },
       };
       const text = await addBot("Sheldon", runtime(dir, backend, { PUCK_WEBHOOK_URL: "https://httpbin.org/post", PUCK_WEBHOOK_HEADER: HEADER }));
       expect(text).toBe("code: 042815\nbot: sheldon-23648\n");
@@ -189,6 +192,9 @@ describe("puck send", () => {
         async cancelAlert() {
           throw new Error("not used");
         },
+        async getAlert() {
+          throw new Error("not used");
+        },
       };
       const text = await sendAlert({ file, bot: "sheldon-23648" }, runtime(dir, backend));
       expect(text).toBe("q_01HV7K3M2ZABCDEF\n");
@@ -228,6 +234,9 @@ describe("puck send", () => {
           throw new Error("not used");
         },
         async cancelAlert() {
+          throw new Error("not used");
+        },
+        async getAlert() {
           throw new Error("not used");
         },
       };
@@ -270,6 +279,9 @@ describe("puck send", () => {
           throw new Error("not used");
         },
         async cancelAlert() {
+          throw new Error("not used");
+        },
+        async getAlert() {
           throw new Error("not used");
         },
       };
@@ -322,6 +334,9 @@ describe("puck schedule", () => {
         async cancelAlert(_site, _bot, _secret, questionId) {
           cancelled = questionId;
         },
+        async getAlert() {
+          throw new Error("not used");
+        },
       };
       const runtimeFor = runtime(dir, backend);
       expect(await scheduleAlert({ message: "Wake up", at: "06:00", bot: "sheldon-23648" }, runtimeFor)).toBe(
@@ -337,6 +352,148 @@ describe("puck schedule", () => {
       );
       expect(cancelled).toBe("q_01HV7K3M2ZABCDEF");
       await expect(cancelAlert("nope", "sheldon-23648", runtimeFor)).rejects.toThrow(/not valid/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+function view(overrides: Partial<AlertStatusView>): AlertStatusView {
+  return {
+    questionId: "q_01HV7K3M2ZABCDEF",
+    question: "Ship it?",
+    botId: "sheldon-23648",
+    status: "pending",
+    priority: "normal",
+    selectionMode: "single",
+    presentation: "choice",
+    options: [{ id: "yes", label: "Yes" }],
+    scheduledFor: null,
+    createdAt: 1,
+    answer: null,
+    ...overrides,
+  };
+}
+
+async function answerRuntime(dir: string, alert: AlertStatusView, seen: string[] = []): Promise<Runtime> {
+  await writeConfig(dir);
+  await writeFile(join(dir, "sheldon-23648.key"), `${SECRET}\n`, { mode: 0o600 });
+  const unused = async (): Promise<never> => {
+    throw new Error("not used");
+  };
+  const backend: Backend = {
+    pairingStatus: async () => "paired" as const,
+    createPairing: unused,
+    updateWebhook: unused,
+    postStatus: unused,
+    postAlert: unused,
+    listAlerts: unused,
+    cancelAlert: unused,
+    async getAlert(_site, _bot, secret, questionId) {
+      seen.push(`${secret}:${questionId}`);
+      return alert;
+    },
+  };
+  return runtime(dir, backend);
+}
+
+describe("puck answer", () => {
+  test("prints the choice, the reply and the delivery of an answered alert", async () => {
+    const dir = await tempDir();
+    try {
+      const seen: string[] = [];
+      const alert = view({
+        status: "answered",
+        answer: {
+          answers: [{ id: "yes", label: "Yes" }],
+          customReply: "go ahead",
+          answeredAt: new Date(2026, 10, 9, 14, 5).toISOString(),
+          source: "app",
+          deliveryStatus: "delivered",
+          deliveryAttempts: 1,
+          lastError: null,
+        },
+      });
+      const text = await getAnswer("q_01HV7K3M2ZABCDEF", "sheldon-23648", await answerRuntime(dir, alert, seen));
+      expect(text).toBe(
+        [
+          "q_01HV7K3M2ZABCDEF  answered  Ship it?",
+          "answer: Yes (yes)",
+          "reply: go ahead",
+          "answered: 2026-11-09 14:05",
+          "delivery: delivered (1 attempt)",
+          "",
+        ].join("\n"),
+      );
+      expect(seen).toEqual([`${SECRET}:q_01HV7K3M2ZABCDEF`]);
+      expect(text).not.toContain(SECRET);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("shows a failed delivery's error", async () => {
+    const dir = await tempDir();
+    try {
+      const alert = view({
+        status: "answered",
+        answer: {
+          answers: [],
+          customReply: "typed only",
+          answeredAt: new Date(2026, 10, 9, 14, 5).toISOString(),
+          source: "app",
+          deliveryStatus: "failed",
+          deliveryAttempts: 4,
+          lastError: "HTTP 401",
+        },
+      });
+      const text = await getAnswer("q_01HV7K3M2ZABCDEF", "sheldon-23648", await answerRuntime(dir, alert));
+      expect(text).toContain("reply: typed only");
+      expect(text).toContain("delivery: failed (4 attempts)");
+      expect(text).toContain("error: HTTP 401");
+      expect(text).not.toContain("answer:");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("says when there is no answer yet, or the alert is snoozed or cancelled", async () => {
+    const dir = await tempDir();
+    try {
+      const id = "q_01HV7K3M2ZABCDEF";
+      expect(await getAnswer(id, "sheldon-23648", await answerRuntime(dir, view({})))).toBe(`${id}  pending  Ship it?\nno answer yet\n`);
+      expect(await getAnswer(id, "sheldon-23648", await answerRuntime(dir, view({ status: "snoozed" })))).toBe(
+        `${id}  snoozed  Ship it?\nsnoozed, no answer yet\n`,
+      );
+      expect(await getAnswer(id, "sheldon-23648", await answerRuntime(dir, view({ status: "cancelled" })))).toBe(
+        `${id}  cancelled  Ship it?\ncancelled\n`,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects an invalid id before any request", async () => {
+    const dir = await tempDir();
+    try {
+      const seen: string[] = [];
+      await expect(getAnswer("nope", "sheldon-23648", await answerRuntime(dir, view({}), seen))).rejects.toThrow(/not valid/);
+      expect(seen).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("--json prints the validated view", async () => {
+    const dir = await tempDir();
+    try {
+      const alert = view({ status: "snoozed" });
+      const out: string[] = [];
+      const base = await answerRuntime(dir, alert);
+      await createProgram({ ...base, stdout: (text) => out.push(text) }).parseAsync(["answer", "q_01HV7K3M2ZABCDEF", "--bot", "sheldon-23648", "--json"], {
+        from: "user",
+      });
+      expect(JSON.parse(out.join(""))).toEqual(alert);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -368,6 +525,9 @@ describe("argument parsing", () => {
         },
         async cancelAlert() {
           throw new Error("network");
+        },
+        async getAlert() {
+          throw new Error("not used");
         },
       };
       const help = createProgram(runtime(dir, backend)).commands.find((command) => command.name() === "send")?.helpInformation() ?? "";
