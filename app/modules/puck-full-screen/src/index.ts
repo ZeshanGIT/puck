@@ -13,10 +13,10 @@ type FullScreenNative = {
   canDrawOverlay?: () => boolean;
   showOverlayCard?: (card: Record<string, string | number>) => boolean;
   hideOverlayCard?: (questionId: string) => boolean;
-  takeOverlayOpen?: () => { questionId: string; snooze: boolean; snoozeMinutes?: number } | null;
+  takeOverlayOpen?: () => { questionId: string; snooze: boolean; snoozeMinutes?: number; nonce?: number } | null;
   addListener?: (
     eventName: "onVolumeKey" | "onOverlayOpen" | "onOverlayAction",
-    listener: (event?: { questionId: string; snooze?: boolean; snoozeMinutes?: number; action?: "dismiss" | "snooze" }) => void,
+    listener: (event?: { questionId: string; snooze?: boolean; snoozeMinutes?: number; nonce?: number; action?: "dismiss" | "snooze" }) => void,
   ) => { remove: () => void };
 };
 
@@ -220,6 +220,8 @@ export interface OverlayOpen {
   questionId: string;
   snooze: boolean;
   snoozeMinutes: number;
+  /** Unique per request (0 from an older build), so one request arriving twice is acted on once. */
+  nonce: number;
 }
 
 /** A dismiss or snooze chosen on the compact card, reported while the app is running. */
@@ -233,7 +235,7 @@ export function takeOverlayOpen(): OverlayOpen | null {
   try {
     const opened = nativeModule()?.takeOverlayOpen?.();
     return opened
-      ? { questionId: opened.questionId, snooze: opened.snooze === true, snoozeMinutes: opened.snoozeMinutes ?? 0 }
+      ? { questionId: opened.questionId, snooze: opened.snooze === true, snoozeMinutes: opened.snoozeMinutes ?? 0, nonce: opened.nonce ?? 0 }
       : null;
   } catch {
     return null;
@@ -246,7 +248,7 @@ export function subscribeOverlayOpen(listener: (open: OverlayOpen) => void): () 
     const native = nativeModule();
     if (!native?.addListener) return () => {};
     const subscription = native.addListener("onOverlayOpen", (event) => {
-      if (event) listener({ questionId: event.questionId, snooze: event.snooze === true, snoozeMinutes: event.snoozeMinutes ?? 0 });
+      if (event) listener({ questionId: event.questionId, snooze: event.snooze === true, snoozeMinutes: event.snoozeMinutes ?? 0, nonce: event.nonce ?? 0 });
     });
     return () => subscription.remove();
   } catch {

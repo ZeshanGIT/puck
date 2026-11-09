@@ -43,3 +43,18 @@ export function subscribeSnoozeRequests(listener: () => void): () => void {
     listeners.delete(listener);
   };
 }
+
+const handledOpens = new Set<number>();
+
+/**
+ * One card gesture can reach JavaScript by two routes (the new-intent event and the pending
+ * request taken when the app comes forward). Each request carries a unique nonce; this is true the
+ * first time a nonce is seen and false after, so a timed snooze runs once. Nonce 0 (a build that
+ * sends none) is always handled.
+ */
+export function shouldHandleOpen(nonce: number): boolean {
+  if (nonce === 0) return true;
+  if (handledOpens.has(nonce)) return false;
+  handledOpens.add(nonce);
+  return true;
+}

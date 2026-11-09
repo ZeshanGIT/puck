@@ -16,6 +16,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
@@ -60,6 +61,7 @@ internal object OverlayCard {
   const val EXTRA_QUESTION_ID = "puck.overlayQuestionId"
   const val EXTRA_SNOOZE = "puck.overlaySnooze"
   const val EXTRA_SNOOZE_MINUTES = "puck.overlaySnoozeMinutes"
+  const val EXTRA_NONCE = "puck.overlayNonce"
   const val ACTION_DISMISS = "dismiss"
   const val ACTION_SNOOZE = "snooze"
 
@@ -106,7 +108,11 @@ internal object OverlayCard {
     val screen: Int,
   )
 
-  data class Opened(val questionId: String, val snooze: Boolean, val snoozeMinutes: Int)
+  /**
+   * A request to open Puck on an alert. `nonce` is unique per request, so JavaScript can tell the
+   * same request arriving by two routes (the new-intent event and `takeOpened`) and act on it once.
+   */
+  data class Opened(val questionId: String, val snooze: Boolean, val snoozeMinutes: Int, val nonce: Long)
 
   /** Set by the module: reports a dismiss or snooze to JavaScript while the app is running. */
   @Volatile var onAction: ((questionId: String, action: String) -> Unit)? = null
@@ -116,6 +122,14 @@ internal object OverlayCard {
   private var params: WindowManager.LayoutParams? = null
   private var cover: View? = null
   private var shownId: String? = null
+
+  // The last open request, kept until JavaScript takes it or it goes stale. A new-intent event is
+  // lost when no screen is listening yet (Puck was idle or just restarted), and the activity's own
+  // intent is not replaced when Puck is reused, so the request is also held here.
+  private const val PENDING_OPEN_MS = 10_000L
+  private val nonces = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis())
+  @Volatile private var pendingOpen: Opened? = null
+  @Volatile private var pendingAt = 0L
 
   /**
    * The snooze length a sideways drag of `fraction` of the card's width would pick: 0 before the
@@ -187,15 +201,26 @@ internal object OverlayCard {
     }
   }
 
-  /** The alert a tap on the card opened (a cold start) and the snooze it chose, if any; taken once. */
+  /**
+   * The alert a card gesture asked to open and the snooze it chose, if any. Taken from the pending
+   * request when it is fresh, else from the activity's launch intent (a cold start). The same
+   * request can reach JavaScript again by the new-intent event; its `nonce` lets JavaScript skip it.
+   */
   fun takeOpened(activityIntent: Intent?): Opened? {
+    val pending = pendingOpen
+    if (pending != null) {
+      pendingOpen = null
+      if (SystemClock.elapsedRealtime() - pendingAt < PENDING_OPEN_MS) return pending
+    }
     val id = activityIntent?.getStringExtra(EXTRA_QUESTION_ID) ?: return null
     val snooze = activityIntent.getBooleanExtra(EXTRA_SNOOZE, false)
     val minutes = activityIntent.getIntExtra(EXTRA_SNOOZE_MINUTES, SNOOZE_CHOICES)
+    val nonce = activityIntent.getLongExtra(EXTRA_NONCE, 0L)
     activityIntent.removeExtra(EXTRA_QUESTION_ID)
     activityIntent.removeExtra(EXTRA_SNOOZE)
     activityIntent.removeExtra(EXTRA_SNOOZE_MINUTES)
-    return Opened(id, snooze, minutes)
+    activityIntent.removeExtra(EXTRA_NONCE)
+    return Opened(id, snooze, minutes, nonce)
   }
 
   /**
@@ -216,6 +241,10 @@ internal object OverlayCard {
     launch.putExtra(EXTRA_QUESTION_ID, questionId)
     launch.putExtra(EXTRA_SNOOZE, snooze)
     launch.putExtra(EXTRA_SNOOZE_MINUTES, snoozeMinutes)
+    val nonce = nonces.incrementAndGet()
+    launch.putExtra(EXTRA_NONCE, nonce)
+    pendingOpen = Opened(questionId, snooze, snoozeMinutes, nonce)
+    pendingAt = SystemClock.elapsedRealtime()
     context.startActivity(launch)
   }
 

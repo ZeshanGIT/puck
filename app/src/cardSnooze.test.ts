@@ -3,6 +3,7 @@ import {
   cardSnoozeFromNative,
   cardSnoozeUntil,
   requestSnoozeOnOpen,
+  shouldHandleOpen,
   subscribeSnoozeRequests,
   takeSnoozeOnOpen,
 } from "./cardSnooze";
@@ -48,5 +49,18 @@ describe("what the native card sends", () => {
   test("turns minutes into the until that answers.snooze takes", () => {
     expect(cardSnoozeUntil(5, 1_000)).toBe(1_000 + 300_000);
     expect(cardSnoozeUntil(null, 1_000)).toBeNull();
+  });
+});
+
+describe("one card gesture arriving by two routes", () => {
+  test("is handled once, by nonce", () => {
+    expect(shouldHandleOpen(9001)).toBe(true);
+    expect(shouldHandleOpen(9001)).toBe(false);
+    expect(shouldHandleOpen(9002)).toBe(true);
+  });
+
+  test("a request without a nonce is always handled", () => {
+    expect(shouldHandleOpen(0)).toBe(true);
+    expect(shouldHandleOpen(0)).toBe(true);
   });
 });

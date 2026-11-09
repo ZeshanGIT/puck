@@ -4,7 +4,7 @@ import { AppState } from "react-native";
 import { useEffect, useState } from "react";
 import { readClientId } from "./clientStore";
 import { subscribeOverlayOpen, takeOverlayOpen, type OverlayOpen } from "puck-full-screen";
-import { cardSnoozeFromNative, requestSnoozeOnOpen } from "./cardSnooze";
+import { cardSnoozeFromNative, requestSnoozeOnOpen, shouldHandleOpen } from "./cardSnooze";
 import { questionIdFromNotificationData } from "./pushOpen";
 import { readableError } from "./session";
 import { loadNotificationsModule, registerPushTokenWithConvex } from "./onboarding/notificationSetup";
@@ -59,6 +59,7 @@ export function useOpenedQuestionId(): string | null {
 
   useEffect(() => {
     const open = (next: OverlayOpen) => {
+      if (!shouldHandleOpen(next.nonce)) return;
       if (next.snooze) requestSnoozeOnOpen(next.questionId, cardSnoozeFromNative(next.snoozeMinutes));
       setOpened(next.questionId);
     };
