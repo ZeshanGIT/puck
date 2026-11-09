@@ -8,20 +8,19 @@
  */
 import { anyApi } from "convex/server";
 import { useConvex, useQuery } from "convex/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import type { PendingAlert } from "../ChoiceScreen";
 import { syncClientFullScreen, syncClientPushToken } from "../clientAuth";
 import { HeroText, OnboardingFrame, WaitingLine } from "../onboarding/parts";
 import { readableError } from "../session";
+import { testPage } from "../testPageMachine";
 import { Banner } from "../ui/Banner";
 import { Blob, type BlobHandle } from "../ui/Blob";
 import { SAMPLE_BOTS } from "../ui/blobShapes";
 import { Btn } from "../ui/Btn";
 import { Toast, useToast } from "../ui/Toast";
 import { AlertHost } from "./AlertHost";
-
-type Send = "idle" | "sending" | "sent";
 
 /** Seconds between tapping Send and the page, so the phone can be locked first (App screens O3). */
 const LOCK_DELAY_SECONDS = 10;
@@ -32,12 +31,8 @@ export function O3TestPage({ clientId, onContinue }: { clientId: string; onConti
   const blob = useRef<BlobHandle>(null);
   // Test pages left from an earlier try are cancelled first, so one never greets the person
   // before they tap Send. The pending query waits for that.
-  const [cleared, setCleared] = useState(false);
+  const [{ cleared, send, error, done }, dispatch] = useReducer(testPage.transition, testPage.initial);
   const pending = useQuery(anyApi.alerts.pending, cleared ? { clientId } : "skip") as PendingAlert[] | undefined;
-  const [send, setSend] = useState<Send>("idle");
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
-  const sawAlert = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -45,7 +40,7 @@ export function O3TestPage({ clientId, onContinue }: { clientId: string; onConti
       .mutation(anyApi.alerts.cancelTests, { clientId })
       .catch((caught: unknown) => console.error(readableError(caught)))
       .finally(() => {
-        if (alive) setCleared(true);
+        if (alive) dispatch({ type: "clearedOldPages" });
       });
     return () => {
       alive = false;
@@ -60,13 +55,8 @@ export function O3TestPage({ clientId, onContinue }: { clientId: string; onConti
 
   const alert = pending?.[0];
   useEffect(() => {
-    if (alert) {
-      sawAlert.current = true;
-    } else if (pending !== undefined && sawAlert.current && !done) {
-      sawAlert.current = false;
-      setDone(true);
-    }
-  }, [alert, pending, done]);
+    dispatch({ type: "alertsChanged", hasAlert: alert !== undefined, loaded: pending !== undefined });
+  }, [alert, pending]);
 
   useEffect(() => {
     if (done) blob.current?.hop();
@@ -74,15 +64,13 @@ export function O3TestPage({ clientId, onContinue }: { clientId: string; onConti
   }, [done]);
 
   async function sendTest(delaySeconds: number) {
-    setSend("sending");
-    setError(null);
+    dispatch({ type: "sendStarted" });
     try {
       await client.mutation(anyApi.alerts.sendTest, { clientId, delaySeconds });
-      setSend("sent");
+      dispatch({ type: "sendSucceeded" });
       if (delaySeconds > 0) toast.show(`Lock your phone now. Paging you in ${delaySeconds} seconds.`);
     } catch (caught) {
-      setSend("idle");
-      setError(readableError(caught));
+      dispatch({ type: "sendFailed", message: readableError(caught) });
     }
   }
 

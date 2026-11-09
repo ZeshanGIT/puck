@@ -17,6 +17,7 @@ import { openDndAccessSettings } from "../onboarding/dndAccess";
 import { openFullScreenSettings } from "../onboarding/fullScreenSetup";
 import { ensureNotificationPermission, readNotificationRowState } from "../onboarding/notificationSetup";
 import { BellIcon, CheckIcon, HeroText, MoonIcon, OnboardingFrame, ScreenIcon } from "../onboarding/parts";
+import { type PermissionsEffect, type PermissionsEvent, permissionsCheck } from "../permissionsMachine";
 import { readableError } from "../session";
 import { Btn } from "../ui/Btn";
 import { useTheme } from "../ui/theme";
@@ -37,8 +38,42 @@ export function O2Permissions({ clientId, onContinue }: { clientId: string; onCo
   const [dndAsked, setDndAsked] = useState(false);
   // Real Do Not Disturb access, or null on a build without the native function.
   const [dnd, setDnd] = useState<boolean | null>(() => hasDndAccess());
-  const dndLaunched = useRef(false);
-  const previous = useRef<{ notification: boolean; fullScreen: boolean; dnd: boolean | null } | null>(null);
+  // What was last seen and what changed is decided by `permissionsCheck`; this holds its state.
+  const machine = useRef(permissionsCheck.initial);
+
+  const perform = useCallback(
+    (effect: PermissionsEffect) => {
+      const report = (error: unknown) => console.error(readableError(error));
+      switch (effect.kind) {
+        case "toast":
+          toast.show(effect.text);
+          return;
+        case "syncClientFullScreen":
+          syncClientFullScreen(client, clientId).catch(report);
+          return;
+        case "syncPushToken":
+          syncClientPushToken(client, clientId).catch(report);
+          return;
+        case "syncDndFlag":
+          client.mutation(anyApi.clients.setFlags, { clientId, dndAccess: effect.value }).catch(report);
+          return;
+        case "syncFullScreenFlag":
+          client.mutation(anyApi.clients.setFlags, { clientId, fullScreenAllowed: effect.value }).catch(report);
+          return;
+      }
+    },
+    [client, clientId, toast.show],
+  );
+
+  const dispatch = useCallback(
+    (event: PermissionsEvent) => {
+      const next = permissionsCheck.transition(machine.current, event);
+      machine.current = next;
+      if (next.dndAsked) setDndAsked(true);
+      for (const effect of next.effects) perform(effect);
+    },
+    [perform],
+  );
 
   const refresh = useCallback(async () => {
     const [nextNotification, nextFullScreen] = [await readNotificationRowState(), canUseFullScreenIntent()];
@@ -46,46 +81,18 @@ export function O2Permissions({ clientId, onContinue }: { clientId: string; onCo
     setNotification(nextNotification);
     setFullScreen(nextFullScreen);
     setDnd(nextDnd);
-    const before = previous.current;
-    previous.current = { notification: nextNotification.granted, fullScreen: nextFullScreen, dnd: nextDnd };
-    const syncDnd = () => {
-      if (nextDnd === null) return;
-      client
-        .mutation(anyApi.clients.setFlags, { clientId, dndAccess: nextDnd })
-        .catch((error: unknown) => console.error(readableError(error)));
-    };
-    if (!before) {
-      // First look: record the current state on the client row so an urgent alert can ring.
-      syncClientFullScreen(client, clientId).catch((error: unknown) => console.error(readableError(error)));
-      syncDnd();
-      return;
-    }
-    if (nextDnd !== before.dnd) syncDnd();
-    if (nextNotification.granted && !before.notification) {
-      toast.show("Notifications on");
-      syncClientPushToken(client, clientId).catch((error: unknown) => console.error(readableError(error)));
-    }
-    if (nextFullScreen && !before.fullScreen) toast.show("Full-screen alerts allowed");
-    if (nextFullScreen !== before.fullScreen) {
-      client
-        .mutation(anyApi.clients.setFlags, { clientId, fullScreenAllowed: nextFullScreen })
-        .catch((error: unknown) => console.error(readableError(error)));
-    }
-  }, [client, clientId, toast.show]);
+    dispatch({ type: "read", notification: nextNotification.granted, fullScreen: nextFullScreen, dnd: nextDnd });
+  }, [dispatch]);
 
   useEffect(() => {
     void refresh();
     const subscription = AppState.addEventListener("change", (state) => {
       if (state !== "active") return;
-      if (dndLaunched.current) {
-        dndLaunched.current = false;
-        setDndAsked(true);
-        if (hasDndAccess() !== false) toast.show("Do Not Disturb access allowed");
-      }
+      dispatch({ type: "appResumed", dnd: hasDndAccess() });
       void refresh();
     });
     return () => subscription.remove();
-  }, [refresh, toast.show]);
+  }, [refresh, dispatch]);
 
   async function allowNotifications() {
     try {
@@ -111,10 +118,10 @@ export function O2Permissions({ clientId, onContinue }: { clientId: string; onCo
 
   async function allowDnd() {
     try {
-      dndLaunched.current = true;
+      dispatch({ type: "leftForDndSettings" });
       await openDndAccessSettings();
     } catch (error) {
-      dndLaunched.current = false;
+      dispatch({ type: "dndLaunchFailed" });
       console.error(readableError(error));
     }
   }
