@@ -91,6 +91,7 @@ export {
 export type { AlertDecision, AlertEvent } from "./alertLifecycle";
 export { checkMachine, defineMachine, describeMachine, mermaidFor, runMachine } from "./machine";
 export type { Machine, MachineSpec, MachineTransitionRow } from "./machine";
+export { sharedMachines } from "./machines";
 export type { CancelStep, ReleaseStep } from "./schedule";
 export { buildAnswerPayload, buildSnoozedPayload } from "./payload";
 export {

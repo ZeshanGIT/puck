@@ -43,3 +43,10 @@ Docs: https://docs.expo.dev/eas/index.md
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+
+## State machines
+
+- A flow with two or more flags that must agree (a lifecycle, a multi-step screen, a permission check) is a machine: one pure `transition(state, event)` in a `*Machine.ts` file, built with `defineMachine` from `@puck/shared`. No React and no I/O inside; effects come back as data.
+- Read `docs/state-machines.md` (the map and the convention) before changing a flow. Register a new machine in `app/src/machines.ts`; `bun test` fails if you forget. Run `bun run machines:doc` after changing a machine so the diagrams stay current (`bun run machines:check` verifies).
+- Backend alert status changes go through `decideAlert` (`packages/shared/src/alertLifecycle.ts`), never an ad hoc patch.
+

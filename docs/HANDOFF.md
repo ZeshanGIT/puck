@@ -2,6 +2,10 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## State machines (2026-11-09)
+
+Implicit state machines were made explicit: `alert-lifecycle` (backend status writes), `app-session`, `alert-launch`, `pairing-flow`, `permissions-check`, `test-page`. Convention, inventory and generated diagrams are in `docs/state-machines.md`. No schema or wire format changed, so no Convex deploy is needed. Fixed on the way: stuck `freshSignIn` and inbox-cover latches, a launched notification alert that was never released (a later alert stayed under Needs you, or a blank screen), and the Working now ended-card timer. Not runtime-tested on a phone. Still implicit and listed in priority order in that doc: the answer attempt (A1, A2, A3, StackCard, AlertHost, StackHost), the client session, the ring lifecycle.
+
 ## Compact alert card over other apps and theme preference (t70u, 2026-11-08)
 
 **Overlay card:** on an unlocked phone, a normal or urgent alert also shows a small Puck card drawn over the app in use (`TYPE_APPLICATION_OVERLAY`, native `OverlayCard.kt` in `puck-full-screen`). Tapping it opens Puck on that alert through the same opened-question route as a notification tap. Swiping it sideways or tapping Dismiss removes the card and stops its ring and voice; the alert stays in the shade and under Needs you. Snooze removes the card, stops the ring, and opens Puck on that alert's snooze choices. The snooze itself runs in the signed-in app, because `answers.snooze` needs the Clerk user; a card cannot snooze with the app closed. When the card shows, the ring uses card channels (`puck-alerts-card`, `puck-urgent*-card`) at DEFAULT importance, so no heads-up banner covers the card. The Sound settings rows open the plain channels, which still apply to locked phones and phones without the overlay permission. Locked phones keep the full-screen alert; calls get no card. The card hides when the ring ends or the alert is answered or cleared.

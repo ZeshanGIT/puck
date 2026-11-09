@@ -11,6 +11,8 @@
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun test",
+    "machines:doc": "bun app/scripts/state-machines.ts",
+    "machines:check": "bun app/scripts/state-machines.ts --check",
     "cli:build": "bun run --filter @puck/cli build",
     "release:install": "bun run --filter @puck/app release:install"
   },
