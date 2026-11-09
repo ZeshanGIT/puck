@@ -40,8 +40,11 @@ class FullScreenAccessModule : Module() {
     Events("onVolumeKey", "onOverlayOpen", "onOverlayAction")
 
     OnCreate {
-      OverlayCard.onAction = { questionId, action ->
-        sendEvent("onOverlayAction", mapOf("questionId" to questionId, "action" to action))
+      OverlayCard.onAction = { questionId, action, text, nonce ->
+        sendEvent(
+          "onOverlayAction",
+          mapOf("questionId" to questionId, "action" to action, "text" to text, "nonce" to nonce.toDouble()),
+        )
       }
     }
 
@@ -236,6 +239,21 @@ class FullScreenAccessModule : Module() {
     // Removes the compact card when it shows this alert (or whichever card, with an empty id).
     Function("hideOverlayCard") { questionId: String ->
       OverlayCard.hide(questionId.ifEmpty { null })
+      true
+    }
+
+    // Replies typed on the compact card that JavaScript has not taken yet (kept across a closed app).
+    Function("pendingOverlayReplies") {
+      val context = appContext.reactContext ?: return@Function emptyList<Map<String, Any?>>()
+      OverlayCard.pendingReplies(context).map { reply ->
+        mapOf("questionId" to reply.questionId, "text" to reply.text, "nonce" to reply.nonce.toDouble())
+      }
+    }
+
+    // Forgets one card reply once JavaScript has sent it or queued it.
+    Function("clearOverlayReply") { nonce: Double ->
+      val context = appContext.reactContext ?: return@Function false
+      OverlayCard.clearReply(context, nonce.toLong())
       true
     }
 

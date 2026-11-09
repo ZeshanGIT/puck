@@ -14,9 +14,18 @@ type FullScreenNative = {
   showOverlayCard?: (card: Record<string, string | number>) => boolean;
   hideOverlayCard?: (questionId: string) => boolean;
   takeOverlayOpen?: () => { questionId: string; snooze: boolean; snoozeMinutes?: number; nonce?: number } | null;
+  pendingOverlayReplies?: () => { questionId: string; text: string; nonce: number }[];
+  clearOverlayReply?: (nonce: number) => boolean;
   addListener?: (
     eventName: "onVolumeKey" | "onOverlayOpen" | "onOverlayAction",
-    listener: (event?: { questionId: string; snooze?: boolean; snoozeMinutes?: number; nonce?: number; action?: "dismiss" | "snooze" }) => void,
+    listener: (event?: {
+      questionId: string;
+      snooze?: boolean;
+      snoozeMinutes?: number;
+      nonce?: number;
+      action?: "dismiss" | "snooze" | "reply";
+      text?: string;
+    }) => void,
   ) => { remove: () => void };
 };
 
@@ -224,10 +233,40 @@ export interface OverlayOpen {
   nonce: number;
 }
 
-/** A dismiss or snooze chosen on the compact card, reported while the app is running. */
+/**
+ * A dismiss, snooze or reply on the compact card, reported while the app is running. A reply
+ * carries its `text`; `nonce` is unique per reply, so it can be cleared once it is taken.
+ */
 export interface OverlayAction {
   questionId: string;
-  action: "dismiss" | "snooze";
+  action: "dismiss" | "snooze" | "reply";
+  text?: string;
+  nonce?: number;
+}
+
+/** A reply typed on the compact card and kept on the phone until JavaScript takes it. */
+export interface OverlayReply {
+  questionId: string;
+  text: string;
+  nonce: number;
+}
+
+/** Replies typed on the card that JavaScript has not taken yet (for example, while Puck was closed). */
+export function takeOverlayReplies(): OverlayReply[] {
+  try {
+    return nativeModule()?.pendingOverlayReplies?.() ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Forgets one card reply once it is sent or queued. Never throws. */
+export function clearOverlayReply(nonce: number): void {
+  try {
+    nativeModule()?.clearOverlayReply?.(nonce);
+  } catch {
+    // Already cleared, or this build predates the function.
+  }
 }
 
 /** The card open that started a cold start, taken once; null otherwise. */
@@ -262,7 +301,9 @@ export function subscribeOverlayAction(listener: (action: OverlayAction) => void
     const native = nativeModule();
     if (!native?.addListener) return () => {};
     const subscription = native.addListener("onOverlayAction", (event) => {
-      if (event?.action) listener({ questionId: event.questionId, action: event.action });
+      if (event?.action) {
+        listener({ questionId: event.questionId, action: event.action, text: event.text, nonce: event.nonce });
+      }
     });
     return () => subscription.remove();
   } catch {
