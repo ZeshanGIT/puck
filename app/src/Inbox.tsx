@@ -1,6 +1,6 @@
 import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
-import { Component, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Component, type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { AppState, StyleSheet, View } from "react-native";
 import type { PendingAlert } from "./ChoiceScreen";
 import { mutedBotIds, nextMuteExpiry, takeoverAlerts } from "./botsModel";
@@ -10,6 +10,12 @@ import { clearOpenedPairing, useOpenedPairingBotId } from "./pairingOpen";
 import { useOpenedQuestionId } from "./push";
 import { useBots } from "./useBots";
 import { readableError } from "./session";
+import {
+  alertLaunchTransition,
+  initialAlertLaunch,
+  LAUNCH_GIVE_UP_MS,
+  launchIdOf,
+} from "./alertLaunchMachine";
 import { alertLaunchSettled, inboxShowsHome } from "./alertLaunchRouting";
 import { inboxReady } from "./startupGate";
 import { useHistory } from "./useHistory";
@@ -90,7 +96,13 @@ function InboxBody({
   const rawWaiting = useQuery(anyApi.alerts.waiting, clientId ? { clientId } : "skip") as WaitingWireAlert[] | undefined;
   // Convex sends "no expiry" as null; the alert screens read it as undefined (see `alertExpiry.ts`).
   const waiting = useMemo(() => rawWaiting?.map((alert) => normalizeExpiry(alert)), [rawWaiting]);
-  const openedId = useOpenedQuestionId();
+  // The alert a notification opened. `alertLaunchMachine` applies it on every render (so a launch is
+  // visible on the first frame) and releases it once the alert has shown and left, was kept off the
+  // deck, or never arrived, so normal routing comes back instead of waiting on it for the whole run.
+  const rawOpenedId = useOpenedQuestionId();
+  const [launch, dispatchLaunch] = useReducer(alertLaunchTransition, initialAlertLaunch);
+  const launchNow = alertLaunchTransition(launch, { type: "opened", id: rawOpenedId });
+  const openedId = launchIdOf(launchNow);
   // Alerts he left in a stack ("Leave the rest for later") stay off the screen until he is back in
   // the app after being away, so the stack he just closed does not open again at once.
   const [left, setLeft] = useState<ReadonlySet<string>>(() => new Set());
@@ -245,6 +257,28 @@ function InboxBody({
   // first page of history is read here too (Convex shares the one subscription with Home and Archive).
   const firstHistory = useHistory(clientId);
   const launchId = chosenId ?? openedId;
+  useEffect(() => {
+    if (rawOpenedId !== null) dispatchLaunch({ type: "opened", id: rawOpenedId });
+  }, [rawOpenedId]);
+  const loadedLists = pending !== undefined && visible !== undefined;
+  const launchInPending = openedId !== null && (pending ?? []).some((item) => item.questionId === openedId);
+  const launchInLive = openedId !== null && deck.live.some((item) => item.questionId === openedId);
+  const launchOnDeck = openedId !== null && deck.alert?.questionId === openedId;
+  useEffect(() => {
+    dispatchLaunch({
+      type: "observed",
+      loaded: loadedLists,
+      inPending: launchInPending,
+      inLive: launchInLive,
+      onDeck: launchOnDeck,
+    });
+  }, [loadedLists, launchInPending, launchInLive, launchOnDeck]);
+  const launchWaiting = launchNow.phase === "waiting";
+  useEffect(() => {
+    if (!launchWaiting) return undefined;
+    const id = setTimeout(() => dispatchLaunch({ type: "gaveUp" }), LAUNCH_GIVE_UP_MS);
+    return () => clearTimeout(id);
+  }, [launchWaiting, launchNow.id]);
   const dataReady = inboxReady({ clientId, pending, bots, waiting, historyLoading: firstHistory.loading });
   const launchSettled = alertLaunchSettled(
     launchId,

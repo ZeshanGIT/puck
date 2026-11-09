@@ -24,9 +24,9 @@ export function alertLaunchSettled(
   if (deckQuestionId === launchId) return true;
   const inPending = pending.some((item) => item.questionId === launchId);
   const inVisible = visible.some((item) => item.questionId === launchId);
-  if (!inPending && !inVisible) return true;
-  if (inVisible) return false;
-  return false;
+  // Listed and on the screen's way but not on the deck yet: wait. The launch machine
+  // (alertLaunchMachine.ts) releases the wait if the deck keeps it off for good.
+  return !inPending && !inVisible;
 }
 
 /** Home is appropriate; false means keep the blank placeholder (not Home) under the opening screen. */
