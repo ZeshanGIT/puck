@@ -2,6 +2,27 @@
 
 Puck is a pager for AI agents: an agent sends an alert, your phone rings with a full-screen, call-style notification, and your reply goes back to the agent.
 
+<p>
+  <img src="docs/screenshots/pick-one.png" width="260" alt="Sheldon asks whether to ship the 0.3 build tonight. The Ship it option is armed and waits for a second tap.">
+  <img src="docs/screenshots/pick-several.png" width="260" alt="Brow asks which folders to tidy up. Inbox and Downloads are checked, and the button reads Send 2.">
+  <img src="docs/screenshots/wake-up-alarm.png" width="260" alt="Grok Bot's urgent wake-up alarm, with a drag track: Snooze on the left, I'm up on the right.">
+</p>
+
+*Pick one (tap twice to send), pick several, and an urgent wake-up alarm you drag to answer. Screenshots from a development build on an Android emulator.*
+
+## How it works
+
+1. An agent pages you with the `puck` CLI or the HTTP API. The call returns at once with a question id.
+2. Your Android phone shows a full-screen, call-style alert in the bot's colour, over the lock screen when it is urgent.
+3. You answer deliberately: tap an option twice, check several and send, drag the bot past a line, or type a reply.
+4. Puck posts the answer to that bot's own webhook, with stable option ids it can act on, and shows you when it was delivered.
+
+Every bot pairs with a six-digit code you approve on the phone, and has its own key in each direction.
+
+## Status
+
+A personal project in active development, used daily on one Pixel 7. Android only for now, with no store build: releases are debug-signed and point at a development backend. iPhone, spoken alarms and a hosted version are not built.
+
 ## Layout
 
 A TypeScript monorepo managed with [Bun workspaces](https://bun.sh/docs/install/workspaces):
