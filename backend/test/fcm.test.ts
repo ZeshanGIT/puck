@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { DISMISS_KIND, PUSH_CHANNEL_ID } from "@puck/shared";
 import {
   fcmBody,
+  retryDelay,
+  isUnregisteredToken,
   fcmDismissMessage,
   selectDismissTargets,
   fcmErrorStatus,
@@ -264,5 +266,19 @@ describe("selectDismissTargets", () => {
 
   test("nobody else means no targets", () => {
     expect(selectDismissTargets({ clients: [clients[0]!], device: null, exceptClientId: "c1" })).toEqual([]);
+  });
+});
+
+describe("push retry policy", () => {
+  test("backs off transient responses and respects Retry-After", () => {
+    expect(retryDelay(503, null, 0, 0)).toBe(60_000);
+    expect(retryDelay(429, "120", 0, 0)).toBe(120_000);
+    expect(retryDelay(503, "Thu, 01 Jan 1970 00:03:00 GMT", 0, 0)).toBe(180_000);
+    expect(retryDelay(400, null, 0, 0)).toBeNull();
+    expect(retryDelay(503, null, 5, 0)).toBeNull();
+  });
+  test("recognizes only explicit unregistered token errors", () => {
+    expect(isUnregisteredToken('{"error":{"details":[{"errorCode":"UNREGISTERED"}]}}')).toBe(true);
+    expect(isUnregisteredToken('{"error":{"status":"INVALID_ARGUMENT"}}')).toBe(false);
   });
 });

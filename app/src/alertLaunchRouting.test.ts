@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { alertLaunchSettled, inboxShowsHome, pickDeckAlert } from "./alertLaunchRouting";
+import { acceptInitialOpen, alertLaunchSettled, inboxShowsHome, pickDeckAlert } from "./alertLaunchRouting";
 
 const alerts = [
   { questionId: "q_AAA", botId: "a" },
@@ -45,5 +45,17 @@ describe("inboxShowsHome", () => {
 
   test("shows Home when there is no launch and no alert", () => {
     expect(inboxShowsHome({ deckAlert: null, launchId: null, pending: [], visible: [] })).toBe(true);
+  });
+});
+
+describe("initial open arbitration", () => {
+  test("ignores an old lookup after a card tap", () => {
+    expect(acceptInitialOpen(0, 1)).toBe(false);
+  });
+  test("ignores a lookup started after an existing open", () => {
+    expect(acceptInitialOpen(1, 1)).toBe(false);
+  });
+  test("accepts the first uncontested lookup", () => {
+    expect(acceptInitialOpen(0, 0)).toBe(true);
   });
 });

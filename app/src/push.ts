@@ -1,11 +1,12 @@
 import { anyApi } from "convex/server";
 import { useConvex } from "convex/react";
 import { AppState } from "react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { readClientId } from "./clientStore";
-import { subscribeOverlayOpen, takeOverlayOpen, type OverlayOpen } from "puck-full-screen";
+import { subscribeOverlayOpen, peekOverlayOpen, type OverlayOpen } from "puck-full-screen";
 import { cardSnoozeFromNative, requestSnoozeOnOpen, shouldHandleOpen } from "./cardSnooze";
 import { questionIdFromNotificationData } from "./pushOpen";
+import { acceptInitialOpen } from "./alertLaunchRouting";
 import { readableError } from "./session";
 import { loadNotificationsModule, registerPushTokenWithConvex } from "./onboarding/notificationSetup";
 
@@ -26,27 +27,33 @@ export function usePushRegistration(enabled: boolean): boolean | null {
       else await client.mutation(anyApi.device.registerPushToken, { token });
     }
 
-    async function run() {
-      const Notifications = await loadNotificationsModule();
-      if (!Notifications || cancelled) return;
-      const ok = await registerPushTokenWithConvex(Notifications, registerToken);
-      if (cancelled) return;
-      setGranted(ok);
-      const subscription = Notifications.addPushTokenListener((next) => {
-        if (typeof next.data !== "string") return;
-        registerToken(next.data).catch((error: unknown) => {
-          console.error(readableError(error));
-        });
-      });
-      remove = () => subscription.remove();
+    async function reconcile() {
+      try {
+        const Notifications = await loadNotificationsModule();
+        if (!Notifications || cancelled) return;
+        const ok = await registerPushTokenWithConvex(Notifications, registerToken);
+        if (!cancelled) setGranted(ok);
+      } catch (error: unknown) {
+        console.error(readableError(error));
+      }
     }
 
-    run().catch((error: unknown) => {
-      console.error(readableError(error));
+    void loadNotificationsModule().then((Notifications) => {
+      if (!Notifications || cancelled) return;
+      const subscription = Notifications.addPushTokenListener((next) => {
+        if (typeof next.data !== "string") return;
+        registerToken(next.data).catch((error: unknown) => console.error(readableError(error)));
+      });
+      remove = () => subscription.remove();
+      void reconcile();
+    });
+    const app = AppState.addEventListener("change", (state) => {
+      if (state === "active") void reconcile();
     });
     return () => {
       cancelled = true;
       remove();
+      app.remove();
     };
   }, [client, enabled]);
 
@@ -55,20 +62,23 @@ export function usePushRegistration(enabled: boolean): boolean | null {
 
 /** Question opened from a notification tap, including a cold start, or from the compact card. */
 export function useOpenedQuestionId(): string | null {
-  const [opened, setOpened] = useState<string | null>(null);
+  const [opened, setOpened] = useState<string | null>(() => peekOverlayOpen()?.questionId ?? null);
+  // A lookup started before a live open must never replace that newer action.
+  const openRevision = useRef(0);
 
   useEffect(() => {
     const open = (next: OverlayOpen) => {
       if (!shouldHandleOpen(next.nonce)) return;
+      openRevision.current += 1;
       if (next.snooze) requestSnoozeOnOpen(next.questionId, cardSnoozeFromNative(next.snoozeMinutes));
       setOpened(next.questionId);
     };
     const apply = () => {
-      const next = takeOverlayOpen();
+      const next = peekOverlayOpen();
       if (next) open(next);
     };
-    apply();
     const unsubscribe = subscribeOverlayOpen(open);
+    apply();
     const app = AppState.addEventListener("change", (state) => {
       if (state === "active") apply();
     });
@@ -85,14 +95,17 @@ export function useOpenedQuestionId(): string | null {
       .then((Notifications) => {
         if (!Notifications || cancelled) return null;
         const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-          setOpened(questionIdFromNotificationData(response.notification.request.content.data));
+          const id = questionIdFromNotificationData(response.notification.request.content.data);
+          if (id) { openRevision.current += 1; setOpened(id); }
         });
         remove = () => subscription.remove();
-        return Notifications.getLastNotificationResponseAsync();
+        const revision = openRevision.current;
+        return Notifications.getLastNotificationResponseAsync().then((response) => ({ response, revision }));
       })
-      .then((response) => {
-        if (!response || cancelled) return;
-        setOpened(questionIdFromNotificationData(response.notification.request.content.data));
+      .then((result) => {
+        if (!result || !result.response || cancelled || !acceptInitialOpen(result.revision, openRevision.current)) return;
+        const id = questionIdFromNotificationData(result.response.notification.request.content.data);
+        if (id) { openRevision.current += 1; setOpened(id); }
       })
       .catch((error: unknown) => {
         console.error(readableError(error));
@@ -109,14 +122,16 @@ export function useOpenedQuestionId(): string | null {
     import("@notifee/react-native")
       .then(async (mod) => {
         if (cancelled) return;
-        const initial = await mod.default.getInitialNotification();
-        const initialId = questionIdFromNotificationData(initial?.notification.data ?? null);
-        if (initialId) setOpened(initialId);
         remove = mod.default.onForegroundEvent(({ type, detail }) => {
           if (type !== mod.EventType.PRESS) return;
           const openedId = questionIdFromNotificationData(detail.notification?.data ?? null);
-          if (openedId) setOpened(openedId);
+          if (openedId) { openRevision.current += 1; setOpened(openedId); }
         });
+        const revision = openRevision.current;
+        const initial = await mod.default.getInitialNotification();
+        if (cancelled || !acceptInitialOpen(revision, openRevision.current)) return;
+        const initialId = questionIdFromNotificationData(initial?.notification.data ?? null);
+        if (initialId) { openRevision.current += 1; setOpened(initialId); }
       })
       .catch(() => {});
     return () => {

@@ -14,7 +14,11 @@ const alarmChannels: { id: string; bypassDnd: boolean }[] = [];
 const notifications: { channelId: string; timeoutAfter?: number }[] = [];
 const cards: { questionId: string; title: string; label: string; background: string }[] = [];
 const hidden: string[] = [];
-const overlay = { allowed: false, locked: false };
+const overlay = { allowed: false, locked: false, shown: true };
+let channelGate: Promise<void> | null = null;
+let channelEntered: (() => void) | null = null;
+// Appearance is a native boundary; do not load the RN runtime in a Bun unit test.
+mock.module("./overlayCard", () => ({ systemIsDark: async () => false }));
 
 mock.module("expo-secure-store", () => ({
   getItemAsync: async (key: string) => store.get(key) ?? null,
@@ -28,6 +32,8 @@ mock.module("expo-secure-store", () => ({
 mock.module("@notifee/react-native", () => ({
   default: {
     createChannel: async (channel: { id: string; bypassDnd?: boolean }) => {
+      channelEntered?.();
+      if (channelGate) await channelGate;
       channels.push(channel);
       return channel.id;
     },
@@ -52,7 +58,7 @@ mock.module("puck-full-screen", () => ({
   canDrawOverlay: () => overlay.allowed,
   showOverlayCard: (card: { questionId: string; title: string; label: string; background: string }) => {
     cards.push(card);
-    return true;
+    return overlay.shown;
   },
   hideOverlayCard: (questionId: string) => {
     hidden.push(questionId);
@@ -81,6 +87,9 @@ beforeEach(() => {
   hidden.length = 0;
   overlay.allowed = false;
   overlay.locked = false;
+  overlay.shown = true;
+  channelGate = null;
+  channelEntered = null;
 });
 
 let counter = 0;
@@ -212,5 +221,32 @@ describe("the next urgent alert reads the settings fresh", () => {
     await settings.saveBotBypass("sheldon-11019", { dnd: "all" });
     expect((await ring(asking({ botId: "sheldon-11019" }))).channelId).toBe("puck-urgent-dnd");
     expect((await ring(asking({ botId: "brow-00007" }))).channelId).toBe("puck-urgent");
+  });
+});
+
+
+describe("presentation lifecycle ordering", () => {
+  test("clear during channel creation prevents the notification and card", async () => {
+    overlay.allowed = true;
+    let release: () => void = () => {};
+    channelGate = new Promise<void>((resolve) => { release = resolve; });
+    const entered = new Promise<void>((resolve) => { channelEntered = resolve; });
+    const alert = asking({ priority: "normal" });
+    const presenting = urgent.displayUrgent(alert);
+    await entered;
+    const clearing = urgent.clearDisplayedAlert(alert.questionId);
+    release();
+    await Promise.all([presenting, clearing]);
+    expect(notifications).toEqual([]);
+    expect(cards).toEqual([]);
+  });
+
+  test("a refused native card falls back to a high-importance notification", async () => {
+    overlay.allowed = true;
+    overlay.shown = false;
+    const alert = asking({ priority: "normal" });
+    await urgent.displayUrgent(alert);
+    expect(notifications.map((note) => note.channelId)).toEqual(["puck-alerts-card", PUSH_CHANNEL_ID]);
+    await urgent.clearDisplayedAlert(alert.questionId);
   });
 });

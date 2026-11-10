@@ -122,7 +122,7 @@ export function useAlertDeck(
   );
   const next = pickDeckAlert(live, openedId);
   const [held, setHeld] = useState<PendingAlert | null>(null);
-  const heldGone = held !== null && !live.some((item) => item.questionId === held.questionId);
+  const heldGone = held !== null && next === null && (!openedId || openedId === held.questionId) && !live.some((item) => item.questionId === held.questionId);
   useEffect(() => {
     if (heldGone) return;
     setHeld((previous) => (previous?.questionId === next?.questionId ? previous : next));

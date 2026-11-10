@@ -1,3 +1,4 @@
+import { overlayAlertReady } from "puck-full-screen";
 import { anyApi } from "convex/server";
 import { useQuery } from "convex/react";
 import { Component, type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -287,6 +288,16 @@ function InboxBody({
     deck.alert?.questionId ?? null,
   );
   const ready = dataReady && launchSettled;
+  useEffect(() => {
+    if (!rawOpenedId || !ready) return;
+    // Two frames put the committed alert beneath the native cover before it fades.
+    let second: number | undefined;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => overlayAlertReady(rawOpenedId));
+    });
+    return () => { cancelAnimationFrame(first); if (second !== undefined) cancelAnimationFrame(second); };
+  }, [rawOpenedId, ready, deck.alert?.questionId]);
+
   useEffect(() => {
     if (ready) onReady?.();
   }, [ready, onReady]);

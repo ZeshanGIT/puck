@@ -236,6 +236,45 @@ class FullScreenAccessModule : Module() {
       }
     }
 
+    AsyncFunction("showOverlayCardAsync") { card: Map<String, Any?>, promise: Promise ->
+      val context = appContext.reactContext
+      if (context == null) { promise.resolve(false) }
+      else {
+        fun text(key: String): String = card[key] as? String ?: throw IllegalArgumentException(key)
+        try {
+          OverlayCard.show(context, OverlayCard.Spec(
+            questionId = text("questionId"),
+            label = text("label"),
+            title = text("title"),
+            body = text("body"),
+            background = Color.parseColor(text("background")),
+            ink = Color.parseColor(text("ink")),
+            ink2 = Color.parseColor(text("ink2")),
+            accent = Color.parseColor(text("accent")),
+            botColour = Color.parseColor(text("botColour")),
+            botDeep = Color.parseColor(text("botDeep")),
+            onBot = Color.parseColor(text("onBot")),
+            blobFill = Color.parseColor(text("blobFill")),
+            blobRim = (card["blobRim"] as? String)?.takeIf { it.isNotEmpty() }?.let { Color.parseColor(it) },
+            blobPath = text("blobPath"),
+            blobTilt = (card["blobTilt"] as? Number)?.toFloat() ?: 0f,
+            screen = Color.parseColor(text("screen")),
+          )) { shown -> promise.resolve(shown) }
+        } catch (_: IllegalArgumentException) { promise.resolve(false) }
+      }
+    }
+
+    Function("peekOverlayOpen") {
+      OverlayCard.peekOpened()?.let { opened ->
+        mapOf("questionId" to opened.questionId, "snooze" to opened.snooze, "snoozeMinutes" to opened.snoozeMinutes, "nonce" to opened.nonce.toDouble())
+      }
+    }
+
+    Function("overlayAlertReady") { questionId: String ->
+      OverlayCard.alertReady(questionId)
+      true
+    }
+
     // Removes the compact card when it shows this alert (or whichever card, with an empty id).
     Function("hideOverlayCard") { questionId: String ->
       OverlayCard.hide(questionId.ifEmpty { null })

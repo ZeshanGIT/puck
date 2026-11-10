@@ -41,3 +41,8 @@ export function inboxShowsHome(input: {
   if (input.pending === undefined || input.visible === undefined) return false;
   return alertLaunchSettled(input.launchId, input.pending, input.visible, null);
 }
+
+/** Initial lookups are snapshots; a live open takes precedence over their result. */
+export function acceptInitialOpen(startRevision: number, currentRevision: number): boolean {
+  return startRevision === 0 && currentRevision === startRevision;
+}

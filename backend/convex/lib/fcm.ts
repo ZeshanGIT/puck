@@ -19,6 +19,7 @@ export interface PushAlert {
   botId?: string;
   priority: "normal" | "urgent";
   fullScreen: boolean;
+  ttlSeconds?: number;
   /** The alert's own fields (Protocol changes section 1). Only the full-screen message carries them. */
   message?: string;
   ringSeconds?: number;
@@ -80,6 +81,7 @@ export function fcmMessage(alert: PushAlert) {
       },
       android: {
         priority: "HIGH" as const,
+        ttl: `${alert.ttlSeconds ?? 300}s`,
         notification: {
           channel_id: PUSH_CHANNEL_ID,
           notification_priority: "PRIORITY_MAX" as const,
@@ -122,6 +124,7 @@ export function fcmFullScreenMessage(alert: PushAlert) {
       data,
       android: {
         priority: "HIGH" as const,
+        ttl: `${alert.ttlSeconds ?? 300}s`,
       },
     },
   };
@@ -169,6 +172,7 @@ export function fcmDismissMessage(input: { pushToken: string; questionId: string
       data: { kind: DISMISS_KIND, questionId: input.questionId },
       android: {
         priority: "HIGH" as const,
+        ttl: "300s",
       },
     },
   };
@@ -296,4 +300,22 @@ export function fcmLiveMessage(input: LivePushInput) {
       },
     },
   };
+}
+
+/** Retry only errors FCM identifies as temporary; never treat generic INVALID_ARGUMENT as a bad token. */
+export function retryDelay(status: number, retryAfter: string | null, attempt: number, now: number): number | null {
+  if (status !== 429 && status < 500 && status !== 408) return null;
+  if (attempt >= 5) return null;
+  const seconds = retryAfter === null ? NaN : Number(retryAfter);
+  const date = retryAfter === null ? NaN : Date.parse(retryAfter);
+  const serverDelay = Number.isFinite(seconds) ? seconds * 1000 : Number.isFinite(date) ? date - now : 0;
+  return Math.max(60_000 * 2 ** attempt, serverDelay, 0);
+}
+
+export function isUnregisteredToken(body: string): boolean {
+  try {
+    const value: unknown = JSON.parse(body);
+    if (!isRecord(value) || !isRecord(value.error) || !Array.isArray(value.error.details)) return false;
+    return value.error.details.some((detail: unknown) => isRecord(detail) && detail.errorCode === "UNREGISTERED");
+  } catch { return false; }
 }

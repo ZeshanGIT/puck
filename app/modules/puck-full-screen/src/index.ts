@@ -12,6 +12,9 @@ type FullScreenNative = {
   requestUnlock?: () => Promise<string>;
   canDrawOverlay?: () => boolean;
   showOverlayCard?: (card: Record<string, string | number>) => boolean;
+  showOverlayCardAsync?: (card: Record<string, string | number>) => Promise<boolean>;
+  peekOverlayOpen?: () => OverlayOpen | null;
+  overlayAlertReady?: (questionId: string) => boolean;
   hideOverlayCard?: (questionId: string) => boolean;
   takeOverlayOpen?: () => { questionId: string; snooze: boolean; snoozeMinutes?: number; nonce?: number } | null;
   pendingOverlayReplies?: () => { questionId: string; text: string; nonce: number }[];
@@ -203,9 +206,11 @@ export interface OverlayCardContent {
 }
 
 /** Shows the compact card for an alert, replacing one already up. False without the permission. Never throws. */
-export function showOverlayCard(card: OverlayCardContent): boolean {
+export async function showOverlayCard(card: OverlayCardContent): Promise<boolean> {
   try {
-    return nativeModule()?.showOverlayCard?.({ ...card }) === true;
+    const native = nativeModule();
+    if (native?.showOverlayCardAsync) return await native.showOverlayCardAsync({ ...card });
+    return native?.showOverlayCard?.({ ...card }) === true;
   } catch {
     return false;
   }
@@ -279,6 +284,16 @@ export function takeOverlayOpen(): OverlayOpen | null {
   } catch {
     return null;
   }
+}
+
+/** Read pending native routing without consuming it during React rendering. */
+export function peekOverlayOpen(): OverlayOpen | null {
+  try { return nativeModule()?.peekOverlayOpen?.() ?? null; } catch { return null; }
+}
+
+/** Release the native launch cover after the requested screen commits. */
+export function overlayAlertReady(questionId: string): void {
+  try { nativeModule()?.overlayAlertReady?.(questionId); } catch { /* Older client. */ }
 }
 
 /** Calls `listener` when a tap on the card (or its Snooze) arrives while the app is running. */

@@ -2,6 +2,7 @@ package puck.fullscreen
 
 import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
+import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
@@ -146,6 +147,26 @@ internal object OverlayCard {
   private var params: WindowManager.LayoutParams? = null
   private var cover: View? = null
   private var shownId: String? = null
+  private var openingId: String? = null
+  private var openingReady = false
+  private var openingAnimating = false
+
+  fun peekOpened(): Opened? = pendingOpen?.takeIf {
+    SystemClock.elapsedRealtime() - pendingAt < PENDING_OPEN_MS
+  }
+
+  fun alertReady(questionId: String) {
+    main.post {
+      if (openingId != questionId) return@post
+      pendingOpen = null
+      openingReady = true
+      if (!openingAnimating) cover?.let { fadeOutCover(it) }
+    }
+  }
+
+  private fun motionEnabled(): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.O || ValueAnimator.areAnimatorsEnabled()
+
 
   // The last open request, kept until JavaScript takes it or it goes stale. A new-intent event is
   // lost when no screen is listening yet (Puck was idle or just restarted), and the activity's own
@@ -169,10 +190,15 @@ internal object OverlayCard {
   fun canDraw(context: Context): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
 
-  fun show(context: Context, card: Spec): Boolean {
-    if (!canDraw(context)) return false
+  fun show(context: Context, card: Spec, result: ((Boolean) -> Unit)? = null): Boolean {
+    if (!canDraw(context)) { result?.invoke(false); return false }
     val app = context.applicationContext
     main.post {
+      val keyguard = app.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+      if (!canDraw(app) || keyguard.isKeyguardLocked) {
+        result?.invoke(false)
+        return@post
+      }
       removeView()
       cover?.let { removeCover(it) }
       val root = buildView(app, card)
@@ -195,11 +221,13 @@ internal object OverlayCard {
         params = layoutParams
         shownId = card.questionId
         enter(root)
+        result?.invoke(true)
       } catch (error: RuntimeException) {
         // The permission was taken back, or the window manager refused the view: no card.
         view = null
         params = null
         shownId = null
+        result?.invoke(false)
       }
     }
     return true
@@ -208,15 +236,9 @@ internal object OverlayCard {
   /** The card drops in from its top edge with a little bounce, and the blob pops after it. */
   private fun enter(root: View) {
     val box = root.findViewWithTag<View>(TAG_BOX) ?: return
-    val blob = root.findViewWithTag<View>(TAG_BLOB)
     box.alpha = 0f
-    box.translationY = -dp(root.context, 28).toFloat()
-    box.animate().alpha(1f).translationY(0f).setDuration(380).setInterpolator(OvershootInterpolator(1.0f)).start()
-    blob?.let {
-      it.scaleX = 0.4f
-      it.scaleY = 0.4f
-      it.animate().scaleX(1f).scaleY(1f).setStartDelay(140).setDuration(420).setInterpolator(OvershootInterpolator(2.4f)).start()
-    }
+    box.translationY = -dp(root.context, 12).toFloat()
+    box.animate().alpha(1f).translationY(0f).setDuration(200).start()
   }
 
   /** Removes the card when it shows `questionId`, or any card when `questionId` is null. */
@@ -297,6 +319,22 @@ internal object OverlayCard {
   /** Opens Puck on the alert. `snoozeMinutes` is meaningful only with `snooze`: see [SNOOZE_CHOICES]. */
   fun openApp(context: Context, questionId: String, snooze: Boolean, snoozeMinutes: Int = SNOOZE_CHOICES) {
     val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return
+    openingId = questionId
+    openingReady = false
+    if (cover == null) {
+      val sheet = FrameLayout(context).apply {
+        val night = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        setBackgroundColor(if (night) 0xFF141312.toInt() else 0xFFFFFFFF.toInt())
+      }
+      val lp = WindowManager.LayoutParams(
+        WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, overlayType(),
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+        PixelFormat.TRANSLUCENT,
+      )
+      try { windowManager(context).addView(sheet, lp); cover = sheet } catch (_: RuntimeException) { }
+    }
+    val openingCover = cover
+    main.postDelayed({ if (openingId == questionId && cover === openingCover) openingCover?.let { removeCover(it) } }, 10_000L)
     launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
     launch.putExtra(EXTRA_QUESTION_ID, questionId)
     launch.putExtra(EXTRA_SNOOZE, snooze)
@@ -387,7 +425,7 @@ internal object OverlayCard {
       // A wash of the bot's colour that fades to the card colour, like the cards in the app.
       background = GradientDrawable(
         GradientDrawable.Orientation.LEFT_RIGHT,
-        intArrayOf(ColorUtils.blendARGB(card.background, card.botColour, 0.2f), card.background),
+        intArrayOf(ColorUtils.blendARGB(card.background, card.botColour, 0.07f), card.background),
       ).apply { cornerRadius = corner }
       elevation = dp(context, 8).toFloat()
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -401,18 +439,16 @@ internal object OverlayCard {
     val blob = BlobView(context, card).apply { tag = TAG_BLOB }
     val texts = LinearLayout(context).apply {
       orientation = LinearLayout.VERTICAL
-      addView(line(context, card.label.uppercase(), card.accent, 11f, bold = true))
-      addView(line(context, card.title, card.ink, 17f, bold = true, maxLines = 1))
-      addView(line(context, card.body, card.ink2, 14f, maxLines = 2, topPaddingDp = 1))
+      addView(line(context, card.body, card.ink, 17f, bold = true, maxLines = 3))
+      addView(line(context, card.title, card.ink2, 12f, maxLines = 1, topPaddingDp = 4))
     }
     val top = LinearLayout(context).apply {
       orientation = LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER_VERTICAL
-      addView(blob, LinearLayout.LayoutParams(dp(context, 56), dp(context, 56)).apply { marginEnd = dp(context, 14) })
+      addView(blob, LinearLayout.LayoutParams(dp(context, 42), dp(context, 42)).apply { marginEnd = dp(context, 14) })
       addView(texts, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
     }
     box.addView(top)
-    box.addView(line(context, "◀ snooze   ▶ reply   ▲ hide   ▼ open", card.ink2, 11f, topPaddingDp = 8))
 
     // Under the card when it is dragged left: the bot's colour and what a snooze would pick.
     val emoji = TextView(context).apply {
@@ -528,13 +564,7 @@ internal object OverlayCard {
         reveal.small.text = "keep going"
       }
     }
-    if (bump && minutes != 0) {
-      reveal.big.scaleX = 1.4f
-      reveal.big.scaleY = 1.4f
-      reveal.big.animate().scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(OvershootInterpolator(3f)).start()
-      reveal.emoji.rotation = -18f
-      reveal.emoji.animate().rotation(0f).setDuration(320).setInterpolator(OvershootInterpolator(3f)).start()
-    }
+
   }
 
   private enum class Axis { NONE, HORIZONTAL, VERTICAL }
@@ -917,10 +947,12 @@ internal object OverlayCard {
         removeView()
         return
       }
+      openingAnimating = true
       openApp(context, card.questionId, snooze = false)
       main.post { removeView() }
       animateTo(1f, 180L + (320L * (1f - progress)).toLong()) {
-        main.postDelayed({ fadeOutCover(sheet) }, COVER_HOLD_MS)
+        openingAnimating = false
+        if (openingReady) fadeOutCover(sheet)
       }
       main.postDelayed({ removeCover(sheet) }, COVER_SAFETY_MS)
     }
@@ -940,7 +972,7 @@ internal object OverlayCard {
 
   private fun fadeOutCover(sheet: View) {
     if (cover !== sheet) return
-    sheet.animate().alpha(0f).setDuration(COVER_FADE_MS).withEndAction { removeCover(sheet) }.start()
+    sheet.animate().alpha(0f).setDuration(if (motionEnabled()) 140L else 0L).withEndAction { removeCover(sheet) }.start()
   }
 
   private fun removeCover(sheet: View) {
@@ -1017,7 +1049,7 @@ internal object OverlayCard {
 
     override fun onAttachedToWindow() {
       super.onAttachedToWindow()
-      postDelayed(tick, 900L)
+      if (motionEnabled()) postDelayed(tick, 900L)
     }
 
     override fun onDetachedFromWindow() {

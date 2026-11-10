@@ -2,6 +2,16 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## Release trial and card opening (2026-11-11)
+
+The single-choice alert is the acceptance target for the owner's bot trial. A release APK with embedded JavaScript was installed with `adb install -r` on the Pixel, preserving data. All 923 unit tests and workspace typechecks passed; existing app-wide lint failures remain. The normal single-choice question appeared full-screen while locked. The final release was installed at 05:01:58 IST. The unlocked card showed the question, tapping it opened that same question with no Home flash in the captured transition, and tapping Yes twice stored the answer and delivered its webhook on the first attempt. A cold launch can still show Puck’s opening/connecting screen; this is not a guarantee of instant cold startup.
+
+Card layout now emphasizes the question, with a smaller avatar, lighter wash and short entrance. A native opening cover waits for React's requested-alert readiness acknowledgment; pending opens can be peeked without consuming them during render. Stale held alerts no longer override a newer live launch. Overlay drawing reports its actual asynchronous result and falls back to a high-importance notification on refusal. Presentation/clear operations are serialized per alert with cancellation invalidation. Push registration retries on foreground.
+
+The existing development Convex deployment has bounded per-target transient alert-send retries and an explicit five-minute push relevance window, capped by a real alert expiry. The alert remains in the inbox after that window; old pages are not kept by FCM for days. Dismissals remain best effort to avoid a delayed snooze dismissal clearing a resumed alert. Already accepted out-of-order FCM messages are not fully reconciled across process death.
+
+Phone scripting is documented in `docs/phone-testing.md`; `bun run phone -- <command>` runs the physical-Pixel helper. Unlock credentials stay in a private local file outside the repo. The owner's phone was set to Silent with notification volume zero and stay-awake while charging enabled. Battery Saver was off; Puck was not on the device-idle whitelist. Charging/stay-awake is not proof of idle delivery reliability. No sound tests were requested.
+
 ## Card reply, gestures and shadow (2026-11-09)
 
 The compact card no longer has Dismiss or Snooze buttons; the gestures cover them. Swipe left snoozes (5, 10, then until back), swipe right reveals a reply field under the card. Letting go past a quarter of the width focuses the field and opens the keyboard; Send records the reply without opening Puck. The reply is written natively first (`pendingOverlayReplies`, SharedPreferences) and then sent through the answer queue (`src/cardReply.ts`); a send that fails or waits for sign-in stays queued, and only the offline screen flushes the queue today, so a queued card reply may wait until that screen runs. Swipe down turns the sheet white by 20% of the way to the bottom of the screen, carries shape and centre the whole way, and finishes by itself once past 40%. The snooze panel is one flat bot colour. The window now reserves room for the shadow so it is no longer clipped. Not compiled or run on the phone (native build pending the owner's go-ahead).

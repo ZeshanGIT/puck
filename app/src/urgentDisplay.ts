@@ -69,6 +69,17 @@ interface Ring {
 const rings = new Map<string, Ring>();
 const afterCall = new Map<string, { alert: FullScreenAlert; since: number }>();
 let callTimer: ReturnType<typeof setInterval> | null = null;
+// Clear invalidates work immediately, while the queue orders native side effects per alert.
+const revisions = new Map<string, number>();
+const effects = new Map<string, Promise<void>>();
+function revision(id: string): number { return revisions.get(id) ?? 0; }
+function serialize(id: string, work: () => Promise<void>): Promise<void> {
+  const previous = effects.get(id) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(work);
+  effects.set(id, next);
+  void next.finally(() => { if (effects.get(id) === next) effects.delete(id); }).catch(() => {});
+  return next;
+}
 
 /* ----------------------------------------------------------------- channels */
 
@@ -197,7 +208,7 @@ function forget(questionId: string): void {
 }
 
 /** The ring time is up, or a volume key silenced it: stop the sound and the voice, keep the alert. */
-async function settle(questionId: string): Promise<void> {
+async function settleNow(questionId: string, version: number): Promise<void> {
   const ring = rings.get(questionId);
   if (!ring) return;
   clearTimeout(ring.timer);
@@ -212,14 +223,19 @@ async function settle(questionId: string): Promise<void> {
   try {
     const channelId = await ensureWaitingChannel();
     // Answered while the quiet copy was being made: do not put it back.
-    if (rings.get(questionId) !== ring) return;
+    if (rings.get(questionId) !== ring || revision(questionId) !== version) return;
     await postQuiet(ring.alert, channelId);
   } catch {
     // The ring has stopped. A missing shade copy is not worth failing for.
   }
 }
 
-async function startRinging(alert: FullScreenAlert, settings: LocalSettings): Promise<void> {
+function settle(questionId: string): Promise<void> {
+  const version = revision(questionId);
+  return serialize(questionId, () => settleNow(questionId, version));
+}
+
+async function startRinging(alert: FullScreenAlert, settings: LocalSettings, version: number): Promise<void> {
   const plan = alertRingingPlan(alert, settings, alert.botId, canCreateAlarmChannel());
   const seconds =
     plan.timeoutMs !== undefined ? Math.max(1, Math.round(plan.timeoutMs / 1000)) : ringSecondsFor(alert.ringSeconds, settings);
@@ -235,9 +251,11 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings): Pr
   } else {
     channelId = await ensureNormalChannel(card);
   }
+  if (revision(alert.questionId) !== version) return;
   forget(alert.questionId);
   // A soft cue from a call may still be up. Post fresh so the screen and sound start again.
   await notifee.cancelNotification(alert.questionId, alert.questionId);
+  if (revision(alert.questionId) !== version) return;
   const ring: Ring = {
     alert,
     state: "ringing",
@@ -252,21 +270,30 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings): Pr
   };
   rings.set(alert.questionId, ring);
   await postRinging(alert, channelId, plan);
-  if (card) await showCard(alert, settings);
+  if (card && revision(alert.questionId) === version) await showCard(alert, settings, version);
 }
 
 /** On an unlocked phone the alert also shows as a compact card over other apps (when allowed). */
-async function showCard(alert: FullScreenAlert, settings: LocalSettings): Promise<void> {
+async function showCard(alert: FullScreenAlert, settings: LocalSettings, version: number): Promise<void> {
   const dark = themeIsDark(settings.theme, await systemIsDark());
+  if (revision(alert.questionId) !== version) return;
   const bot = botLook({ botId: alert.botId ?? alert.botName, botName: alert.botName });
-  const shown = showOverlayCard({
+  const shown = await showOverlayCard({
     questionId: alert.questionId,
     ...overlayCardText(alert),
     ...overlayPalette(dark, alert.priority),
     ...overlayBotLook(bot, dark),
   });
   // A refused card leaves only the notification, which is hard to tell from "no card was tried".
-  if (!shown) console.warn(`overlay card was not shown for ${alert.questionId}`);
+  if (!shown && revision(alert.questionId) === version) {
+    // A denied or refused overlay must retain a visible heads-up fallback.
+    const fallback = alert.priority === "normal"
+      ? await ensureNormalChannel(false)
+      : await ensureChannel({ dnd: false, silent: false }, false);
+    if (revision(alert.questionId) === version) {
+      await postRinging(alert, fallback, alertRingingPlan(alert, settings, alert.botId, canCreateAlarmChannel()));
+    }
+  }
 }
 
 /** The card was dismissed or snoozed: stop this alert's voice and quiet its ring, keeping it in the shade. */
@@ -312,11 +339,13 @@ function watchForCallEnd(): void {
       return;
     }
     if (isInCall()) return;
-    const waiting = [...afterCall.values()];
+    const waiting = [...afterCall.values()].map((entry) => ({ ...entry, version: revision(entry.alert.questionId) }));
     afterCall.clear();
     stopWatchingForCallEnd();
     void loadLocalSettings().then((settings) => {
-      for (const entry of waiting) void startRinging(entry.alert, settings).catch(() => {});
+      for (const entry of waiting) {
+        void serialize(entry.alert.questionId, () => startRinging(entry.alert, settings, entry.version)).catch(() => {});
+      }
     });
   }, CALL_POLL_MS);
 }
@@ -329,29 +358,35 @@ function stopWatchingForCallEnd(): void {
 
 /* ------------------------------------------------------------------- public */
 
-export async function displayUrgent(alert: FullScreenAlert): Promise<void> {
-  if (isInCall()) {
-    // Q18: no ringing and no takeover. One short vibration; the alert waits and rings after the call.
-    await softCue(alert);
-    afterCall.set(alert.questionId, { alert, since: Date.now() });
-    watchForCallEnd();
-    return;
-  }
-  await startRinging(alert, await loadLocalSettings());
+export function displayUrgent(alert: FullScreenAlert): Promise<void> {
+  const version = revision(alert.questionId);
+  return serialize(alert.questionId, async () => {
+    if (revision(alert.questionId) !== version) return;
+    if (isInCall()) {
+      await softCue(alert);
+      if (revision(alert.questionId) !== version) return;
+      afterCall.set(alert.questionId, { alert, since: Date.now() });
+      watchForCallEnd();
+      return;
+    }
+    const settings = await loadLocalSettings();
+    if (revision(alert.questionId) === version) await startRinging(alert, settings, version);
+  });
 }
 
 /**
  * Called when the alert is answered or dropped: stops the ring and the voice, forgets a pending
  * ring after a call, and removes the shade copy. The id and the tag are both the question id.
  */
-export async function clearDisplayedAlert(questionId: string): Promise<void> {
+export function clearDisplayedAlert(questionId: string): Promise<void> {
+  revisions.set(questionId, revision(questionId) + 1);
   forget(questionId);
   afterCall.delete(questionId);
-  try {
-    await notifee.cancelNotification(questionId, questionId);
-  } catch {
-    // The inbox no longer shows the alert. A leftover shade copy can be dismissed by hand.
-  }
+  return serialize(questionId, async () => {
+    forget(questionId);
+    afterCall.delete(questionId);
+    try { await notifee.cancelNotification(questionId, questionId); } catch { /* already gone */ }
+  });
 }
 
 /** Notifee events for the urgent notification: swiping it away silences it, a tap keeps the voice. */

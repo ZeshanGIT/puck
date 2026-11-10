@@ -43,7 +43,8 @@ export async function registerPushTokenWithConvex(
   if (!granted) return false;
   const device = await Notifications.getDevicePushTokenAsync();
   const token = typeof device.data === "string" ? device.data : null;
-  if (token) await register(token);
+  if (!token) throw new Error("Device push token unavailable");
+  await register(token);
   return true;
 }
 

@@ -460,6 +460,8 @@ export const loadForPush = internalQueryGeneric({
       questionId: v.string(),
       question: v.string(),
       botName: v.string(),
+      pushGeneration: v.number(),
+      pushExpiresAt: v.number(),
       /** The bot's public id, for the phone's per-bot overrides. */
       botId: v.optional(v.string()),
       priority,
@@ -474,7 +476,7 @@ export const loadForPush = internalQueryGeneric({
   ),
   handler: async (ctx, args) => {
     const alert = await ctx.db.get(args.alertId);
-    if (!alert || alert.status !== "pending") return { send: false as const, reason: "not pending" as const };
+    if (!alert || alert.status !== "pending" || (alert.expiresAt !== undefined && alert.expiresAt <= Date.now())) return { send: false as const, reason: "not pending" as const };
     const bot = await ctx.db.get(alert.botId);
     if (!bot || bot.pairingState !== "paired" || bot.removedAt !== undefined) {
       return { send: false as const, reason: "not pending" as const };
@@ -500,6 +502,8 @@ export const loadForPush = internalQueryGeneric({
       questionId: alert.questionId,
       question: alert.question,
       botName: bot.name,
+      pushGeneration: alert.updatedAt,
+      pushExpiresAt: Math.min(alert.expiresAt ?? Infinity, Date.now() + 5 * 60_000),
       botId: bot.id,
       priority: alert.priority,
       ...(alert.message === undefined ? {} : { message: alert.message }),
