@@ -20,6 +20,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.text.InputType
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -101,9 +102,13 @@ internal object OverlayCard {
   private const val FLING_DOWN = 1500f
   private const val TOP_MARGIN_DP = 44
   private const val ROOM_BELOW_DP = 72
-  // Room around the card for its shadow, so the window never clips it.
-  private const val SHADOW_DP = 14
+  // Room around the card for its shadow, so the window never clips it. The shadow of ELEVATION_DP
+  // spreads about this far below the card.
+  private const val SHADOW_DP = 20
+  private const val ELEVATION_DP = 10
   private const val CORNER_DP = 22
+  // The edge just inside the card's outline, so it stands apart from a busy wallpaper (NeedCard's 1.5 dp).
+  private const val EDGE_DP = 1.5f
 
   private const val PREFS = "puck.overlayCard"
   private const val REPLIES_KEY = "pendingReplies"
@@ -125,6 +130,8 @@ internal object OverlayCard {
     val blobPath: String,
     val blobTilt: Float,
     val screen: Int,
+    /** The card's edge. Null: a see-through line of the ink. */
+    val edge: Int? = null,
   )
 
   /**
@@ -163,6 +170,31 @@ internal object OverlayCard {
       if (!openingAnimating) cover?.let { fadeOutCover(it) }
     }
   }
+
+  /**
+   * Nunito, the app's font, in the weights the card uses. The files sit in this module's Android
+   * assets (`puck-fonts/`), copied from `@expo-google-fonts/nunito`, because the native card cannot
+   * reach the fonts the JavaScript side loads. A face that does not load falls back to the system
+   * font in the nearest style.
+   */
+  private enum class Nunito(val file: String, val fallback: Int) {
+    BOLD("Nunito_700Bold.ttf", Typeface.BOLD),
+    EXTRA_BOLD("Nunito_800ExtraBold.ttf", Typeface.BOLD),
+    BLACK("Nunito_900Black.ttf", Typeface.BOLD),
+  }
+
+  private val faces = HashMap<Nunito, Typeface>()
+
+  private fun font(context: Context, weight: Nunito): Typeface = faces.getOrPut(weight) {
+    try {
+      Typeface.createFromAsset(context.applicationContext.assets, "puck-fonts/${weight.file}")
+    } catch (error: RuntimeException) {
+      Typeface.create(Typeface.DEFAULT, weight.fallback)
+    }
+  }
+
+  private fun edgeColour(card: Spec): Int =
+    card.edge ?: ColorUtils.setAlphaComponent(card.ink, 0x2E)
 
   private fun motionEnabled(): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.O || ValueAnimator.areAnimatorsEnabled()
@@ -332,12 +364,7 @@ internal object OverlayCard {
         val night = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
         setBackgroundColor(if (night) 0xFF141312.toInt() else 0xFFFFFFFF.toInt())
       }
-      val lp = WindowManager.LayoutParams(
-        WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, overlayType(),
-        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-        PixelFormat.TRANSLUCENT,
-      )
-      try { windowManager(context).addView(sheet, lp); cover = sheet } catch (_: RuntimeException) { }
+      try { windowManager(context).addView(sheet, fullScreenParams()); cover = sheet } catch (_: RuntimeException) { }
     }
     val openingCover = cover
     main.postDelayed({ if (openingId == questionId && cover === openingCover) openingCover?.let { removeCover(it) } }, 10_000L)
@@ -429,15 +456,18 @@ internal object OverlayCard {
       orientation = LinearLayout.VERTICAL
       setPadding(dp(context, 16), dp(context, 14), dp(context, 16), dp(context, 12))
       // A wash of the bot's colour that fades to the card colour, like the cards in the app.
+      // The edge parts the card from a busy wallpaper; the shadow lifts it off a plain one.
       background = GradientDrawable(
         GradientDrawable.Orientation.LEFT_RIGHT,
         intArrayOf(ColorUtils.blendARGB(card.background, card.botColour, 0.07f), card.background),
-      ).apply { cornerRadius = corner }
-      elevation = dp(context, 8).toFloat()
+      ).apply {
+        cornerRadius = corner
+        setStroke(max(1, dpF(context, EDGE_DP).toInt()), edgeColour(card))
+      }
+      elevation = dp(context, ELEVATION_DP).toFloat()
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        // Soft, even shadow all round, not a hard edge under the card.
-        outlineAmbientShadowColor = 0x33000000
-        outlineSpotShadowColor = 0x4D000000
+        outlineAmbientShadowColor = 0x40000000
+        outlineSpotShadowColor = 0x73000000
       }
       setOnClickListener { openApp(context, card.questionId, snooze = false); removeView() }
     }
@@ -445,8 +475,9 @@ internal object OverlayCard {
     val blob = BlobView(context, card).apply { tag = TAG_BLOB }
     val texts = LinearLayout(context).apply {
       orientation = LinearLayout.VERTICAL
-      addView(line(context, card.body, card.ink, 17f, bold = true, maxLines = 3))
-      addView(line(context, card.title, card.ink2, 12f, maxLines = 1, topPaddingDp = 4))
+      // As NeedCard in the app: the question in Nunito ExtraBold, the bot's name under it.
+      addView(line(context, card.body, card.ink, 16.5f, font(context, Nunito.EXTRA_BOLD), maxLines = 3, lineHeightSp = 20.6f))
+      addView(line(context, card.title, card.ink2, 13f, font(context, Nunito.BOLD), maxLines = 1, topPaddingDp = 3))
     }
     val top = LinearLayout(context).apply {
       orientation = LinearLayout.HORIZONTAL
@@ -464,13 +495,13 @@ internal object OverlayCard {
     val big = TextView(context).apply {
       setTextColor(card.onBot)
       setTextSize(TypedValue.COMPLEX_UNIT_SP, 36f)
-      typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+      typeface = font(context, Nunito.BLACK)
       setPadding(dp(context, 12), 0, dp(context, 6), 0)
     }
     val small = TextView(context).apply {
       setTextColor(card.onBot)
       setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-      typeface = Typeface.DEFAULT_BOLD
+      typeface = font(context, Nunito.EXTRA_BOLD)
     }
     val reveal = LinearLayout(context).apply {
       orientation = LinearLayout.HORIZONTAL
@@ -494,6 +525,7 @@ internal object OverlayCard {
       setHintTextColor(card.ink2)
       hint = "Reply to ${card.title}"
       setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+      typeface = font(context, Nunito.BOLD)
       isSingleLine = true
       inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
       imeOptions = EditorInfo.IME_ACTION_SEND
@@ -504,7 +536,7 @@ internal object OverlayCard {
       text = "Send"
       setTextColor(card.accent)
       setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-      typeface = Typeface.DEFAULT_BOLD
+      typeface = font(context, Nunito.EXTRA_BOLD)
       setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
       isClickable = true
     }
@@ -512,7 +544,7 @@ internal object OverlayCard {
       text = "✕"
       setTextColor(card.ink2)
       setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-      typeface = Typeface.DEFAULT_BOLD
+      typeface = font(context, Nunito.EXTRA_BOLD)
       setPadding(dp(context, 10), dp(context, 8), dp(context, 4), dp(context, 8))
       isClickable = true
     }
@@ -535,6 +567,11 @@ internal object OverlayCard {
     val side = dp(context, SHADOW_DP)
     val root = FrameLayout(context).apply {
       setPadding(side, dp(context, SHADOW_DP), side, dp(context, SHADOW_DP))
+      // The padding is the shadow's room. A ViewGroup clips its children to inside its padding by
+      // default, which cut the shadow off at the card's bounds and left only the bits in the rounded
+      // corners showing.
+      clipToPadding = false
+      clipChildren = false
       addView(snoozeReveal.layout, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
       addView(replyLayout, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
       addView(box, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
@@ -602,7 +639,7 @@ internal object OverlayCard {
 
     fun settleBack() {
       box.animate().translationX(0f).translationY(0f).alpha(1f).setDuration(SETTLE_MS)
-        .withEndAction { parts.reveal.layout.visibility = View.INVISIBLE; setRoom(parts.root, false) }
+        .withEndAction { hideUnderneath(parts); setRoom(parts.root, false) }
         .start()
     }
 
@@ -615,6 +652,10 @@ internal object OverlayCard {
           minutes = 0
           expander = null
           box.animate().cancel()
+          // Whatever a gesture uncovered under the card belongs to that gesture only. Left showing,
+          // the reply area waited behind the opaque card and came into view as soon as a pull-down
+          // made the card see-through.
+          hideUnderneath(parts)
           tracker?.recycle()
           tracker = VelocityTracker.obtain().also { it.addMovement(event) }
           true
@@ -634,12 +675,15 @@ internal object OverlayCard {
                 // Room above, so an upward drag is not cut off at the card's own top edge.
                 setRoom(parts.root, true)
               }
-            } else if (dx < 0) {
-              setReveal(parts.reveal, 0, bump = false)
-              parts.reveal.layout.visibility = View.VISIBLE
             } else {
-              parts.reply.layout.visibility = View.VISIBLE
+              setReveal(parts.reveal, 0, bump = false)
             }
+          }
+          if (axis == Axis.HORIZONTAL) {
+            // Under the card, only what this side of the drag opens: the snooze colours to the left,
+            // the reply area to the right, even when the finger crosses back over the start.
+            parts.reveal.layout.visibility = if (dx < 0) View.VISIBLE else View.INVISIBLE
+            parts.reply.layout.visibility = if (dx < 0) View.INVISIBLE else View.VISIBLE
           }
           when (axis) {
             Axis.HORIZONTAL -> if (dx < 0) {
@@ -658,7 +702,7 @@ internal object OverlayCard {
             Axis.VERTICAL -> {
               val grow = expander
               if (grow != null) {
-                grow.update(max(dy, 0f) / grow.travel)
+                grow.update(dy)
               } else if (dy < 0) {
                 box.translationY = dy
                 box.alpha = 1f - min(abs(dy) / (box.height * 1.4f), 0.85f)
@@ -729,6 +773,38 @@ internal object OverlayCard {
       }
     }
   }
+
+  /** Hides what sits under the card (the snooze colours and the reply area) until a gesture uncovers it. */
+  private fun hideUnderneath(parts: Parts) {
+    parts.reveal.layout.visibility = View.INVISIBLE
+    parts.reply.layout.visibility = View.INVISIBLE
+  }
+
+  /**
+   * A full-screen window that draws over the whole display, status bar strip included, and takes no
+   * touches. Since Android 11 a window is fitted inside the system bars unless it says otherwise
+   * (FLAG_LAYOUT_IN_SCREEN no longer does), so without `fitInsetsTypes = 0` the window starts below
+   * the status bar and anything placed in it by screen position lands that much lower.
+   */
+  private fun fullScreenParams(): WindowManager.LayoutParams =
+    WindowManager.LayoutParams(
+      WindowManager.LayoutParams.MATCH_PARENT,
+      WindowManager.LayoutParams.MATCH_PARENT,
+      overlayType(),
+      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+      PixelFormat.TRANSLUCENT,
+    ).apply {
+      gravity = Gravity.TOP or Gravity.START
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        fitInsetsTypes = 0
+        layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+      } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+      }
+    }
 
   /**
    * The card steps aside to reveal the reply area: the card fades, the text field takes the card's
@@ -842,11 +918,18 @@ internal object OverlayCard {
 
   /**
    * The pull-down transition, drawn in its own full-screen window so nothing clips it. A sheet that
-   * starts exactly as the card (a picture of it) grows with `progress` (0 to 1, where 1 is the
-   * finger at the bottom of the screen) into the full screen. Its colour turns to the app's
-   * background by [COLOUR_DONE] and the picture is gone by then; the shape and centre move the
-   * whole way. [complete] finishes the growth, starts Puck beneath, holds a moment and fades the
-   * sheet away so the alert appears to come in through it. [cancel] shrinks it back onto the card.
+   * starts as an exact copy of the card (a picture of it, edge and shadow included) follows the
+   * finger down and grows into the full screen: at a pull of `dy` the copy has moved down by `dy` and
+   * is `dy / travel` of the way to the whole screen, so the finger stays on it the whole way and it
+   * fills the screen as the finger reaches the bottom. Its colour turns to the app's background by
+   * [COLOUR_DONE] and the picture is gone by then. [complete] finishes the growth, starts Puck
+   * beneath, holds a moment and fades the sheet away so the alert appears to come in through it.
+   * [cancel] eases it back onto the card.
+   *
+   * Positions: the card's place comes from `getLocationOnScreen`, in screen pixels. The sheet's own
+   * window is measured the same way once it is laid out, and everything is placed relative to it,
+   * so the copy sits exactly on the card even if Android puts the window somewhere other than the
+   * top left of the screen. Until then the real card stays visible and the copy hidden.
    */
   private class Expander(
     private val context: Context,
@@ -857,9 +940,11 @@ internal object OverlayCard {
     private val width = box.width
     private val height = box.height
     private val at = IntArray(2)
-    val screenW: Int
-    val screenH: Int
+    private val origin = IntArray(2)
     private val radiusFrom = dp(context, CORNER_DP).toFloat()
+    private val elevationFrom = dp(context, ELEVATION_DP).toFloat()
+    private val edgeWidth = max(1, dpF(context, EDGE_DP).toInt())
+    private val edge = edgeColour(card)
     private val fillBackground = GradientDrawable().apply {
       setColor(card.background)
       cornerRadius = radiusFrom
@@ -869,14 +954,13 @@ internal object OverlayCard {
     private val sheet = FrameLayout(context)
     private val colours = ArgbEvaluator()
     private var ready = false
+    private var placed = false
+    private var done = false
+    private var animator: ValueAnimator? = null
+    /** How far the finger has pulled down from where it pressed, in pixels. */
+    private var pull = 0f
     var progress = 0f
       private set
-
-    init {
-      val size = screenSize(context)
-      screenW = size.first
-      screenH = size.second
-    }
 
     fun begin() {
       if (width <= 0 || height <= 0) return
@@ -885,58 +969,88 @@ internal object OverlayCard {
       box.getLocationOnScreen(at)
       picture.setImageBitmap(snapshot)
       fill.background = fillBackground
+      fill.elevation = elevationFrom
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        fill.outlineAmbientShadowColor = box.outlineAmbientShadowColor
+        fill.outlineSpotShadowColor = box.outlineSpotShadowColor
+      }
+      fill.visibility = View.INVISIBLE
       fill.addView(picture, FrameLayout.LayoutParams(width, height, Gravity.TOP or Gravity.START))
-      sheet.addView(
-        fill,
-        FrameLayout.LayoutParams(width, height).apply {
-          leftMargin = at[0]
-          topMargin = at[1]
-        },
-      )
-      val sheetParams = WindowManager.LayoutParams(
-        WindowManager.LayoutParams.MATCH_PARENT,
-        WindowManager.LayoutParams.MATCH_PARENT,
-        overlayType(),
-        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-          WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-          WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-          WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-        PixelFormat.TRANSLUCENT,
-      ).apply { gravity = Gravity.TOP or Gravity.START }
+      sheet.addView(fill, FrameLayout.LayoutParams(width, height))
+      sheet.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ -> placeSheet(view) }
       try {
-        windowManager(context).addView(sheet, sheetParams)
+        windowManager(context).addView(sheet, fullScreenParams())
       } catch (error: RuntimeException) {
         return
       }
       cover?.let { if (it !== sheet) removeCover(it) }
       cover = sheet
       ready = true
-      // The sheet shows the card from its first frame; the card's own window keeps the touch but draws nothing.
-      box.alpha = 0f
     }
 
-    /** Sets the transition to `p` of the way from the card to the full screen (0 to 1). */
-    fun update(p: Float) {
+    /**
+     * The sheet's window has been laid out: measure where it really is, put the copy exactly over the
+     * card, show it, and only then hide the real card (after this frame is drawn), so nothing blinks.
+     */
+    private fun placeSheet(view: View) {
+      val x = origin[0]
+      val y = origin[1]
+      view.getLocationOnScreen(origin)
+      if (placed && x == origin[0] && y == origin[1]) return
+      if (!placed) Log.d("PuckCard", "pull-down sheet at ${origin[0]},${origin[1]}; card at ${at[0]},${at[1]}")
+      placed = true
+      apply()
+      if (fill.visibility != View.VISIBLE) {
+        fill.visibility = View.VISIBLE
+        sheet.post {
+          if (!done) {
+            box.alpha = 0f
+            box.translationY = 0f
+          }
+        }
+      }
+    }
+
+    /** Follows the finger: `dy` is how far it has moved down since it pressed. */
+    fun update(dy: Float) {
       if (!ready) return
-      val t = p.coerceIn(0f, 1f)
-      progress = t
+      pull = dy.coerceIn(0f, travel)
+      progress = pull / travel
+      // Until the copy is placed, the card itself follows the finger, so the very first frames of
+      // the pull already move.
+      if (placed) apply() else box.translationY = pull
+    }
+
+    private fun apply() {
+      val t = progress
+      // The card's rectangle moved down by the pull, and the sheet's own (the whole screen), in the
+      // sheet's coordinates; the copy is t of the way from the first to the second.
+      val cardLeft = (at[0] - origin[0]).toFloat()
+      val cardTop = (at[1] - origin[1]) + pull
+      val screenW = if (sheet.width > 0) sheet.width else screenSize(context).first
+      val screenH = if (sheet.height > 0) sheet.height else screenSize(context).second
+      val left = lerpF(cardLeft, 0f, t)
+      val top = lerpF(cardTop, 0f, t)
+      val right = lerpF(cardLeft + width, screenW.toFloat(), t)
+      val bottom = lerpF(cardTop + height, screenH.toFloat(), t)
       val lp = fill.layoutParams as FrameLayout.LayoutParams
-      val left = lerp(at[0], 0, t)
-      val top = lerp(at[1], 0, t)
-      lp.leftMargin = left
-      lp.topMargin = top
-      lp.width = lerp(at[0] + width, screenW, t) - left
-      lp.height = lerp(at[1] + height, screenH, t) - top
+      lp.leftMargin = left.toInt()
+      lp.topMargin = top.toInt()
+      lp.width = (right - left).toInt()
+      lp.height = (bottom - top).toInt()
       fill.layoutParams = lp
       val colour = min(1f, t / COLOUR_DONE)
       fillBackground.cornerRadius = radiusFrom * (1f - t)
       fillBackground.setColor(colours.evaluate(colour, card.background, card.screen) as Int)
+      fillBackground.setStroke(edgeWidth, ColorUtils.setAlphaComponent(edge, (android.graphics.Color.alpha(edge) * (1f - colour)).toInt()))
+      fill.elevation = elevationFrom * (1f - t)
       picture.alpha = 1f - colour
     }
 
     private fun animateTo(target: Float, durationMs: Long, onEnd: () -> Unit) {
-      ValueAnimator.ofFloat(progress, target).apply {
-        duration = durationMs
+      animator?.cancel()
+      animator = ValueAnimator.ofFloat(pull, target).apply {
+        duration = if (motionEnabled()) durationMs else 0L
         interpolator = DecelerateInterpolator(1.6f)
         addUpdateListener { update(it.animatedValue as Float) }
         addListener(object : android.animation.AnimatorListenerAdapter() {
@@ -948,6 +1062,7 @@ internal object OverlayCard {
 
     /** Let go past the mark: finish growing, open Puck beneath, hold, fade the sheet away. */
     fun complete() {
+      done = true
       if (!ready) {
         openApp(context, card.questionId, snooze = false)
         removeView()
@@ -956,22 +1071,27 @@ internal object OverlayCard {
       openingAnimating = true
       openApp(context, card.questionId, snooze = false)
       main.post { removeView() }
-      animateTo(1f, 180L + (320L * (1f - progress)).toLong()) {
+      animateTo(travel, 180L + (320L * (1f - progress)).toLong()) {
         openingAnimating = false
         if (openingReady) fadeOutCover(sheet)
       }
       main.postDelayed({ removeCover(sheet) }, COVER_SAFETY_MS)
     }
 
-    /** Let go early: shrink back onto the card and hand the touch back to it. */
+    /**
+     * Let go early: ease back onto the card, show the card again, and take the copy away a frame
+     * later, so for one frame both are up (they look the same) rather than neither.
+     */
     fun cancel() {
-      if (!ready) {
-        box.alpha = 1f
+      done = true
+      if (!ready || !placed) {
+        box.animate().translationY(0f).alpha(1f).setDuration(SETTLE_MS).start()
+        if (ready) removeCover(sheet)
         return
       }
-      animateTo(0f, 200L) {
+      animateTo(0f, 220L) {
         box.alpha = 1f
-        removeCover(sheet)
+        sheet.post { removeCover(sheet) }
       }
     }
   }
@@ -990,7 +1110,7 @@ internal object OverlayCard {
     }
   }
 
-  private fun lerp(from: Int, to: Int, t: Float): Int = (from + (to - from) * t).toInt()
+  private fun lerpF(from: Float, to: Float, t: Float): Float = from + (to - from) * t
 
   /**
    * The bot's blob, the same body and eyes as the app's: the body path in a 100 x 100 box, tilted,
@@ -1093,14 +1213,19 @@ internal object OverlayCard {
     text: String,
     colour: Int,
     sizeSp: Float,
-    bold: Boolean = false,
+    face: Typeface,
     maxLines: Int = 1,
     topPaddingDp: Int = 0,
+    lineHeightSp: Float? = null,
   ): TextView = TextView(context).apply {
     this.text = text
     setTextColor(colour)
     setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
-    if (bold) typeface = Typeface.DEFAULT_BOLD
+    typeface = face
+    includeFontPadding = false
+    if (lineHeightSp != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      lineHeight = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, lineHeightSp, context.resources.displayMetrics).toInt()
+    }
     this.maxLines = maxLines
     ellipsize = android.text.TextUtils.TruncateAt.END
     setPadding(0, dp(context, topPaddingDp), 0, 0)
@@ -1108,4 +1233,7 @@ internal object OverlayCard {
 
   private fun dp(context: Context, value: Int): Int =
     (value * context.resources.displayMetrics.density).toInt()
+
+  private fun dpF(context: Context, value: Float): Float =
+    value * context.resources.displayMetrics.density
 }

@@ -274,6 +274,11 @@ export interface OverlayCardContent {
   blobTilt: number;
   /** The colour the card grows into when it is pulled down: the app's screen background. */
   screen: string;
+  /**
+   * The card's edge, `#AARRGGBB`, so it stands apart from any wallpaper; native falls back to a faint
+   * ink line when it is missing.
+   */
+  edge?: string;
 }
 
 /** Shows the compact card for an alert, replacing one already up. False without the permission. Never throws. */

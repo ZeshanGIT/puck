@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { darkTokens, lightTokens } from "./ui/tokens";
-import { hex6, overlayBotLook, overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
+import { androidAlpha, hex6, overlayBotLook, overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
 import { SAMPLE_BOTS, SHAPES } from "./ui/blobShapes";
 
 const ready = { locked: false, allowed: true, inCall: false, appOpen: false, screenOn: true };
@@ -53,9 +53,30 @@ describe("overlayPalette", () => {
       ink: lightTokens.ink,
       ink2: lightTokens.ink2,
       accent: lightTokens.ink3,
+      edge: androidAlpha(lightTokens.ink, 0.18),
     });
     expect(overlayPalette(true, "urgent").background).toBe(darkTokens.card);
     expect(overlayPalette(true, "urgent").accent).toBe(darkTokens.danger);
+  });
+
+  test("the edge is a see-through ink line, light on the dark card and red on an urgent one", () => {
+    expect(overlayPalette(false, "normal").edge).toBe(`#2E${lightTokens.ink.slice(1)}`);
+    expect(overlayPalette(true, "normal").edge).toBe(`#33${darkTokens.ink.slice(1)}`);
+    expect(overlayPalette(true, "urgent").edge.slice(3)).toBe(hex6(darkTokens.danger).slice(1));
+    // Android reads eight digits as #AARRGGBB.
+    for (const dark of [false, true]) {
+      for (const priority of ["normal", "urgent"] as const) {
+        expect(overlayPalette(dark, priority).edge).toMatch(/^#[0-9A-Fa-f]{8}$/);
+      }
+    }
+  });
+});
+
+describe("androidAlpha", () => {
+  test("puts the alpha first and widens short colours", () => {
+    expect(androidAlpha("#fff", 1)).toBe("#FFffffff");
+    expect(androidAlpha("#123456", 0)).toBe("#00123456");
+    expect(androidAlpha("#123456", 0.5)).toBe("#80123456");
   });
 });
 

@@ -49,16 +49,34 @@ export interface OverlayPalette {
   ink: string;
   ink2: string;
   accent: string;
+  /** The card's edge as `#AARRGGBB` (Android's order), drawn just inside its outline. */
+  edge: string;
 }
 
-/** The card wears the same tokens as the rest of the app: the card surface, the inks and the urgent red. */
+/**
+ * `#rrggbb` with an alpha in front, as Android's `Color.parseColor` reads eight digits:
+ * `#AARRGGBB`, not CSS's `#RRGGBBAA`.
+ */
+export function androidAlpha(colour: string, alpha: number): string {
+  const byte = Math.round(Math.min(1, Math.max(0, alpha)) * 255);
+  return `#${byte.toString(16).padStart(2, "0").toUpperCase()}${hex6(colour).slice(1)}`;
+}
+
+/**
+ * The card wears the same tokens as the rest of the app: the card surface, the inks and the urgent red.
+ * Its edge has to read on any wallpaper, busy or plain, light or dark: a see-through line of the ink
+ * (dark on the light card, light on the dark one) parts the card from what is behind it, and the
+ * shadow does the rest. An urgent card's edge is the urgent red.
+ */
 export function overlayPalette(dark: boolean, priority: AlertPriority): OverlayPalette {
   const tokens = dark ? darkTokens : lightTokens;
+  const urgent = priority === "urgent";
   return {
     background: tokens.card,
     ink: tokens.ink,
     ink2: tokens.ink2,
-    accent: priority === "urgent" ? tokens.danger : tokens.ink3,
+    accent: urgent ? tokens.danger : tokens.ink3,
+    edge: urgent ? androidAlpha(tokens.danger, dark ? 0.55 : 0.45) : androidAlpha(tokens.ink, dark ? 0.2 : 0.18),
   };
 }
 
