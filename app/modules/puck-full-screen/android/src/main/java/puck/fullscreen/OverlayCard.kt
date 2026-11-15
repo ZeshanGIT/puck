@@ -1212,11 +1212,16 @@ internal object OverlayCard {
       }
       openingAnimating = true
       growing = true
-      openApp(context, card.questionId, snooze = false)
       main.postDelayed({ removeCover(sheet) }, COVER_SAFETY_MS)
       val grow = {
         // The copy is on screen now, so the card's own window can go.
         sheet.post { removeView() }
+        // Puck starts only once the sheet has been drawn and shown (two frames on). Launched in the
+        // same moment the sheet window was added (a tap), Android's app-opening transition held the
+        // new window back until it ended, and the whole growth played unseen.
+        sheet.postOnAnimation {
+          sheet.postOnAnimation { openApp(context, card.questionId, snooze = false) }
+        }
         fly()
         springTo(travel, response = 0.42f, damping = 0.86f) {
           openingAnimating = false
