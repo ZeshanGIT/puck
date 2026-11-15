@@ -10,6 +10,8 @@ Follow-up: Android 12+ draws a touch-through overlay (`FLAG_NOT_TOUCHABLE`) at n
 
 The picture inside the sheet is the card's content only (no background, no blob); the sheet draws the wash and the single edge. The blob is a live `BlobView` above the sheet that flies on the same spring to the alert's blob: `AlertFrame` reports its blob box with `reportAlertBlob` (not over the lock screen), native keeps it in SharedPreferences and falls back to AlertFrame's default place, and `takeOverlayBlobFlight` makes the alert skip its arrival bounce once.
 
+Puck is launched two frames after the sheet is placed: an overlay window added during Android's app-opening transition stays hidden until it ends, which made a tap open the alert with no visible animation.
+
 ## Alert sounds and reminders (2026-11-15)
 
 Behaviour is decided in the vault: `Projects/Puck/docs/Alert sounds and reminders.md`. Alerts now play a ringtone from the phone's ringtone collection instead of a notification tone. Normal and urgent have their own choice, a bot can have its own, and each kind of alert has a Repeat switch (off: the ringtone plays once to its end). Ringing channels carry the ringtone in their id, because Android fixes a channel's sound when it is created; `removeStaleRingChannels` deletes the ones no choice uses. An urgent alert that gets past silent mode rings on the alarm stream, at the phone's alarm volume. Puck never changes the phone's volume.
