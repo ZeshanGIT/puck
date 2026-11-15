@@ -8,7 +8,7 @@ import { anyApi } from "convex/server";
 import { useConvex, useQuery } from "convex/react";
 import Constants from "expo-constants";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Linking } from "react-native";
+import { Linking } from "react-native";
 import { chooseRingtone } from "../botSoundSettings";
 import { syncClientPushToken } from "../clientAuth";
 import { convexUrl } from "../deployment";
@@ -22,7 +22,6 @@ import {
 } from "../localSettings";
 import { openDndAccessSettings } from "../onboarding/dndAccess";
 import { openFullScreenSettings } from "../onboarding/fullScreenSetup";
-import { canDrawOverlay } from "puck-full-screen";
 import { openOverlaySettings } from "../overlayCard";
 import { ensureNotificationPermission, readNotificationRowState } from "../onboarding/notificationSetup";
 import { readableError } from "../session";
@@ -61,15 +60,6 @@ export function ConnectedSettingsHost({
   const online = useOnline();
   const phone = usePhoneStates();
   const [settings, setSettings] = useState<LocalSettings>(DEFAULT_LOCAL_SETTINGS);
-  const [overlayCards, setOverlayCards] = useState<boolean | null>(null);
-  useEffect(() => {
-    const read = () => setOverlayCards(canDrawOverlay());
-    read();
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") read();
-    });
-    return () => subscription.remove();
-  }, []);
   useEffect(() => {
     let cancelled = false;
     void loadLocalSettings().then((loaded) => {
@@ -159,6 +149,9 @@ export function ConnectedSettingsHost({
         } else if (fix === "fullScreen") {
           await openFullScreenSettings();
           await refresh();
+        } else if (fix === "overlay") {
+          // Android's "Display over other apps" page; the state is read again when Puck comes back.
+          await openOverlaySettings();
         } else if (fix === "dnd") {
           await openDndAccessSettings();
           await refresh();
@@ -169,10 +162,6 @@ export function ConnectedSettingsHost({
           if (id) await syncClientPushToken(client, id);
         }
       },
-      overlayCards,
-      openOverlay: async () => {
-        await openOverlaySettings();
-      },
       sendTest: async (delaySeconds) => {
         const sent = (await client.mutation(anyApi.alerts.sendTest, { clientId: needClient(), delaySeconds })) as {
           questionId: string;
@@ -181,7 +170,7 @@ export function ConnectedSettingsHost({
       },
       signOut: onSignOut,
     };
-  }, [client, id, email, clients, settings, health, about, refresh, onSignOut, overlayCards]);
+  }, [client, id, email, clients, settings, health, about, refresh, onSignOut]);
 
   // What became of the test page S5 sent. While the alert is on screen it is answered there.
   const alert = useQuery(anyApi.alerts.get, id && nav.testId ? { clientId: id, questionId: nav.testId } : "skip") as

@@ -73,10 +73,6 @@ export interface SettingsSource {
   pickRingtone: (kind: SoundKind) => Promise<boolean>;
   /** Turn on or Allow: opens the system screen (or does the fix) for one health check. */
   fix: (id: Exclude<HealthFixId, "signIn">) => Promise<void>;
-  /** Whether the compact alert card may draw over other apps; null while it is read. */
-  overlayCards: boolean | null;
-  /** Opens Android's "Display over other apps" page for Puck. */
-  openOverlay: () => Promise<void>;
   /** Sends the test page; resolves with its question id. */
   sendTest: (delaySeconds: number) => Promise<string>;
   /** Signs out of Puck on this phone. */
@@ -269,14 +265,12 @@ export function SettingsHost({ source, nav, onNav, testStatus, onClose }: Settin
           health={healthRowValue(source.health)}
           version={source.about.title.replace(/^Puck /u, "")}
           theme={settings.theme}
-          overlayCards={source.overlayCards}
           onThisPhone={() => go("this-phone")}
           onClients={() => go("clients")}
           onSounds={() => go("sounds")}
           onHealth={() => go("health")}
           onAbout={() => go("about")}
           onTheme={(theme) => void run(() => source.setSettings({ theme }))}
-          onOverlayCards={() => void run(() => source.openOverlay())}
           onSignOut={() => setSigningOut(true)}
           onBack={back}
         />

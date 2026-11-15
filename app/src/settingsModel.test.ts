@@ -27,6 +27,7 @@ const NOW = new Date(2026, 10, 7, 14, 30).getTime();
 const good: HealthSnapshot = {
   notifications: true,
   fullScreen: true,
+  overlay: true,
   dndAccess: true,
   dndNeeded: true,
   batteryUnrestricted: true,
@@ -40,9 +41,9 @@ function client(over: Partial<ClientItem> & { id: string }): ClientItem {
 }
 
 describe("healthChecks", () => {
-  test("all good: seven ok rows, no fixes, 'Puck can reach you'", () => {
+  test("all good: eight ok rows, no fixes, 'Puck can reach you'", () => {
     const checks = healthChecks(good);
-    expect(checks.map((check) => check.id)).toEqual(["notifications", "fullScreen", "dnd", "battery", "registered", "push", "network"]);
+    expect(checks.map((check) => check.id)).toEqual(["notifications", "fullScreen", "overlay", "dnd", "battery", "registered", "push", "network"]);
     expect(checks.every((check) => check.state === "ok" && check.fix === undefined)).toBe(true);
     expect(healthTitle(checks)).toBe("Puck can reach you");
     expect(healthRowValue(good)).toEqual({ text: "All good", tone: "ok" });
@@ -52,12 +53,13 @@ describe("healthChecks", () => {
     const by = (over: Partial<HealthSnapshot>) => healthChecks({ ...good, ...over });
     expect(by({ notifications: false })[0]).toMatchObject({ state: "bad", fix: { id: "notifications", label: "Turn on" } });
     expect(by({ fullScreen: false })[1]).toMatchObject({ state: "bad", fix: { id: "fullScreen", label: "Allow" } });
-    expect(by({ dndAccess: false })[2]).toMatchObject({ state: "bad", fix: { id: "dnd", label: "Allow" } });
-    expect(by({ batteryUnrestricted: false })[3]).toMatchObject({ state: "bad", fix: { id: "battery", label: "Allow" } });
-    expect(by({ registered: false })[4]).toMatchObject({ state: "bad", fix: { id: "signIn" } });
-    expect(by({ pushToken: false })[5]).toMatchObject({ state: "bad", fix: { id: "push" } });
-    expect(by({ online: false })[6]).toMatchObject({ state: "bad" });
-    expect(by({ online: false })[6]?.fix).toBeUndefined();
+    expect(by({ overlay: false })[2]).toMatchObject({ state: "bad", fix: { id: "overlay", label: "Allow" } });
+    expect(by({ dndAccess: false })[3]).toMatchObject({ state: "bad", fix: { id: "dnd", label: "Allow" } });
+    expect(by({ batteryUnrestricted: false })[4]).toMatchObject({ state: "bad", fix: { id: "battery", label: "Allow" } });
+    expect(by({ registered: false })[5]).toMatchObject({ state: "bad", fix: { id: "signIn" } });
+    expect(by({ pushToken: false })[6]).toMatchObject({ state: "bad", fix: { id: "push" } });
+    expect(by({ online: false })[7]).toMatchObject({ state: "bad" });
+    expect(by({ online: false })[7]?.fix).toBeUndefined();
   });
 
   test("restricted battery use is an optional warning: shown, with its fix, but not counted as a problem", () => {
@@ -73,14 +75,14 @@ describe("healthChecks", () => {
   });
 
   test("Do Not Disturb access is only a problem while a bypass setting is on", () => {
-    const off = healthChecks({ ...good, dndAccess: false, dndNeeded: false })[2];
+    const off = healthChecks({ ...good, dndAccess: false, dndNeeded: false })[3];
     expect(off).toMatchObject({ state: "ok" });
     expect(off?.fix).toBeUndefined();
-    expect(healthChecks({ ...good, dndAccess: false, dndNeeded: true })[2]?.state).toBe("bad");
+    expect(healthChecks({ ...good, dndAccess: false, dndNeeded: true })[3]?.state).toBe("bad");
   });
 
   test("push waits for notifications: no fix button while they are off", () => {
-    const push = healthChecks({ ...good, notifications: false, pushToken: false })[5];
+    const push = healthChecks({ ...good, notifications: false, pushToken: false })[6];
     expect(push?.state).toBe("bad");
     expect(push?.fix).toBeUndefined();
     expect(push?.detail).toContain("notifications");
@@ -91,6 +93,12 @@ describe("healthChecks", () => {
     expect(checks.filter((check) => check.state === "unknown").map((check) => check.id)).toEqual(["dnd", "registered", "push"]);
     expect(problemCount(checks)).toBe(0);
     expect(checks.every((check) => check.fix === undefined)).toBe(true);
+  });
+
+  test("no permission to show over other apps is a problem: alerts on a phone in use lose the card", () => {
+    const checks = healthChecks({ ...good, overlay: false });
+    expect(checks.find((check) => check.id === "overlay")?.detail).toContain("only as a notification");
+    expect(healthTitle(checks)).toBe("One thing needs you");
   });
 
   test("the headline counts the problems", () => {

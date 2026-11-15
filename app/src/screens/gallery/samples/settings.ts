@@ -41,6 +41,7 @@ export interface SettingsSample {
 const ALL_OK: HealthSnapshot = {
   notifications: true,
   fullScreen: true,
+  overlay: true,
   dndAccess: true,
   dndNeeded: true,
   batteryUnrestricted: true,

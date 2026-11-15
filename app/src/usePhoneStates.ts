@@ -1,4 +1,4 @@
-import { canUseFullScreenIntent, hasDndAccess, isBatteryUnrestricted } from "puck-full-screen";
+import { canDrawOverlay, canUseFullScreenIntent, hasDndAccess, isBatteryUnrestricted } from "puck-full-screen";
 import { useCallback, useEffect, useState } from "react";
 import { AppState } from "react-native";
 import { readNotificationRowState } from "./onboarding/notificationSetup";
@@ -7,6 +7,8 @@ import { readNotificationRowState } from "./onboarding/notificationSetup";
 export interface PhoneStates {
   notifications: boolean | null;
   fullScreen: boolean | null;
+  /** Puck may draw over other apps: the card, and full screen while the phone is in use. */
+  overlay: boolean | null;
   dndAccess: boolean | null;
   /** Puck's battery use is Unrestricted. Optional, but without it some alerts may not get through. */
   batteryUnrestricted: boolean | null;
@@ -21,6 +23,7 @@ export function usePhoneStates(): { states: PhoneStates; refresh: () => Promise<
   const [states, setStates] = useState<PhoneStates>({
     notifications: null,
     fullScreen: null,
+    overlay: null,
     dndAccess: null,
     batteryUnrestricted: null,
   });
@@ -35,6 +38,7 @@ export function usePhoneStates(): { states: PhoneStates; refresh: () => Promise<
     const next: PhoneStates = {
       notifications,
       fullScreen: canUseFullScreenIntent(),
+      overlay: canDrawOverlay(),
       dndAccess: hasDndAccess(),
       batteryUnrestricted: isBatteryUnrestricted(),
     };

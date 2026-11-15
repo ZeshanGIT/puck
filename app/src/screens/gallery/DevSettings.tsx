@@ -23,6 +23,7 @@ export function DevSettings({ name }: { name: string }) {
   const [phone, setPhone] = useState(() => ({
     notifications: sample?.health.notifications ?? null,
     fullScreen: sample?.health.fullScreen ?? null,
+    overlay: sample?.health.overlay ?? null,
     dndAccess: sample?.health.dndAccess ?? null,
     batteryUnrestricted: sample?.health.batteryUnrestricted ?? null,
     online: sample?.health.online ?? true,
@@ -59,6 +60,7 @@ export function DevSettings({ name }: { name: string }) {
         show(`Sample: ${fix} fixed`);
         if (fix === "notifications") setPhone((all) => ({ ...all, notifications: true }));
         else if (fix === "fullScreen") setPhone((all) => ({ ...all, fullScreen: true }));
+        else if (fix === "overlay") setPhone((all) => ({ ...all, overlay: true }));
         else if (fix === "dnd") setPhone((all) => ({ ...all, dndAccess: true }));
         else if (fix === "battery") setPhone((all) => ({ ...all, batteryUnrestricted: true }));
         else
@@ -66,8 +68,6 @@ export function DevSettings({ name }: { name: string }) {
             all.map((client) => (client.id === SAMPLE_THIS_CLIENT_ID ? { ...client, hasPushToken: true } : client)),
           );
       },
-      overlayCards: false,
-      openOverlay: async () => show("Would open Display over other apps"),
       sendTest: async (delaySeconds) => {
         const testId = `sample-test-${Date.now()}`;
         setTestStatus({ kind: "waiting" });
@@ -93,6 +93,7 @@ export function DevSettings({ name }: { name: string }) {
       setPhone({
         notifications: fresh.health.notifications,
         fullScreen: fresh.health.fullScreen,
+        overlay: fresh.health.overlay,
         dndAccess: fresh.health.dndAccess,
         batteryUnrestricted: fresh.health.batteryUnrestricted,
         online: fresh.health.online,

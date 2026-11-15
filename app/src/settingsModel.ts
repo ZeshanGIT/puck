@@ -154,6 +154,11 @@ export function pushRow(hasPushToken: boolean | undefined): { text: string; tone
 export interface HealthSnapshot {
   notifications: boolean | null;
   fullScreen: boolean | null;
+  /**
+   * Android's "Display over other apps" for Puck (`canDrawOverlay`): what lets an alert show as the
+   * card, or take the whole screen, while the phone is unlocked and in use.
+   */
+  overlay: boolean | null;
   /** Android's Do Not Disturb access (`hasDndAccess`). */
   dndAccess: boolean | null;
   /** Some bypass setting lets alerts through Do Not Disturb (`dndBypassActive`). */
@@ -180,8 +185,8 @@ export function clientHealth(
   return { registered: true, pushToken: row.hasPushToken ?? null };
 }
 
-export type HealthCheckId = "notifications" | "fullScreen" | "dnd" | "battery" | "registered" | "push" | "network";
-export type HealthFixId = "notifications" | "fullScreen" | "dnd" | "battery" | "push" | "signIn";
+export type HealthCheckId = "notifications" | "fullScreen" | "overlay" | "dnd" | "battery" | "registered" | "push" | "network";
+export type HealthFixId = "notifications" | "fullScreen" | "overlay" | "dnd" | "battery" | "push" | "signIn";
 /** "unknown" is not a problem: the build or the moment cannot tell. */
 export type HealthState = "ok" | "bad" | "unknown";
 
@@ -225,6 +230,18 @@ export function healthChecks(snapshot: HealthSnapshot): HealthCheck[] {
         label: "Show over the lock screen",
         detail: "Alerts can't take over the screen",
         fix: { id: "fullScreen", label: "Allow" },
+      },
+    ),
+  );
+  checks.push(
+    tri(
+      snapshot.overlay,
+      { id: "overlay", label: "Show over other apps", detail: "Allowed" },
+      {
+        id: "overlay",
+        label: "Show over other apps",
+        detail: "While you use your phone, alerts come only as a notification: no card, no full screen",
+        fix: { id: "overlay", label: "Allow" },
       },
     ),
   );

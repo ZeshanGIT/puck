@@ -1,5 +1,5 @@
 /**
- * S4 Alert sounds: the ringtone for normal alerts and for urgent alerts (each opens the phone's
+ * S4 Alerts (once "Alert sounds"): per kind of alert, card or full screen while the phone is in use, and the ringtone for normal alerts and for urgent alerts (each opens the phone's
  * ringtone picker; a ringtone plays once), how often an unanswered urgent alert reminds, and
  * whether bots may bypass Do Not Disturb and silent mode (Off, Urgent only, All alerts). Prototype:
  * `SCREENS.sounds` and `.chips` (`vault/Projects/Puck/mockups/Puck prototype.html`);
@@ -48,7 +48,7 @@ export interface S4SoundsProps {
 export function S4Sounds(props: S4SoundsProps) {
   return (
     <OnboardingFrame>
-      <NavBar title="Alert sounds" onBack={props.onBack} backTestID="back" />
+      <NavBar title="Alerts" onBack={props.onBack} backTestID="back" />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         <Section label="Normal alerts" />
         <Group>
@@ -100,7 +100,7 @@ export function S4Sounds(props: S4SoundsProps) {
           />
         </Group>
         <Caption>
-          Pick from your phone's ringtones. A ringtone plays once, through to the end. With Repeat on it repeats until you answer or the alert's ring time is up. While you use your phone an alert shows as a small card over the app you are in; with Full screen on it takes the whole screen instead, as it does on a locked phone. Both need Alert cards over apps. Each bot can have its own.
+          Pick from your phone's ringtones. A ringtone plays once, through to the end. With Repeat on it repeats until you answer or the alert's ring time is up. While you use your phone an alert shows as a small card over the app you are in; with Full screen on it takes the whole screen instead, as it does on a locked phone. Both need "Show over other apps" in Alert health. Each bot can have its own.
         </Caption>
 
         <Section label="Remind me about an urgent alert" />

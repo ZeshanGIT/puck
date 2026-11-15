@@ -1,9 +1,8 @@
 /**
  * S1 Settings: the way into the other settings screens. Account (the signed-in email, This phone,
- * Other clients), Alerts (Alert sounds, the alert card over apps, Alert health with its state),
- * Appearance (System, Light or Dark, applied at once) and Puck (About, Sign out). The card's
- * permission is switched on by the person in Android's "Display over other apps" page; the row
- * only opens that page.
+ * Other clients), Alerts (the Alerts screen, Alert health with its state), Appearance (System,
+ * Light or Dark, applied at once) and Puck (About, Sign out). The permission the card needs
+ * ("Display over other apps") is a check on Alert health.
  * Prototype: `SCREENS.settings` and `srow` (`vault/Projects/Puck/mockups/Puck prototype.html`);
  * `App screens.md` S1.
  *
@@ -28,23 +27,18 @@ export interface S1SettingsProps {
   /** "1.0.0" */
   version: string;
   theme: ThemePreference;
-  /** Whether the compact card may draw over other apps; null while it is read. */
-  overlayCards: boolean | null;
   onThisPhone: () => void;
   onClients: () => void;
   onSounds: () => void;
   onHealth: () => void;
   onAbout: () => void;
   onTheme: (theme: ThemePreference) => void;
-  /** Opens Android's "Display over other apps" page for Puck. */
-  onOverlayCards: () => void;
   /** Opens the sign-out sheet (S6). */
   onSignOut: () => void;
   onBack: () => void;
 }
 
 export function S1Settings(props: S1SettingsProps) {
-  const overlayValue = props.overlayCards === null ? undefined : props.overlayCards ? "On" : "Off";
   return (
     <OnboardingFrame>
       <NavBar title="Settings" onBack={props.onBack} backTestID="back" />
@@ -70,15 +64,7 @@ export function S1Settings(props: S1SettingsProps) {
 
         <Section label="Alerts" />
         <Group>
-          <SettingsRow icon="sound" label="Alert sounds" onPress={props.onSounds} testID="settings-row-sounds" />
-          <SettingsRow
-            icon="bell"
-            label="Alert cards over apps"
-            value={overlayValue}
-            tone={props.overlayCards ? "ok" : "neutral"}
-            onPress={props.onOverlayCards}
-            testID="settings-row-overlay"
-          />
+          <SettingsRow icon="bell" label="Alerts" onPress={props.onSounds} testID="settings-row-sounds" />
           <SettingsRow
             icon="heart"
             label="Alert health"
@@ -88,10 +74,6 @@ export function S1Settings(props: S1SettingsProps) {
             testID="settings-row-health"
           />
         </Group>
-
-        <Caption>
-          On an unlocked phone, a small card shows over the app you are using. Android asks you to allow it on its own page.
-        </Caption>
 
         <Section label="Appearance" />
         <View style={styles.chips}>
