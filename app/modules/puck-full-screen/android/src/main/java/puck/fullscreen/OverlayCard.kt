@@ -335,8 +335,14 @@ internal object OverlayCard {
         PixelFormat.TRANSLUCENT,
       ).apply {
         // Low on the screen, where a thumb is: Android keeps the window above the navigation bar,
-        // and the window's own padding (the shadow's room) lifts the card off it.
+        // and the window's own padding (the shadow's room) lifts the card off it. It keeps it above
+        // the keyboard too, so the card stays in view while a reply is typed (or while the person
+        // types in the app underneath).
         gravity = Gravity.BOTTOM
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+          fitInsetsTypes = android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime()
+        }
+        softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
       }
       try {
         windowManager(app).addView(root, layoutParams)
@@ -1297,8 +1303,9 @@ internal object OverlayCard {
     } else {
       current.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
     }
+    // Resize: the window sits above the keyboard (with the keyboard in its fitted insets, above).
     current.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or
-      WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+      WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
     try {
       windowManager(root.context).updateViewLayout(root, current)
     } catch (error: RuntimeException) {
