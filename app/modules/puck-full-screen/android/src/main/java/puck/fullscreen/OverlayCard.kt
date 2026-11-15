@@ -394,6 +394,7 @@ internal object OverlayCard {
    * so the id and tag are matched from the active notifications rather than rebuilt.
    */
   fun silenceNotifications(context: Context, questionId: String) {
+    RingService.stop(questionId)
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     manager.activeNotifications
       .filter { it.tag == questionId }

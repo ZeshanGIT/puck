@@ -31,6 +31,9 @@ type FullScreenNative = {
   takeOverlayBlobFlight?: () => boolean;
   hideOverlayCard?: (questionId: string) => boolean;
   openAlertFullScreen?: (questionId: string) => boolean;
+  startRing?: (questionId: string, sound: string, alarm: boolean, loopMs: number, title: string) => boolean;
+  stopRing?: (questionId: string) => boolean;
+  soundPolicy?: () => SoundPolicy | null;
   takeOverlayOpen?: () => { questionId: string; snooze: boolean; snoozeMinutes?: number; nonce?: number } | null;
   pendingOverlayReplies?: () => { questionId: string; text: string; nonce: number }[];
   clearOverlayReply?: (nonce: number) => boolean;
@@ -368,6 +371,32 @@ export function takeOverlayOpen(): OverlayOpen | null {
 /** Read pending native routing without consuming it during React rendering. */
 export function peekOverlayOpen(): OverlayOpen | null {
   try { return nativeModule()?.peekOverlayOpen?.() ?? null; } catch { return null; }
+}
+
+/** The phone's ringer mode and whether Do Not Disturb is on. */
+export interface SoundPolicy {
+  ringer: "normal" | "vibrate" | "silent";
+  dnd: boolean;
+}
+
+/** What the phone says about silent mode and Do Not Disturb now; null on an older build (Puck then lets the notification ring). */
+export function soundPolicy(): SoundPolicy | null {
+  try { return nativeModule()?.soundPolicy?.() ?? null; } catch { return null; }
+}
+
+/**
+ * Puck plays the alert's ringtone itself, so another app's notification sound cannot cut it off.
+ * `alarm` plays it on the alarm stream (through silent mode or Do Not Disturb); `loopMs` > 0
+ * repeats it that long. False when it cannot (older build, or Android refused): let the
+ * notification ring instead.
+ */
+export function startRing(questionId: string, sound: string, alarm: boolean, loopMs: number | null, title: string): boolean {
+  try { return nativeModule()?.startRing?.(questionId, sound, alarm, loopMs ?? -1, title) === true; } catch { return false; }
+}
+
+/** Stops the ringtone Puck plays for this alert (any alert when no id is given). */
+export function stopRing(questionId?: string): void {
+  try { nativeModule()?.stopRing?.(questionId ?? ""); } catch { /* Older client. */ }
 }
 
 /**

@@ -23,6 +23,12 @@ const cancelled: string[] = [];
 const cards: { questionId: string; title: string; label: string; background: string }[] = [];
 const hidden: string[] = [];
 const fullScreens: string[] = [];
+const puckRings: { questionId: string; sound: string; alarm: boolean; loopMs: number | null }[] = [];
+const stoppedRings: string[] = [];
+const phone: { policy: { ringer: "normal" | "vibrate" | "silent"; dnd: boolean } | null; ringStarts: boolean } = {
+  policy: null,
+  ringStarts: true,
+};
 const overlay = { allowed: false, locked: false, shown: true, appOpen: false, screenOn: true, nativeRing: true, opens: true };
 let channelGate: Promise<void> | null = null;
 let channelEntered: (() => void) | null = null;
@@ -103,6 +109,15 @@ mock.module("puck-full-screen", () => ({
   hideOverlayCard: (questionId: string) => {
     hidden.push(questionId);
   },
+  soundPolicy: () => phone.policy,
+  startRing: (questionId: string, sound: string, alarm: boolean, loopMs: number | null) => {
+    if (!phone.ringStarts) return false;
+    puckRings.push({ questionId, sound, alarm, loopMs });
+    return true;
+  },
+  stopRing: (questionId?: string) => {
+    stoppedRings.push(questionId ?? "");
+  },
   openAlertFullScreen: (questionId: string) => {
     fullScreens.push(questionId);
     return overlay.opens;
@@ -132,6 +147,10 @@ beforeEach(() => {
   cards.length = 0;
   hidden.length = 0;
   fullScreens.length = 0;
+  puckRings.length = 0;
+  stoppedRings.length = 0;
+  phone.policy = null;
+  phone.ringStarts = true;
   overlay.opens = true;
   overlay.allowed = false;
   overlay.locked = false;
@@ -495,5 +514,52 @@ describe("presentation lifecycle ordering", () => {
     await urgent.displayUrgent(alert);
     expect(notifications.map((note) => note.channelId)).toEqual(["puck-alerts-card-rd", `${PUSH_CHANNEL_ID}-rd`]);
     await urgent.clearDisplayedAlert(alert.questionId);
+  });
+});
+
+describe("Puck plays the ringtone itself", () => {
+  test("the ringtone plays in Puck and the notification is silent, so another app's sound cannot cut it off", async () => {
+    phone.policy = { ringer: "normal", dnd: false };
+    await settings.saveLocalSettings({ normalRingtone: "content://media/internal/audio/media/11" });
+    const alert = asking({ priority: "normal" });
+    const note = await ring(alert);
+    expect(puckRings).toEqual([{ questionId: alert.questionId, sound: "content://media/internal/audio/media/11", alarm: false, loopMs: null }]);
+    expect(note.channelId.endsWith("-quiet")).toBe(true);
+    expect(note.loopSound).toBeUndefined();
+  });
+
+  test("Repeat is Puck's loop, for the ring time, not the notification's", async () => {
+    phone.policy = { ringer: "normal", dnd: false };
+    await settings.saveLocalSettings({ loopUrgent: true });
+    const note = await ring(asking({ priority: "urgent" }));
+    expect(puckRings[0]!.loopMs).toBeGreaterThan(0);
+    expect(note.loopSound).toBeUndefined();
+    expect(note.timeoutAfter).toBeUndefined();
+  });
+
+  test("silent mode holds back an alert that may not ring through it; one that may rings as an alarm", async () => {
+    phone.policy = { ringer: "silent", dnd: false };
+    await settings.saveLocalSettings({ bypassSilent: "urgent" });
+    const calm = await ring(asking({ priority: "normal", bypassSilent: true }));
+    expect(puckRings).toEqual([]);
+    expect(calm.channelId.endsWith("-quiet")).toBe(true);
+    await ring(asking({ priority: "urgent", bypassSilent: true }));
+    expect(puckRings.map((entry) => entry.alarm)).toEqual([true]);
+  });
+
+  test("if Android refuses, the notification rings as before", async () => {
+    phone.policy = { ringer: "normal", dnd: false };
+    phone.ringStarts = false;
+    const note = await ring(asking({ priority: "normal" }));
+    expect(note.channelId.endsWith("-quiet")).toBe(false);
+  });
+
+  test("answering or clearing the alert stops the ringtone", async () => {
+    phone.policy = { ringer: "normal", dnd: false };
+    const alert = asking({ priority: "urgent" });
+    await urgent.displayUrgent(alert);
+    stoppedRings.length = 0;
+    await urgent.clearDisplayedAlert(alert.questionId);
+    expect(stoppedRings).toContain(alert.questionId);
   });
 });

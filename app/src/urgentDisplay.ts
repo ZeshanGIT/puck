@@ -19,10 +19,14 @@ import {
   isScreenOn,
   openAlertFullScreen,
   showOverlayCard,
+  soundPolicy,
+  startRing,
+  stopRing,
 } from "puck-full-screen";
 import { useEffect, useState } from "react";
 import { dismissedQuestionId } from "./dismissPayload";
 import { fullscreenAlert, type FullScreenAlert } from "./fullscreenPayload";
+import { puckRing } from "./ringPlayback";
 import {
   cardChannelId,
   isNight,
@@ -90,6 +94,8 @@ interface Ring {
   state: RingState;
   timer: ReturnType<typeof setTimeout>;
   stopSpeech: (() => void) | null;
+  /** The notification rings silently: Puck plays the ringtone itself, or silent mode or Do Not Disturb holds it back. */
+  quiet: boolean;
 }
 
 const rings = new Map<string, Ring>();
@@ -142,7 +148,9 @@ async function ensureChannel(
   decision: BypassDecision,
   card: boolean,
   ringtone: string,
+  quiet = false,
 ): Promise<string> {
+  if (quiet) return ensureQuietChannel(priority, decision, card);
   const alarm = decision.silent && canCreateRingChannel();
   const base =
     priority === "urgent" ? urgentChannelId(decision, alarm, card) : normalChannelId(decision, alarm, card);
@@ -170,6 +178,28 @@ async function ensureChannel(
     importance: card ? AndroidImportance.DEFAULT : AndroidImportance.HIGH,
     // Notifee is silent unless this is set. "default" is the system notification sound.
     sound: "default",
+    vibration: true,
+    visibility: AndroidVisibility.PUBLIC,
+    bypassDnd: decision.dnd,
+  });
+  return id;
+}
+
+/**
+ * The same channel without a sound, for an alert whose ringtone Puck plays itself (or that silent
+ * mode or Do Not Disturb holds back): a notification sound would be cut off by any other app's
+ * notification, so the notification only shows and vibrates. It still lets the alert through Do
+ * Not Disturb when the decision says so, so it shows there.
+ */
+async function ensureQuietChannel(priority: AlertPriority, decision: BypassDecision, card: boolean): Promise<string> {
+  const base = priority === "urgent" ? urgentChannelId(decision, false, card) : normalChannelId(decision, false, card);
+  const id = `${base}-quiet`;
+  const kind = priority === "urgent" ? "Urgent alerts" : "Alerts";
+  const name = `${kind}${decision.dnd ? " (Do Not Disturb)" : ""}${card ? ", on the card" : ""}, Puck rings`;
+  await notifee.createChannel({
+    id,
+    name,
+    importance: card ? AndroidImportance.DEFAULT : AndroidImportance.HIGH,
     vibration: true,
     visibility: AndroidVisibility.PUBLIC,
     bypassDnd: decision.dnd,
@@ -304,6 +334,7 @@ async function postQuiet(alert: FullScreenAlert, channelId: string): Promise<voi
 
 function forget(questionId: string): void {
   hideOverlayCard(questionId);
+  stopRing(questionId);
   const ring = rings.get(questionId);
   if (!ring) return;
   clearTimeout(ring.timer);
@@ -318,6 +349,7 @@ async function settleNow(questionId: string, version: number): Promise<void> {
   clearTimeout(ring.timer);
   ring.stopSpeech?.();
   ring.stopSpeech = null;
+  stopRing(questionId);
   if (ring.state !== "ringing") {
     // Swiped or tapped away already: nothing is left to quiet.
     if (ring.state === "gone") rings.delete(questionId);
@@ -351,12 +383,25 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings, ver
     dnd: plan.bypassDndOnChannel && hasDndAccess() === true,
     silent: plan.useAlarmChannel,
   };
-  const channelId = await ensureChannel(alert.priority, decision, card, ringtone);
-  if (revision(alert.questionId) !== version) return;
+  const loopMs = loopsFor(settings, alert.priority, alert.botId) ? seconds * 1000 : null;
   forget(alert.questionId);
   // A soft cue from a call may still be up. Post fresh so the screen and sound start again.
   await notifee.cancelNotification(alert.questionId, alert.questionId);
   if (revision(alert.questionId) !== version) return;
+  // Puck rings itself, so another app's notification sound cannot cut the ringtone off; the
+  // notification is then silent. Silent mode and Do Not Disturb are applied here, as Android did
+  // for the notification. On an older build, or if Android refuses, the notification rings as before.
+  const policy = soundPolicy();
+  let quiet = false;
+  if (policy) {
+    const now = puckRing(decision, policy);
+    quiet = !now.play || startRing(alert.questionId, ringtone, now.stream === "alarm", loopMs, alert.botName);
+  }
+  const channelId = await ensureChannel(alert.priority, decision, card, ringtone, quiet);
+  if (revision(alert.questionId) !== version) {
+    stopRing(alert.questionId);
+    return;
+  }
   const ring: Ring = {
     alert,
     state: "ringing",
@@ -368,9 +413,10 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings, ver
       alert.priority === "urgent" && alert.speak
         ? startSpeaking(alert.questionId, speechText(alert.question, alert.message), seconds)
         : null,
+    quiet,
   };
   rings.set(alert.questionId, ring);
-  await postRinging(alert, channelId, loopsFor(settings, alert.priority, alert.botId) ? seconds * 1000 : null);
+  await postRinging(alert, channelId, quiet ? null : loopMs);
   if (revision(alert.questionId) === version) {
     try {
       await scheduleReminders(alert, settings, decision, ringtone);
@@ -401,11 +447,11 @@ async function showCard(alert: FullScreenAlert, settings: LocalSettings, version
   if (!shown && revision(alert.questionId) === version) {
     // A denied or refused overlay must retain a visible heads-up fallback.
     const ringtone = ringtoneFor(settings, alert.botId, alert.priority);
-    const fallback = alert.priority === "normal"
-      ? await ensureNormalChannel(false, ringtone)
-      : await ensureChannel("urgent", { dnd: false, silent: false }, false, ringtone);
+    // Puck already rings it (or it is held back): the heads-up comes without a second sound.
+    const quiet = rings.get(alert.questionId)?.quiet === true;
+    const fallback = await ensureChannel(alert.priority, { dnd: false, silent: false }, false, ringtone, quiet);
     if (revision(alert.questionId) === version) {
-      await postRinging(alert, fallback, loopsFor(settings, alert.priority, alert.botId) ? plan.ringSeconds * 1000 : null);
+      await postRinging(alert, fallback, !quiet && loopsFor(settings, alert.priority, alert.botId) ? plan.ringSeconds * 1000 : null);
     }
   }
 }
@@ -519,7 +565,9 @@ export async function handleNotifeeEvent(event: Event): Promise<void> {
     await cancelReminders(questionId);
   } else if (event.type === EventType.PRESS) {
     const ring = rings.get(questionId);
-    // Tapping cancels the notification and so the loop. The voice carries on until the ring time.
+    // Tapping cancels the notification and so its sound, and stops the ringtone Puck plays. The
+    // voice carries on until the ring time.
+    stopRing(questionId);
     if (ring && ring.state === "ringing") ring.state = "gone";
   }
 }

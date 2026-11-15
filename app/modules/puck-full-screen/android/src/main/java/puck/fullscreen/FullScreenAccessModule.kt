@@ -365,6 +365,34 @@ class FullScreenAccessModule : Module() {
       true
     }
 
+    // Puck plays the alert's ringtone itself (RingService). False: Android would not start it.
+    Function("startRing") { questionId: String, sound: String, alarm: Boolean, loopMs: Double, title: String ->
+      val context = appContext.reactContext ?: return@Function false
+      RingService.start(context, questionId, sound, alarm, loopMs.toLong(), title)
+    }
+
+    // Stops the ringtone when it is this alert's; "" stops any.
+    Function("stopRing") { questionId: String ->
+      RingService.stop(questionId.ifEmpty { null })
+      true
+    }
+
+    // The phone's ringer mode and whether Do Not Disturb is on, for deciding whether Puck rings.
+    Function("soundPolicy") {
+      val context = appContext.reactContext ?: return@Function null
+      val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      val notifications = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      val filter = notifications.currentInterruptionFilter
+      mapOf(
+        "ringer" to when (audio.ringerMode) {
+          AudioManager.RINGER_MODE_NORMAL -> "normal"
+          AudioManager.RINGER_MODE_VIBRATE -> "vibrate"
+          else -> "silent"
+        },
+        "dnd" to (filter != NotificationManager.INTERRUPTION_FILTER_ALL && filter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN),
+      )
+    }
+
     Function("openAlertFullScreen") { questionId: String ->
       val context = appContext.reactContext ?: return@Function false
       OverlayCard.openFullScreen(context, questionId)
