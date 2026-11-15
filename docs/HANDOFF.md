@@ -2,6 +2,10 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## Bottom card with an answer picker (2026-11-15)
+
+`OverlayCard` shows at the bottom (gravity BOTTOM, above the navigation bar). Swipe up opens `Picker`, a full-screen touchable window with the answers above the card; `hover(rawY)` picks the one under the finger, risky ones need `HOLD_MS`, letting go calls `pickAnswer` (ring stops, "Sent to" with Undo for `UNDO_MS`, then `submitReply` with `optionIds`). Swipe down sends `ACTION_LATER` (`laterCardAlert`: settle, reminders kept). Answers come from `cardChoices` via `fetchCardChoices` (`alerts.get`) after the card shows, handed over with `setOverlayChoices`; the push has no options. `ensureBackgroundAuth` signs Convex in from the stored account when the app has not, so card answers send with Puck closed. `setRoom` and the pull-down-to-open are gone. Owner check on the phone pending.
+
 ## Puck plays the ringtone (2026-11-15)
 
 The ringtone was the alert notification's channel sound, and Android's single notification sound player let any later notification cut it off. `RingService` (module manifest: foreground service type `mediaPlayback`) plays it with `MediaPlayer` on the ringtone or alarm usage with transient focus; it plays once or loops for the ring time, and shows a silent `puck-ringing-now` notification with Stop. JS (`startRinging`) decides with `puckRing(decision, soundPolicy())` (`ringPlayback.ts`), starts it with `startRing`, and posts the alert on a `-quiet` channel; `stopRing` runs in `forget`, `settleNow`, a press, and `OverlayCard.silenceNotifications`. No policy (older build) or a refused service: the old sounding channel. Reminders still use sounding channels. Verified on the Pixel with Puck in front only.
