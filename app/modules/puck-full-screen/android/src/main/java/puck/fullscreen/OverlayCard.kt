@@ -1113,7 +1113,7 @@ internal object OverlayCard {
         cornerRadius = dp(context, 18).toFloat()
         setStroke(max(1, dpF(context, EDGE_DP).toInt()), restEdge(choice))
       }
-      val fill = View(context).apply {
+      val fill = FillView(context).apply {
         setBackgroundColor(0x40FFFFFF)
         pivotX = 0f
         scaleX = 0f
@@ -1778,6 +1778,18 @@ internal object OverlayCard {
     if (y < spans.last().first) return spans.size - 1
     spans.forEachIndexed { index, span -> if (y >= span.first && y <= span.second) return index }
     return spans.indices.minByOrNull { abs(y - (spans[it].first + spans[it].second) / 2f) } ?: -1
+  }
+
+  /**
+   * The hold progress strip inside a risky answer. It fills its answer but never sizes it: asked
+   * how big it wants to be while the answer is still measuring its text, it says nothing. (A plain
+   * View there took all the room it was offered, and the answer grew to fill the screen.)
+   */
+  private class FillView(context: Context) : View(context) {
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+      fun exact(spec: Int) = if (MeasureSpec.getMode(spec) == MeasureSpec.EXACTLY) MeasureSpec.getSize(spec) else 0
+      setMeasuredDimension(exact(widthMeasureSpec), exact(heightMeasureSpec))
+    }
   }
 
   /**
