@@ -312,6 +312,7 @@ class FullScreenAccessModule : Module() {
             blobTilt = (card["blobTilt"] as? Number)?.toFloat() ?: 0f,
             screen = Color.parseColor(text("screen")),
             edge = (card["edge"] as? String)?.takeIf { it.isNotEmpty() }?.let { Color.parseColor(it) },
+            wash = (card["wash"] as? String)?.takeIf { it.isNotEmpty() }?.let { Color.parseColor(it) },
           ),
         )
       } catch (error: IllegalArgumentException) {
@@ -343,6 +344,7 @@ class FullScreenAccessModule : Module() {
             blobTilt = (card["blobTilt"] as? Number)?.toFloat() ?: 0f,
             screen = Color.parseColor(text("screen")),
             edge = (card["edge"] as? String)?.takeIf { it.isNotEmpty() }?.let { Color.parseColor(it) },
+            wash = (card["wash"] as? String)?.takeIf { it.isNotEmpty() }?.let { Color.parseColor(it) },
           )) { shown -> promise.resolve(shown) }
         } catch (_: IllegalArgumentException) { promise.resolve(false) }
       }

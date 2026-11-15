@@ -98,6 +98,11 @@ internal object OverlayCard {
   private const val COVER_HOLD_MS = 380L
   private const val COVER_FADE_MS = 320L
   private const val COVER_SAFETY_MS = 4000L
+  // The opening from the card (as the card prototype): growth and the blob's flight, the card's
+  // content fading out, and its edge and shadow fading out.
+  private const val OPEN_MS = 560L
+  private const val CONTENT_FADE_MS = 140f
+  private const val EDGE_FADE_MS = 400f
   private const val FLING_UP = -1200f
   private const val FLING_DOWN = 1500f
   private const val TOP_MARGIN_DP = 44
@@ -132,6 +137,8 @@ internal object OverlayCard {
     val screen: Int,
     /** The card's edge. Null: a see-through line of the ink. */
     val edge: Int? = null,
+    /** The alert screen's bot wash, which the opening sheet grows into. Null: plain screen colour. */
+    val wash: Int? = null,
   )
 
   /**
@@ -1054,7 +1061,12 @@ internal object OverlayCard {
     private val flyer = BlobView(context, card)
     /** 0 while the blob rides on the card, 1 once it is on the alert's blob. */
     private var flight = 0f
-    private var flightAnimator: ValueAnimator? = null
+    // While it opens: the card's own content and its edge and shadow fade by time, quickly, rather
+    // than with the growth, so the sheet reads as the alert arriving rather than a card stretching.
+    private var contentFade = 1f
+    private var edgeFade = 1f
+    /** The alert screen's wash at the top, anchored to the screen, showing as the sheet turns to the screen colour. */
+    private val washView: WashView? = card.wash?.let { WashView(context, it) }
     private val picture = ImageView(context)
     private val fill = FrameLayout(context)
     private val sheet = FrameLayout(context)
@@ -1098,6 +1110,13 @@ internal object OverlayCard {
         fill.outlineSpotShadowColor = box.outlineSpotShadowColor
       }
       fill.visibility = View.INVISIBLE
+      // Rounded like the sheet, so the wash inside stays within its corners.
+      fill.clipToOutline = true
+      washView?.let {
+        it.alpha = 0f
+        val size = screenSize(context)
+        fill.addView(it, FrameLayout.LayoutParams(size.first, size.second, Gravity.TOP or Gravity.START))
+      }
       fill.addView(picture, FrameLayout.LayoutParams(width, height, Gravity.TOP or Gravity.START))
       sheet.addView(fill, FrameLayout.LayoutParams(width, height))
       if (blob != null && blobFrom > 0) {
@@ -1183,9 +1202,16 @@ internal object OverlayCard {
         colours.evaluate(colour, wash, card.screen) as Int,
         colours.evaluate(colour, card.background, card.screen) as Int,
       )
-      fillBackground.setStroke(edgeWidth, ColorUtils.setAlphaComponent(edge, (android.graphics.Color.alpha(edge) * (1f - landing)).toInt()))
-      fill.elevation = elevationFrom * (1f - landing)
-      picture.alpha = 1f - colour
+      val edgeShown = min(1f - landing, edgeFade)
+      fillBackground.setStroke(edgeWidth, ColorUtils.setAlphaComponent(edge, (android.graphics.Color.alpha(edge) * edgeShown).toInt()))
+      fill.elevation = elevationFrom * edgeShown
+      picture.alpha = min(1f - colour, contentFade)
+      washView?.let {
+        // Anchored to the screen, wherever the sheet is: it ends exactly where the alert draws it.
+        it.translationX = -left
+        it.translationY = -top
+        it.alpha = colour
+      }
       placeFlyer(left, top)
     }
 
@@ -1204,19 +1230,40 @@ internal object OverlayCard {
       flyer.scaleY = scale
     }
 
-    /** Flies the blob onto the alert's, on the same spring as the sheet. */
-    private fun fly() {
-      if (flyer.parent == null) return
-      blobFlownAt = SystemClock.elapsedRealtime()
-      flightAnimator?.cancel()
-      val seconds = 0.42f * 1.4f
-      flightAnimator = ValueAnimator.ofFloat(flight, 1f).apply {
-        duration = if (motionEnabled()) (seconds * 1000f).toLong() else 0L
-        interpolator = Spring(0.42f, 0.86f, seconds)
+    /**
+     * The opening, timed like the card prototype: the sheet grows to the full screen and the blob
+     * flies onto the alert's on one curve ([OPEN_MS], a gentle ease out with a hint of overshoot);
+     * the card's content is gone within [CONTENT_FADE_MS] and its edge and shadow within
+     * [EDGE_FADE_MS]. `onEnd` runs with the sheet covering the screen.
+     */
+    private fun openTo(onEnd: () -> Unit) {
+      animator?.cancel()
+      if (flyer.parent != null) blobFlownAt = SystemClock.elapsedRealtime()
+      val from = pull
+      val fromFlight = flight
+      val curve = android.view.animation.PathInterpolator(0.2f, 0.9f, 0.25f, 1.02f)
+      val moving = motionEnabled()
+      animator = ValueAnimator.ofFloat(0f, 1f).apply {
+        duration = if (moving) OPEN_MS else 0L
+        interpolator = android.view.animation.LinearInterpolator()
         addUpdateListener {
-          flight = it.animatedValue as Float
-          if (placed) apply()
+          val f = it.animatedValue as Float
+          val eased = curve.getInterpolation(f)
+          val elapsed = f * OPEN_MS
+          contentFade = (1f - elapsed / CONTENT_FADE_MS).coerceIn(0f, 1f)
+          edgeFade = (1f - elapsed / EDGE_FADE_MS).coerceIn(0f, 1f)
+          flight = lerpF(fromFlight, 1f, eased)
+          update(lerpF(from, travel, eased))
         }
+        addListener(object : android.animation.AnimatorListenerAdapter() {
+          override fun onAnimationEnd(animation: android.animation.Animator) {
+            contentFade = 0f
+            edgeFade = 0f
+            flight = 1f
+            update(travel)
+            onEnd()
+          }
+        })
         start()
       }
     }
@@ -1253,14 +1300,11 @@ internal object OverlayCard {
       val grow = {
         // The copy is on screen now, so the card's own window can go.
         sheet.post { removeView() }
-        // Puck starts only once the sheet has been drawn and shown (two frames on). Launched in the
-        // same moment the sheet window was added (a tap), Android's app-opening transition held the
-        // new window back until it ended, and the whole growth played unseen.
-        sheet.postOnAnimation {
-          sheet.postOnAnimation { openApp(context, card.questionId, snooze = false) }
-        }
-        fly()
-        springTo(travel, response = 0.42f, damping = 0.86f) {
+        openTo {
+          // Puck starts only now, with the sheet covering the screen. Started earlier, its window
+          // came up beside the growing sheet, showing its last screen and the home screen around it;
+          // started in the same moment the sheet was added, Android held the sheet back instead.
+          openApp(context, card.questionId, snooze = false)
           openingAnimating = false
           if (openingReady) fadeOutCover(sheet)
         }
@@ -1329,7 +1373,7 @@ internal object OverlayCard {
 
   private fun fadeOutCover(sheet: View) {
     if (cover !== sheet) return
-    sheet.animate().alpha(0f).setDuration(if (motionEnabled()) 200L else 0L)
+    sheet.animate().alpha(0f).setDuration(if (motionEnabled()) 240L else 0L)
       .setInterpolator(DecelerateInterpolator())
       .withEndAction { removeCover(sheet) }.start()
   }
@@ -1344,6 +1388,34 @@ internal object OverlayCard {
   }
 
   private fun lerpF(from: Float, to: Float, t: Float): Float = from + (to - from) * t
+
+  /**
+   * The alert screen's wash, drawn at screen size: AlertFrame's `radial-gradient(120% 60% at 50% 18%,
+   * wash 0%, transparent 62%)`, an ellipse 1.2 screens wide and 0.6 high centred 18% down.
+   */
+  private class WashView(context: Context, private val colour: Int) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    override fun onDraw(canvas: Canvas) {
+      val w = width.toFloat()
+      val h = height.toFloat()
+      if (w <= 0f || h <= 0f) return
+      val rx = 1.2f * w
+      val ry = 0.6f * h
+      val cx = 0.5f * w
+      val cy = 0.18f * h
+      paint.shader = android.graphics.RadialGradient(
+        cx, cy, rx,
+        intArrayOf(colour, colour and 0x00FFFFFF, colour and 0x00FFFFFF),
+        floatArrayOf(0f, 0.62f, 1f),
+        android.graphics.Shader.TileMode.CLAMP,
+      )
+      canvas.save()
+      canvas.scale(1f, ry / rx, cx, cy)
+      canvas.drawRect(0f, (0f - cy) * rx / ry + cy, w, (h - cy) * rx / ry + cy, paint)
+      canvas.restore()
+    }
+  }
 
   /**
    * The bot's blob, the same body and eyes as the app's: the body path in a 100 x 100 box, tilted,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { darkTokens, lightTokens } from "./ui/tokens";
-import { androidAlpha, hex6, inUsePresentation, overlayBotLook, overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
+import { androidAlpha, androidColour, hex6, inUsePresentation, overlayBotLook, overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
 import { SAMPLE_BOTS, SHAPES } from "./ui/blobShapes";
 
 const ready = { locked: false, allowed: true, inCall: false, appOpen: false, screenOn: true };
@@ -135,5 +135,17 @@ describe("inUsePresentation", () => {
       expect(inUsePresentation({ ...inUse, ...change }, true)).toBe("none");
       expect(inUsePresentation({ ...inUse, ...change }, false)).toBe("none");
     }
+  });
+});
+
+describe("androidColour", () => {
+  test("reads rgba and rgb, alpha first", () => {
+    expect(androidColour("rgba(61, 143, 214, 0.1)")).toBe("#1A3d8fd6");
+    expect(androidColour("rgb(255, 0, 16)")).toBe("#FFff0010");
+    expect(androidColour("#123456")).toBe("#FF123456");
+  });
+
+  test("the bot look carries the alert's wash in Android's order", () => {
+    expect(overlayBotLook(SAMPLE_BOTS.puck, false).wash).toMatch(/^#[0-9A-Fa-f]{8}$/);
   });
 });

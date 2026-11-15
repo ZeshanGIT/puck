@@ -111,6 +111,19 @@ export interface OverlayBotLook {
   blobPath: string;
   blobTilt: number;
   screen: string;
+  /**
+   * The bot's wash at the top of the alert screen, as `#AARRGGBB`: the card grows into the alert's
+   * own look (screen colour plus this wash), so when Puck appears beneath, nothing changes.
+   */
+  wash: string;
+}
+
+/** A CSS colour (`rgba(r, g, b, a)`, `rgb(...)` or `#rrggbb`) as Android's `#AARRGGBB`. */
+export function androidColour(colour: string): string {
+  const m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/.exec(colour);
+  if (!m) return androidAlpha(colour, 1);
+  const hex = [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, "0")).join("");
+  return androidAlpha(`#${hex}`, m[4] === undefined ? 1 : Number(m[4]));
 }
 
 /**
@@ -133,5 +146,6 @@ export function overlayBotLook(bot: BlobBot, dark: boolean): OverlayBotLook {
     blobPath: SHAPES[bot.shape],
     blobTilt: bot.tilt,
     screen: hex6((dark ? darkTokens : lightTokens).bg),
+    wash: androidColour(theme.botWash),
   };
 }

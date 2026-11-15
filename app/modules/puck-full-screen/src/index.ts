@@ -285,6 +285,8 @@ export interface OverlayCardContent {
    * ink line when it is missing.
    */
   edge?: string;
+  /** The alert screen's bot wash, `#AARRGGBB`; the opening sheet grows into it. */
+  wash?: string;
 }
 
 /** Shows the compact card for an alert, replacing one already up. False without the permission. Never throws. */
