@@ -18,6 +18,7 @@ import {
   isLocked,
   isScreenOn,
   openAlertFullScreen,
+  setOverlayChoices,
   showOverlayCard,
   soundPolicy,
   startRing,
@@ -27,6 +28,7 @@ import { useEffect, useState } from "react";
 import { dismissedQuestionId } from "./dismissPayload";
 import { fullscreenAlert, type FullScreenAlert } from "./fullscreenPayload";
 import { puckRing } from "./ringPlayback";
+import { fetchCardChoices } from "./cardAnswerBackend";
 import {
   cardChannelId,
   isNight,
@@ -443,6 +445,12 @@ async function showCard(alert: FullScreenAlert, settings: LocalSettings, version
     ...overlayPalette(dark, alert.priority),
     ...overlayBotLook(bot, dark),
   });
+  if (shown) {
+    // The push does not carry the answers: fetch them for the card's swipe up (with Puck closed too).
+    void fetchCardChoices(alert.questionId).then((choices) => {
+      if (choices && revision(alert.questionId) === version) setOverlayChoices(alert.questionId, choices);
+    });
+  }
   // A refused card leaves only the notification, which is hard to tell from "no card was tried".
   if (!shown && revision(alert.questionId) === version) {
     // A denied or refused overlay must retain a visible heads-up fallback.
@@ -460,6 +468,11 @@ async function showCard(alert: FullScreenAlert, settings: LocalSettings, version
 export function silenceCardAlert(questionId: string): Promise<void> {
   // Dismissing or snoozing from the card ends the reminders too.
   void cancelReminders(questionId);
+  return settle(questionId);
+}
+
+/** Swiped down on the card ("later"): quiet the ring and the voice; the alert waits, and its reminders still come. */
+export function laterCardAlert(questionId: string): Promise<void> {
   return settle(questionId);
 }
 

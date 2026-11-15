@@ -53,20 +53,18 @@ import kotlin.random.Random
  * on Android's "Display over other apps" page; without it nothing is drawn and the notification
  * carries the alert alone. One card at a time. It takes focus only while a reply is being typed, and
  * touches outside it reach the app underneath. The card wears the bot: its blob (with eyes that
- * glance and blink) and a wash of its colour. Gestures:
+ * glance and blink) and a wash of its colour. It sits low on the screen, where a thumb is. Gestures:
  *
- * - Tap: opens Puck on that alert.
- * - Pull down: the card grows with the finger into a full-screen sheet (white, or dark in the dark
- *   theme). The sheet turns white by a fifth of the way down the screen. Let go past 40% of the way
- *   and the transition finishes by itself while Puck opens beneath it; let go before that and the
- *   card springs back.
+ * - Tap: the card grows into the alert and Puck opens beneath it.
+ * - Swipe up: the alert's answers appear above the card; slide onto one and let go to send it
+ *   (Undo for a few seconds). A risky one needs a short hold. Back on the card, nothing is sent.
+ * - Swipe down: later. The card goes and the alert waits under Needs you, reminders and all.
  * - Swipe left: snoozes. The card slides aside and the length shows under it in the bot's colour:
  *   5 minutes, then 10 minutes, then until the person is back. Lifting the finger picks the length
  *   showing; a short swipe springs back and does nothing.
  * - Swipe right: reveals a reply area underneath. Let go past a quarter of the width and the card
  *   steps away, the keyboard opens, and Send answers the alert without opening Puck. Cancel brings
  *   the card back.
- * - Swipe up: removes the card and stops the ring. The alert stays in the shade.
  */
 internal object OverlayCard {
   const val EXTRA_QUESTION_ID = "puck.overlayQuestionId"
@@ -76,6 +74,7 @@ internal object OverlayCard {
   const val ACTION_DISMISS = "dismiss"
   const val ACTION_SNOOZE = "snooze"
   const val ACTION_REPLY = "reply"
+  const val ACTION_LATER = "later"
 
   /** Sent as the snooze length for "until I'm back"; 0 means "show the snooze choices". */
   const val SNOOZE_UNTIL_BACK = -1
@@ -98,6 +97,13 @@ internal object OverlayCard {
   private const val COVER_HOLD_MS = 380L
   private const val COVER_FADE_MS = 320L
   private const val COVER_SAFETY_MS = 4000L
+  // Swipe down past most of this to put the alert off till later.
+  private const val LATER_DP = 110
+  // How long a picked answer waits for Undo before it goes.
+  private const val UNDO_MS = 4000L
+  // How long a risky answer must be under the finger before letting go sends it.
+  private const val HOLD_MS = 650L
+  private val RISKY_RED = 0xFFD93A2E.toInt()
   // The opening from the card (as the card prototype): growth and the blob's flight, the card's
   // content fading out, and its edge and shadow fading out.
   private const val OPEN_MS = 560L
@@ -148,13 +154,32 @@ internal object OverlayCard {
   data class Opened(val questionId: String, val snooze: Boolean, val snoozeMinutes: Int, val nonce: Long)
 
   /** A reply typed on the card, kept on the phone until JavaScript has sent it. */
-  data class CardReply(val questionId: String, val text: String, val nonce: Long)
+  data class CardReply(val questionId: String, val text: String, val nonce: Long, val optionIds: List<String> = emptyList())
+
+  /** An answer the card offers when swiped up (`cardChoices.ts`). `open` opens the alert instead. */
+  data class Choice(val id: String, val label: String, val risky: Boolean, val open: Boolean)
+
+  // The answers for each alert's card, from JavaScript once it has read them from the server.
+  private val choicesById = java.util.concurrent.ConcurrentHashMap<String, List<Choice>>()
+
+  /** The answers the card for this alert offers; JavaScript sends them as JSON once it has them. */
+  fun setChoices(questionId: String, json: String) {
+    try {
+      val array = JSONArray(json)
+      choicesById[questionId] = (0 until array.length()).map { index ->
+        val item = array.getJSONObject(index)
+        Choice(item.getString("id"), item.getString("label"), item.optBoolean("risky"), item.optBoolean("open"))
+      }
+    } catch (error: org.json.JSONException) {
+      // Leave the card with its way into the alert.
+    }
+  }
 
   /**
    * Set by the module: reports a dismiss, snooze or reply to JavaScript while the app is running.
    * `text` and `nonce` are set only for a reply (`nonce` is 0 for the other actions).
    */
-  @Volatile var onAction: ((questionId: String, action: String, text: String?, nonce: Long) -> Unit)? = null
+  @Volatile var onAction: ((questionId: String, action: String, text: String?, nonce: Long, optionIds: List<String>) -> Unit)? = null
 
   private val main = Handler(Looper.getMainLooper())
   private var view: View? = null
@@ -302,9 +327,9 @@ internal object OverlayCard {
           WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT,
       ).apply {
-        gravity = Gravity.TOP
-        // The window starts above the card by the shadow room, so the card itself sits at the top margin.
-        y = dp(app, TOP_MARGIN_DP - SHADOW_DP)
+        // Low on the screen, where a thumb is: Android keeps the window above the navigation bar,
+        // and the window's own padding (the shadow's room) lifts the card off it.
+        gravity = Gravity.BOTTOM
       }
       try {
         windowManager(app).addView(root, layoutParams)
@@ -328,7 +353,7 @@ internal object OverlayCard {
   private fun enter(root: View) {
     val box = root.findViewWithTag<View>(TAG_BOX) ?: return
     box.alpha = 0f
-    box.translationY = -dp(root.context, 12).toFloat()
+    box.translationY = dp(root.context, 16).toFloat()
     box.animate().alpha(1f).translationY(0f).setDuration(200).start()
   }
 
@@ -366,7 +391,13 @@ internal object OverlayCard {
     val array = readReplies(context)
     return (0 until array.length()).map { index ->
       val item = array.getJSONObject(index)
-      CardReply(item.getString("questionId"), item.getString("text"), item.getLong("nonce"))
+      val ids = item.optJSONArray("optionIds")
+      CardReply(
+        item.getString("questionId"),
+        item.getString("text"),
+        item.getLong("nonce"),
+        if (ids == null) emptyList() else (0 until ids.length()).map { ids.getString(it) },
+      )
     }
   }
 
@@ -392,7 +423,13 @@ internal object OverlayCard {
 
   private fun storeReply(context: Context, reply: CardReply) {
     val array = readReplies(context)
-    array.put(JSONObject().put("questionId", reply.questionId).put("text", reply.text).put("nonce", reply.nonce))
+    array.put(
+      JSONObject()
+        .put("questionId", reply.questionId)
+        .put("text", reply.text)
+        .put("nonce", reply.nonce)
+        .put("optionIds", JSONArray(reply.optionIds)),
+    )
     prefs(context).edit().putString(REPLIES_KEY, array.toString()).apply()
   }
 
@@ -497,7 +534,7 @@ internal object OverlayCard {
   private fun release(context: Context, questionId: String, action: String) {
     removeView()
     silenceNotifications(context, questionId)
-    onAction?.invoke(questionId, action, null, 0L)
+    onAction?.invoke(questionId, action, null, 0L, emptyList())
   }
 
   /**
@@ -505,12 +542,12 @@ internal object OverlayCard {
    * The reply is stored first, so it survives Puck being closed; the event then lets a running app
    * send it at once.
    */
-  private fun submitReply(context: Context, card: Spec, text: String) {
+  private fun submitReply(context: Context, card: Spec, text: String, optionIds: List<String> = emptyList()) {
     removeView()
     silenceNotifications(context, card.questionId)
-    val reply = CardReply(card.questionId, text, nonces.incrementAndGet())
+    val reply = CardReply(card.questionId, text, nonces.incrementAndGet(), optionIds)
     storeReply(context, reply)
-    onAction?.invoke(card.questionId, ACTION_REPLY, text, reply.nonce)
+    onAction?.invoke(card.questionId, ACTION_REPLY, text, reply.nonce, optionIds)
   }
 
   private const val TAG_BOX = "puck-card-box"
@@ -538,7 +575,52 @@ internal object OverlayCard {
     val reveal: Reveal,
     val reply: ReplyArea,
     val card: Spec,
-  )
+    /** The card's own content (blob and text). */
+    val top: View,
+    /** "Sent to …" with Undo, shown in the content's place after an answer is picked. */
+    val sent: SentRow,
+  ) {
+    /** An answer picked and waiting out its Undo; null otherwise. */
+    var pending: Runnable? = null
+  }
+
+  private class SentRow(val layout: LinearLayout, val title: TextView, val answer: TextView, val undo: TextView)
+
+  /** The card after an answer is picked: a tick, "Sent to <bot>", the answer, and Undo. */
+  private fun sentRow(context: Context, card: Spec): SentRow {
+    val tick = TextView(context).apply {
+      text = "✓"
+      gravity = Gravity.CENTER
+      setTextColor(0xFFFFFFFF.toInt())
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+      typeface = font(context, Nunito.BLACK)
+      background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFF3F7A3A.toInt()) }
+    }
+    val title = line(context, "Sent to ${card.title}", card.ink, 16f, font(context, Nunito.BLACK))
+    val answer = line(context, "", card.ink2, 13f, font(context, Nunito.BOLD), topPaddingDp = 1)
+    val texts = LinearLayout(context).apply {
+      orientation = LinearLayout.VERTICAL
+      addView(title)
+      addView(answer)
+    }
+    val undo = TextView(context).apply {
+      text = "Undo"
+      setTextColor(card.ink)
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+      typeface = font(context, Nunito.BLACK)
+      setPadding(dp(context, 14), dp(context, 10), dp(context, 6), dp(context, 10))
+      isClickable = true
+    }
+    val layout = LinearLayout(context).apply {
+      orientation = LinearLayout.HORIZONTAL
+      gravity = Gravity.CENTER_VERTICAL
+      visibility = View.INVISIBLE
+      addView(tick, LinearLayout.LayoutParams(dp(context, 30), dp(context, 30)).apply { marginEnd = dp(context, 12) })
+      addView(texts, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+      addView(undo)
+    }
+    return SentRow(layout, title, answer, undo)
+  }
 
   private fun buildView(context: Context, card: Spec): View {
     val corner = dp(context, CORNER_DP).toFloat()
@@ -579,7 +661,13 @@ internal object OverlayCard {
       addView(blob, LinearLayout.LayoutParams(dp(context, 42), dp(context, 42)).apply { marginEnd = dp(context, 14) })
       addView(texts, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
     }
-    box.addView(top)
+    // The sent state takes the content's place without changing the card's height.
+    val sent = sentRow(context, card)
+    val content = FrameLayout(context).apply {
+      addView(top, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+      addView(sent.layout, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+    }
+    box.addView(content)
 
     // Under the card when it is dragged left: the bot's colour and what a snooze would pick.
     val emoji = TextView(context).apply {
@@ -670,7 +758,7 @@ internal object OverlayCard {
       addView(replyLayout, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
       addView(box, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
     }
-    val parts = Parts(root, box, snoozeReveal, replyArea, card)
+    val parts = Parts(root, box, snoozeReveal, replyArea, card, top, sent)
     send.setOnClickListener { sendReply(context, parts) }
     input.setOnEditorActionListener { _, actionId, _ ->
       if (actionId == EditorInfo.IME_ACTION_SEND) {
@@ -707,11 +795,13 @@ internal object OverlayCard {
   private enum class Axis { NONE, HORIZONTAL, VERTICAL }
 
   /**
-   * One finger on the card. The first move past the touch slop picks the axis: sideways reveals a
-   * snooze (left) or the reply area (right); vertical hides (up) or opens (down). Positions use raw
-   * screen coordinates, so changes to the card's own window while a drag runs do not disturb them.
-   * The pull-down is drawn by a separate full-screen window, so it is never cut off by the card's
-   * window; the card window stays under the finger to keep receiving the touch.
+   * One finger on the card. The first move past the touch slop picks the axis:
+   * - Up: the answers appear above the card ([Picker]); the one under the finger is highlighted,
+   *   with a tick at each change. Let go on one to send it (with Undo); back on the card, nothing.
+   * - Down: later. The card goes; the alert waits under Needs you and keeps its reminders.
+   * - Left: snooze (5, 10, until back). Right: the reply field.
+   * - A tap opens the alert: the card grows into it ([Expander]).
+   * Positions use raw screen coordinates, so nothing about the card's own window disturbs them.
    */
   private fun attachGestures(context: Context, parts: Parts) {
     val box = parts.box
@@ -722,7 +812,7 @@ internal object OverlayCard {
     var axis = Axis.NONE
     var minutes = 0
     var tracker: VelocityTracker? = null
-    var expander: Expander? = null
+    var picker: Picker? = null
 
     fun finish() {
       tracker?.recycle()
@@ -733,22 +823,35 @@ internal object OverlayCard {
 
     fun settleBack() {
       box.animate().translationX(0f).translationY(0f).alpha(1f).setDuration(SETTLE_MS)
-        .withEndAction { hideUnderneath(parts); setRoom(parts.root, false) }
+        .withEndAction { hideUnderneath(parts) }
         .start()
     }
 
+    fun endPicker(send: Boolean) {
+      val open = picker ?: return
+      picker = null
+      val choice = open.close()
+      parts.blob()?.warn(null)
+      if (!send || choice == null) return
+      if (choice.open) {
+        Expander(context, box, card, travel = 1f, follow = false).apply { begin(); complete() }
+      } else {
+        pickAnswer(context, parts, choice)
+      }
+    }
+
     box.setOnTouchListener { _, event ->
+      // Picked and waiting out its Undo: the card only offers Undo.
+      if (parts.pending != null) return@setOnTouchListener true
       when (event.actionMasked) {
         MotionEvent.ACTION_DOWN -> {
           downX = event.rawX
           downY = event.rawY
           axis = Axis.NONE
           minutes = 0
-          expander = null
+          picker = null
           box.animate().cancel()
-          // Whatever a gesture uncovered under the card belongs to that gesture only. Left showing,
-          // the reply area waited behind the opaque card and came into view as soon as a pull-down
-          // made the card see-through.
+          // Whatever a gesture uncovered under the card belongs to that gesture only.
           hideUnderneath(parts)
           tracker?.recycle()
           tracker = VelocityTracker.obtain().also { it.addMovement(event) }
@@ -760,16 +863,12 @@ internal object OverlayCard {
           val dy = event.rawY - downY
           if (axis == Axis.NONE && (abs(dx) > slop || abs(dy) > slop)) {
             axis = if (abs(dy) > abs(dx)) Axis.VERTICAL else Axis.HORIZONTAL
-            if (axis == Axis.VERTICAL) {
-              if (dy > 0) {
-                // The way to the bottom of the screen is the whole pull: 100% is the finger at the bottom.
-                val travel = max(1f, screenSize(context).second - downY)
-                expander = Expander(context, box, card, travel).also { it.begin() }
-              } else {
-                // Room above, so an upward drag is not cut off at the card's own top edge.
-                setRoom(parts.root, true)
-              }
-            } else {
+            if (axis == Axis.VERTICAL && dy < 0) {
+              val choices = choicesById[card.questionId] ?: listOf(Choice("__open", "Open", risky = false, open = true))
+              picker = Picker(context, card, box, choices) { risky -> parts.blob()?.warn(if (risky) RISKY_RED else null) }
+                .also { it.show() }
+              parts.blob()?.lookAt(0f, -4f)
+            } else if (axis == Axis.HORIZONTAL) {
               setReveal(parts.reveal, 0, bump = false)
             }
           }
@@ -794,15 +893,14 @@ internal object OverlayCard {
               box.translationX = dx
             }
             Axis.VERTICAL -> {
-              val grow = expander
-              if (grow != null) {
-                grow.update(dy)
-              } else if (dy < 0) {
-                box.translationY = dy
-                box.alpha = 1f - min(abs(dy) / (box.height * 1.4f), 0.85f)
+              val open = picker
+              if (open != null) {
+                open.hover(event.rawY)
               } else {
-                box.translationY = min(dy * 0.5f, dp(context, 90).toFloat())
-                box.alpha = 1f
+                // Later: the card goes down with the finger and fades.
+                val down = max(dy, 0f)
+                box.translationY = down
+                box.alpha = 1f - min(down / dp(context, LATER_DP).toFloat(), 0.8f)
               }
             }
             Axis.NONE -> Unit
@@ -815,7 +913,6 @@ internal object OverlayCard {
           val vy = tracker?.yVelocity ?: 0f
           val dx = event.rawX - downX
           val dy = event.rawY - downY
-          val grow = expander
           when (axis) {
             Axis.NONE -> box.performClick()
             Axis.HORIZONTAL -> if (dx < 0) {
@@ -838,33 +935,243 @@ internal object OverlayCard {
             } else {
               settleBack()
             }
-            Axis.VERTICAL -> when {
-              grow != null ->
-                if (grow.progress >= COMMIT_FRACTION || vy > FLING_DOWN) grow.complete() else grow.cancel()
-              dy < 0 && (-dy > box.height * 0.4f || vy < FLING_UP) -> {
-                box.animate()
-                  .translationY(-(box.height + dp(context, TOP_MARGIN_DP)).toFloat())
-                  .alpha(0f)
-                  .setDuration(SETTLE_MS)
-                  .withEndAction { release(context, card.questionId, ACTION_DISMISS) }
-                  .start()
-              }
-              else -> settleBack()
+            Axis.VERTICAL -> if (picker != null) {
+              endPicker(send = true)
+              parts.blob()?.lookAt(0f, 0f)
+            } else if (dy > dp(context, LATER_DP) * 0.6f || vy > FLING_DOWN) {
+              box.animate()
+                .translationY(box.height.toFloat() + dp(context, SHADOW_DP))
+                .alpha(0f)
+                .setDuration(SETTLE_MS)
+                .withEndAction { release(context, card.questionId, ACTION_LATER) }
+                .start()
+            } else {
+              settleBack()
             }
           }
-          expander = null
           finish()
           true
         }
         MotionEvent.ACTION_CANCEL -> {
-          val grow = expander
-          if (grow != null) grow.cancel() else if (axis != Axis.NONE) settleBack()
-          expander = null
+          if (picker != null) endPicker(send = false)
+          if (axis != Axis.NONE) settleBack()
           finish()
           true
         }
         else -> false
       }
+    }
+  }
+
+  private fun Parts.blob(): BlobView? = box.findViewWithTag<View>(TAG_BLOB) as? BlobView
+
+  /**
+   * An answer picked on the card: the ring stops, the card shows "Sent to <bot>" with Undo, and
+   * after [UNDO_MS] the answer goes (stored on the phone first, then to JavaScript). Undo brings
+   * the card back as it was.
+   */
+  private fun pickAnswer(context: Context, parts: Parts, choice: Choice) {
+    val card = parts.card
+    RingService.stop(card.questionId)
+    parts.box.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+    parts.sent.answer.text = choice.label
+    parts.top.animate().alpha(0f).setDuration(120L).withEndAction { parts.top.visibility = View.INVISIBLE }.start()
+    parts.sent.layout.alpha = 0f
+    parts.sent.layout.visibility = View.VISIBLE
+    parts.sent.layout.animate().alpha(1f).setDuration(160L).start()
+    val send = Runnable {
+      parts.pending = null
+      parts.box.animate().translationY(parts.box.height.toFloat() + dp(context, SHADOW_DP)).alpha(0f).setDuration(SETTLE_MS)
+        .withEndAction { submitReply(context, card, "", listOf(choice.id)) }
+        .start()
+    }
+    parts.pending = send
+    main.postDelayed(send, UNDO_MS)
+    parts.sent.undo.setOnClickListener {
+      val waiting = parts.pending ?: return@setOnClickListener
+      main.removeCallbacks(waiting)
+      parts.pending = null
+      parts.sent.layout.visibility = View.INVISIBLE
+      parts.top.visibility = View.VISIBLE
+      parts.top.animate().alpha(1f).setDuration(160L).start()
+    }
+  }
+
+  /**
+   * The answers above the card while it is swiped up, in a full-screen window of their own (the
+   * card's window is only the card's size). The finger stays with the card's window; this one only
+   * draws. It takes touches so Android draws it fully opaque (see [fullScreenParams]); a second
+   * finger on it is ignored. The answers fade in where they sit, the first nearest the card; the
+   * one under the finger takes the bot's colour (red when risky), with a tick at each change. A
+   * risky answer needs [HOLD_MS] under the finger before it can be sent.
+   */
+  private class Picker(
+    private val context: Context,
+    private val card: Spec,
+    private val box: View,
+    private val choices: List<Choice>,
+    private val onRisky: (Boolean) -> Unit,
+  ) {
+    private val sheet = FrameLayout(context)
+    private val column = LinearLayout(context).apply {
+      orientation = LinearLayout.VERTICAL
+      alpha = 0f
+    }
+    private val chips = ArrayList<Chip>()
+    private var hot = -1
+    private var ready = false
+    private var holdStart: Runnable? = null
+    private var added = false
+
+    private inner class Chip(val choice: Choice, val view: FrameLayout, val label: TextView, val hint: TextView, val fill: View, val surface: GradientDrawable)
+
+    fun show() {
+      val at = IntArray(2)
+      box.getLocationOnScreen(at)
+      val gap = dp(context, 10)
+      // The first answer nearest the card: add them last first.
+      for (choice in choices.asReversed()) {
+        val chip = chip(choice)
+        chips.add(0, chip)
+        column.addView(chip.view, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(context, 54)).apply { bottomMargin = gap })
+      }
+      sheet.addView(
+        column,
+        FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+          leftMargin = at[0] + dp(context, 8)
+          rightMargin = at[0] + dp(context, 8)
+        },
+      )
+      sheet.setOnTouchListener { _, _ -> true }
+      // Place the column just above the card once the window's own position is known.
+      sheet.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+        val origin = IntArray(2)
+        view.getLocationOnScreen(origin)
+        val lp = column.layoutParams as FrameLayout.LayoutParams
+        val bottom = view.height - (at[1] - origin[1]) + dp(context, 6)
+        if (lp.bottomMargin != bottom) {
+          lp.bottomMargin = bottom
+          column.layoutParams = lp
+        }
+      }
+      try {
+        windowManager(context).addView(sheet, fullScreenParams())
+        added = true
+      } catch (error: RuntimeException) {
+        return
+      }
+      column.animate().alpha(1f).setDuration(if (motionEnabled()) 150L else 0L).start()
+      box.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+    }
+
+    private fun chip(choice: Choice): Chip {
+      val surface = GradientDrawable().apply {
+        setColor(card.background)
+        cornerRadius = dp(context, 18).toFloat()
+        setStroke(max(1, dpF(context, EDGE_DP).toInt()), edgeColour(card))
+      }
+      val fill = View(context).apply {
+        setBackgroundColor(0x40FFFFFF)
+        pivotX = 0f
+        scaleX = 0f
+        visibility = View.INVISIBLE
+      }
+      val label = TextView(context).apply {
+        text = choice.label
+        setTextColor(card.ink)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+        typeface = font(context, Nunito.BLACK)
+        maxLines = 1
+        ellipsize = android.text.TextUtils.TruncateAt.END
+      }
+      val hint = TextView(context).apply {
+        text = "Hold"
+        setTextColor(0xFFFFFFFF.toInt())
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        typeface = font(context, Nunito.BLACK)
+        visibility = View.GONE
+      }
+      val row = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(context, 18), 0, dp(context, 18), 0)
+        addView(label, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        addView(hint)
+      }
+      val view = FrameLayout(context).apply {
+        background = surface
+        clipToOutline = true
+        elevation = dp(context, 6).toFloat()
+        addView(fill, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        addView(row, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+      }
+      return Chip(choice, view, label, hint, fill, surface)
+    }
+
+    /** The finger is at `rawY`: the answer under it, the topmost above them all, none back on the card. */
+    fun hover(rawY: Float) {
+      if (!added || chips.isEmpty()) return
+      val tops = chips.map { val at = IntArray(2); it.view.getLocationOnScreen(at); at[1].toFloat() }
+      val height = chips[0].view.height.toFloat()
+      val nearestBottom = tops[0] + height
+      val index = when {
+        rawY > nearestBottom + dp(context, 12) -> -1
+        rawY < tops.last() -> chips.size - 1
+        else -> tops.indices.minByOrNull { abs(rawY - (tops[it] + height / 2f)) } ?: -1
+      }
+      setHot(index)
+    }
+
+    private fun setHot(index: Int) {
+      if (index == hot) return
+      hot = index
+      ready = false
+      holdStart?.let { main.removeCallbacks(it) }
+      chips.forEachIndexed { i, chip ->
+        val on = i == index
+        val risky = chip.choice.risky
+        chip.surface.setColor(if (on) (if (risky) RISKY_RED else card.botColour) else card.background)
+        chip.surface.setStroke(max(1, dpF(context, EDGE_DP).toInt()), if (on) (if (risky) RISKY_RED else card.botColour) else edgeColour(card))
+        chip.label.setTextColor(if (on) (if (risky) 0xFFFFFFFF.toInt() else card.onBot) else card.ink)
+        chip.view.alpha = if (index == -1 || on) 1f else 0.6f
+        chip.hint.visibility = if (on && risky) View.VISIBLE else View.GONE
+        chip.fill.animate().cancel()
+        chip.fill.scaleX = 0f
+        chip.fill.visibility = if (on && risky) View.VISIBLE else View.INVISIBLE
+      }
+      val choice = chips.getOrNull(index)?.choice
+      onRisky(choice?.risky == true)
+      if (index >= 0) box.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+      if (choice?.risky == true) {
+        val chip = chips[index]
+        chip.fill.animate().scaleX(1f).setDuration(HOLD_MS).setInterpolator(android.view.animation.LinearInterpolator()).start()
+        val done = Runnable {
+          if (hot == index) {
+            ready = true
+            chip.hint.text = "Let go"
+            box.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+          }
+        }
+        holdStart = done
+        main.postDelayed(done, HOLD_MS)
+      }
+    }
+
+    /** Takes the answers away; returns the one to act on (null: none, or a risky one let go too soon). */
+    fun close(): Choice? {
+      holdStart?.let { main.removeCallbacks(it) }
+      val choice = chips.getOrNull(hot)?.choice
+      val picked = if (choice != null && choice.risky && !ready) null else choice
+      if (added) {
+        added = false
+        column.animate().alpha(0f).setDuration(if (motionEnabled()) 120L else 0L).withEndAction {
+          try {
+            windowManager(context).removeView(sheet)
+          } catch (_: RuntimeException) {
+          }
+        }.start()
+      }
+      return picked
     }
   }
 
@@ -972,30 +1279,6 @@ internal object OverlayCard {
       manager.hideSoftInputFromWindow(input.windowToken, 0)
     } catch (error: RuntimeException) {
       // Already hidden.
-    }
-  }
-
-  /**
-   * Gives an upward drag space: the window starts at the top of the screen, with the card's usual
-   * top margin as padding. Touches in that gap belong to the card window only while a drag lasts;
-   * `on = false` puts the window back to the card's own position.
-   */
-  private fun setRoom(root: FrameLayout, on: Boolean) {
-    val current = params ?: return
-    if (view !== root) return
-    val context = root.context
-    val side = dp(context, SHADOW_DP)
-    if (on) {
-      current.y = 0
-      root.setPadding(side, dp(context, TOP_MARGIN_DP), side, dp(context, ROOM_BELOW_DP))
-    } else {
-      current.y = dp(context, TOP_MARGIN_DP - SHADOW_DP)
-      root.setPadding(side, dp(context, SHADOW_DP), side, dp(context, SHADOW_DP))
-    }
-    try {
-      windowManager(context).updateViewLayout(root, current)
-    } catch (error: RuntimeException) {
-      // The window is gone.
     }
   }
 
@@ -1428,6 +1711,21 @@ internal object OverlayCard {
       Path().apply { addCircle(50f, 50f, 43f, Path.Direction.CW) }
     }
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = card.blobFill; style = Paint.Style.FILL }
+
+    /** Turns the body red while a risky answer is under the thumb (null: its own colour again). */
+    fun warn(colour: Int?) {
+      fillPaint.color = colour ?: card.blobFill
+      invalidate()
+    }
+
+    /** Points the eyes (in the 100 x 100 box's units) and holds them there; null lets them wander. */
+    fun lookAt(x: Float?, y: Float?) {
+      if (x == null || y == null) return
+      glance?.cancel()
+      eyeX = x
+      eyeY = y
+      invalidate()
+    }
     private val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       color = card.blobRim ?: 0
       style = Paint.Style.STROKE

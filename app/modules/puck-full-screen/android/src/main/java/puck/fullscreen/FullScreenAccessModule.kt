@@ -47,10 +47,10 @@ class FullScreenAccessModule : Module() {
     Events("onVolumeKey", "onOverlayOpen", "onOverlayAction")
 
     OnCreate {
-      OverlayCard.onAction = { questionId, action, text, nonce ->
+      OverlayCard.onAction = { questionId, action, text, nonce, optionIds ->
         sendEvent(
           "onOverlayAction",
-          mapOf("questionId" to questionId, "action" to action, "text" to text, "nonce" to nonce.toDouble()),
+          mapOf("questionId" to questionId, "action" to action, "text" to text, "nonce" to nonce.toDouble(), "optionIds" to optionIds),
         )
       }
     }
@@ -405,6 +405,12 @@ class FullScreenAccessModule : Module() {
     }
 
     // Removes the compact card when it shows this alert (or whichever card, with an empty id).
+    // The answers the card offers when swiped up, as JSON (`cardChoices.ts`).
+    Function("setOverlayChoices") { questionId: String, json: String ->
+      OverlayCard.setChoices(questionId, json)
+      true
+    }
+
     Function("hideOverlayCard") { questionId: String ->
       OverlayCard.hide(questionId.ifEmpty { null })
       true
@@ -414,7 +420,7 @@ class FullScreenAccessModule : Module() {
     Function("pendingOverlayReplies") {
       val context = appContext.reactContext ?: return@Function emptyList<Map<String, Any?>>()
       OverlayCard.pendingReplies(context).map { reply ->
-        mapOf("questionId" to reply.questionId, "text" to reply.text, "nonce" to reply.nonce.toDouble())
+        mapOf("questionId" to reply.questionId, "text" to reply.text, "nonce" to reply.nonce.toDouble(), "optionIds" to reply.optionIds)
       }
     }
 

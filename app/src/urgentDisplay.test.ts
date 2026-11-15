@@ -83,7 +83,9 @@ mock.module("@notifee/react-native", () => ({
   EventType: { PRESS: 1, DISMISSED: 0 },
   TriggerType: { TIMESTAMP: 0 },
 }));
+mock.module("./cardAnswerBackend", () => ({ fetchCardChoices: async () => null }));
 mock.module("puck-full-screen", () => ({
+  setOverlayChoices: () => true,
   canCreateRingChannel: () => overlay.nativeRing,
   createRingChannel: (
     id: string,

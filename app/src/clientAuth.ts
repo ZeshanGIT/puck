@@ -53,6 +53,22 @@ export function tokenProblemMessage(error: unknown): string {
 
 type TokenFetcher = (args: { forceRefreshToken: boolean }) => Promise<string | null>;
 
+/** The app has set the Clerk token on the Convex client (`useClientSession`). */
+let appAuthSet = false;
+let backgroundAuthSet = false;
+
+/**
+ * Signs the Convex client in from the stored account when the app has not: a card answer or the
+ * card's answers fetched while Puck runs without its screens (a push woke it). The app's own
+ * `setAuth` replaces this one when it starts. Does nothing when signed out (no stored account):
+ * calls then wait, as before.
+ */
+export function ensureBackgroundAuth(client: Pick<ConvexReactClient, "setAuth">): void {
+  if (appAuthSet || backgroundAuthSet) return;
+  backgroundAuthSet = true;
+  client.setAuth(createClerkTokenFetcher({ getAccount: readStoredAccount }));
+}
+
 /**
  * Convex calls this whenever it needs a token (first connect, expiry, a server rejection).
  * It returns null when signed out or when Clerk fails; `onProblem` gets the failure so the app
@@ -245,6 +261,7 @@ export function useClientSession(options: {
       if (hasAuth.current) {
         client.clearAuth();
         hasAuth.current = false;
+        appAuthSet = false;
       }
       setAuthState("pending");
       setAuthProblem(null);
@@ -254,6 +271,7 @@ export function useClientSession(options: {
     setAuthState("pending");
     setAuthProblem(null);
     hasAuth.current = true;
+    appAuthSet = true;
     client.setAuth(
       createClerkTokenFetcher({
         getAccount: readStoredAccount,

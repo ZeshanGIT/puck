@@ -30,12 +30,13 @@ type FullScreenNative = {
   reportAlertBlob?: (x: number, y: number, size: number) => boolean;
   takeOverlayBlobFlight?: () => boolean;
   hideOverlayCard?: (questionId: string) => boolean;
+  setOverlayChoices?: (questionId: string, json: string) => boolean;
   openAlertFullScreen?: (questionId: string) => boolean;
   startRing?: (questionId: string, sound: string, alarm: boolean, loopMs: number, title: string) => boolean;
   stopRing?: (questionId: string) => boolean;
   soundPolicy?: () => SoundPolicy | null;
   takeOverlayOpen?: () => { questionId: string; snooze: boolean; snoozeMinutes?: number; nonce?: number } | null;
-  pendingOverlayReplies?: () => { questionId: string; text: string; nonce: number }[];
+  pendingOverlayReplies?: () => { questionId: string; text: string; nonce: number; optionIds?: string[] }[];
   clearOverlayReply?: (nonce: number) => boolean;
   addListener?: (
     eventName: "onVolumeKey" | "onOverlayOpen" | "onOverlayAction",
@@ -44,8 +45,9 @@ type FullScreenNative = {
       snooze?: boolean;
       snoozeMinutes?: number;
       nonce?: number;
-      action?: "dismiss" | "snooze" | "reply";
+      action?: "dismiss" | "snooze" | "reply" | "later";
       text?: string;
+      optionIds?: string[];
     }) => void,
   ) => { remove: () => void };
 };
@@ -328,16 +330,37 @@ export interface OverlayOpen {
  */
 export interface OverlayAction {
   questionId: string;
-  action: "dismiss" | "snooze" | "reply";
+  /** "later": swiped down; the alert waits under Needs you and keeps its reminders. */
+  action: "dismiss" | "snooze" | "reply" | "later";
   text?: string;
   nonce?: number;
+  /** The answer picked on the card (swipe up), for "reply". */
+  optionIds?: string[];
 }
 
-/** A reply typed on the compact card and kept on the phone until JavaScript takes it. */
+/** An answer given on the compact card (picked or typed) and kept on the phone until JavaScript takes it. */
 export interface OverlayReply {
   questionId: string;
   text: string;
   nonce: number;
+  optionIds?: string[];
+}
+
+/** An answer the bottom card offers when swiped up (`cardChoices.ts`). */
+export interface OverlayChoice {
+  id: string;
+  label: string;
+  risky: boolean;
+  open: boolean;
+}
+
+/** Gives the card showing this alert its answers, once they are known. Never throws. */
+export function setOverlayChoices(questionId: string, choices: OverlayChoice[]): void {
+  try {
+    nativeModule()?.setOverlayChoices?.(questionId, JSON.stringify(choices));
+  } catch {
+    // Older build: the card offers only a way into the alert.
+  }
 }
 
 /** Replies typed on the card that JavaScript has not taken yet (for example, while Puck was closed). */
@@ -451,7 +474,13 @@ export function subscribeOverlayAction(listener: (action: OverlayAction) => void
     if (!native?.addListener) return () => {};
     const subscription = native.addListener("onOverlayAction", (event) => {
       if (event?.action) {
-        listener({ questionId: event.questionId, action: event.action, text: event.text, nonce: event.nonce });
+        listener({
+          questionId: event.questionId,
+          action: event.action,
+          text: event.text,
+          nonce: event.nonce,
+          ...(Array.isArray(event.optionIds) && event.optionIds.length > 0 ? { optionIds: event.optionIds } : {}),
+        });
       }
     });
     return () => subscription.remove();

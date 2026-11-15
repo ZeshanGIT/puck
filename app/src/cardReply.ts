@@ -1,5 +1,6 @@
 /**
- * A reply typed on the compact card (swipe right, type, Send), sent without opening Puck. The
+ * An answer given on the compact card (an answer picked by swiping up, or a reply typed after a
+ * swipe right), sent without opening Puck. The
  * reply is put in the answer queue first, so a failed or slow send keeps it on the phone; then the
  * queue is sent. Dependencies are injected so the logic runs without a device or the Convex client.
  */
@@ -23,11 +24,11 @@ export interface CardReplyDeps {
   record?: (args: CardReplyRecord) => Promise<unknown>;
 }
 
-/** The queue item for a card reply: text only, no option chosen. Empty text gives null. */
-export function cardReplyItem(questionId: string, text: string, queuedAt: number): QueuedAnswer | null {
+/** The queue item for a card answer: the chosen options and/or typed text. Neither gives null. */
+export function cardReplyItem(questionId: string, text: string, queuedAt: number, optionIds: readonly string[] = []): QueuedAnswer | null {
   const customReply = text.trim();
-  if (!customReply) return null;
-  return { questionId, optionIds: [], customReply, queuedAt };
+  if (!customReply && optionIds.length === 0) return null;
+  return { questionId, optionIds: [...optionIds], ...(customReply ? { customReply } : {}), queuedAt };
 }
 
 function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
@@ -54,6 +55,10 @@ async function defaultClientId(): Promise<string | null> {
 async function defaultRecord(args: CardReplyRecord): Promise<unknown> {
   const { convex } = await import("./client");
   const { anyApi } = await import("convex/server");
+  // Puck may be running without its screens (a push woke it): sign in from the stored account,
+  // so the answer goes now rather than when Puck is next opened.
+  const { ensureBackgroundAuth } = await import("./clientAuth");
+  ensureBackgroundAuth(convex);
   return convex.mutation(anyApi.answers.record, args);
 }
 
@@ -62,9 +67,12 @@ async function defaultRecord(args: CardReplyRecord): Promise<unknown> {
  * the queue, "queued" when it is still waiting (the next flush sends it). Throws only when the
  * queue itself cannot be written, so the caller keeps its own copy.
  */
-export async function sendCardReply(input: { questionId: string; text: string }, deps: CardReplyDeps = {}): Promise<"sent" | "queued" | "empty"> {
+export async function sendCardReply(
+  input: { questionId: string; text: string; optionIds?: readonly string[] },
+  deps: CardReplyDeps = {},
+): Promise<"sent" | "queued" | "empty"> {
   const now = deps.now ?? Date.now;
-  const item = cardReplyItem(input.questionId, input.text, now());
+  const item = cardReplyItem(input.questionId, input.text, now(), input.optionIds);
   if (!item) return "empty";
   await enqueueAnswer(item, deps.storage);
   const clientId = await (deps.clientId ?? defaultClientId)();
@@ -94,17 +102,17 @@ const handledNonces = new Set<number>();
  * in a running app even when it arrives by both the event and the stored copy.
  */
 export async function handleCardReply(
-  reply: { questionId: string; text: string; nonce: number },
+  reply: { questionId: string; text: string; nonce: number; optionIds?: readonly string[] },
   clear: (nonce: number) => void,
   deps: CardReplyDeps = {},
 ): Promise<void> {
-  const { questionId, text, nonce } = reply;
+  const { questionId, text, nonce, optionIds } = reply;
   if (nonce !== 0) {
     if (handledNonces.has(nonce)) return;
     handledNonces.add(nonce);
   }
   try {
-    await sendCardReply({ questionId, text }, deps);
+    await sendCardReply({ questionId, text, ...(optionIds ? { optionIds } : {}) }, deps);
   } catch {
     // The queue could not be written: keep the native copy for the next start.
     if (nonce !== 0) handledNonces.delete(nonce);
