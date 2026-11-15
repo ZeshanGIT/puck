@@ -103,6 +103,13 @@ internal object OverlayCard {
   private const val UNDO_MS = 4000L
   // How long a risky answer must be under the finger before letting go sends it.
   private const val HOLD_MS = 650L
+  // The answers above the card: their height at rest and popped, how much narrower than the card
+  // they rest, how far above the card the nearest one sits, and how long a pop takes.
+  private const val CHIP_DP = 54
+  private const val CHIP_POP_DP = 62
+  private const val CHIP_INSET_DP = 12
+  private const val CHIP_ABOVE_DP = 6
+  private const val POP_MS = 140L
   private val RISKY_RED = 0xFFD93A2E.toInt()
   // The opening from the card (as the card prototype): growth and the blob's flight, the card's
   // content fading out, and its edge and shadow fading out.
@@ -551,6 +558,7 @@ internal object OverlayCard {
   }
 
   private const val TAG_BOX = "puck-card-box"
+  private val TAG_POP_ANIMATOR = "puck-pop".hashCode()
   private const val TAG_BLOB = "puck-card-blob"
 
   /** The pieces of the sideways snooze reveal that change while the card is dragged. */
@@ -1001,8 +1009,12 @@ internal object OverlayCard {
    * The answers above the card while it is swiped up, in a full-screen window of their own (the
    * card's window is only the card's size). The finger stays with the card's window; this one only
    * draws. It takes touches so Android draws it fully opaque (see [fullScreenParams]); a second
-   * finger on it is ignored. The answers fade in where they sit, the first nearest the card; the
-   * one under the finger takes the bot's colour (red when risky), with a tick at each change. A
+   * finger on it is ignored. The answers fade in where they sit, the first nearest the card, a
+   * little narrower than the card. The one under the finger pops: it really grows, to the card's
+   * exact width and a little taller, so the others slide apart and every gap stays the same (a
+   * scale would let it overlap them), takes the bot's colour (red when risky) and lifts, with a
+   * tick at each change. Which answer is under the finger is read from where the answers sit at
+   * rest, in fixed bands, so the pop moving them cannot make the choice flicker at a boundary. A
    * risky answer needs [HOLD_MS] under the finger before it can be sent.
    */
   private class Picker(
@@ -1015,8 +1027,17 @@ internal object OverlayCard {
     private val sheet = FrameLayout(context)
     private val column = LinearLayout(context).apply {
       orientation = LinearLayout.VERTICAL
+      gravity = Gravity.CENTER_HORIZONTAL
       alpha = 0f
+      // Shadows reach past each answer; nothing here may cut them off.
+      clipChildren = false
+      clipToPadding = false
     }
+    private val restHeight = dp(context, CHIP_DP)
+    private val popHeight = dp(context, CHIP_POP_DP)
+    private val gap = dp(context, 10)
+    private val cardAt = IntArray(2)
+    private val restWidth get() = box.width - 2 * dp(context, CHIP_INSET_DP)
     private val chips = ArrayList<Chip>()
     private var hot = -1
     private var ready = false
@@ -1026,31 +1047,29 @@ internal object OverlayCard {
     private inner class Chip(val choice: Choice, val view: FrameLayout, val label: TextView, val hint: TextView, val fill: View, val surface: GradientDrawable)
 
     fun show() {
-      val at = IntArray(2)
+      val at = cardAt
       box.getLocationOnScreen(at)
-      val gap = dp(context, 10)
       // The first answer nearest the card: add them last first.
       for (choice in choices.asReversed()) {
         val chip = chip(choice)
         chips.add(0, chip)
-        column.addView(chip.view, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(context, 54)).apply { bottomMargin = gap })
+        column.addView(chip.view, LinearLayout.LayoutParams(restWidth, restHeight).apply { topMargin = gap })
       }
-      sheet.addView(
-        column,
-        FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
-          leftMargin = at[0] + dp(context, 8)
-          rightMargin = at[0] + dp(context, 8)
-        },
-      )
+      sheet.clipChildren = false
+      // Exactly the card's width and left edge, so a popped answer lines up with the card.
+      sheet.addView(column, FrameLayout.LayoutParams(box.width, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START))
       sheet.setOnTouchListener { _, _ -> true }
-      // Place the column just above the card once the window's own position is known.
+      // Anchored just above the card once the window's own position is known: a popped answer
+      // grows upward, pushing the ones above it, never down onto the card.
       sheet.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
         val origin = IntArray(2)
         view.getLocationOnScreen(origin)
         val lp = column.layoutParams as FrameLayout.LayoutParams
-        val bottom = view.height - (at[1] - origin[1]) + dp(context, 6)
-        if (lp.bottomMargin != bottom) {
+        val bottom = view.height - (at[1] - origin[1]) + dp(context, CHIP_ABOVE_DP)
+        val left = at[0] - origin[0]
+        if (lp.bottomMargin != bottom || lp.leftMargin != left) {
           lp.bottomMargin = bottom
+          lp.leftMargin = left
           column.layoutParams = lp
         }
       }
@@ -1101,25 +1120,21 @@ internal object OverlayCard {
       val view = FrameLayout(context).apply {
         background = surface
         clipToOutline = true
-        elevation = dp(context, 6).toFloat()
+        elevation = dp(context, 3).toFloat()
         addView(fill, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         addView(row, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
       }
       return Chip(choice, view, label, hint, fill, surface)
     }
 
-    /** The finger is at `rawY`: the answer under it, the topmost above them all, none back on the card. */
+    /**
+     * The finger is at `rawY` (screen pixels): the answer whose resting band holds it, the topmost
+     * above them all, none back on the card. Bands are where the answers sit at rest, so the pop's
+     * movement never changes which one is chosen.
+     */
     fun hover(rawY: Float) {
       if (!added || chips.isEmpty()) return
-      val tops = chips.map { val at = IntArray(2); it.view.getLocationOnScreen(at); at[1].toFloat() }
-      val height = chips[0].view.height.toFloat()
-      val nearestBottom = tops[0] + height
-      val index = when {
-        rawY > nearestBottom + dp(context, 12) -> -1
-        rawY < tops.last() -> chips.size - 1
-        else -> tops.indices.minByOrNull { abs(rawY - (tops[it] + height / 2f)) } ?: -1
-      }
-      setHot(index)
+      setHot(answerAt(rawY, cardAt[1].toFloat() - dp(context, CHIP_ABOVE_DP), restHeight.toFloat(), gap.toFloat(), chips.size, dp(context, 12).toFloat()))
     }
 
     private fun setHot(index: Int) {
@@ -1133,7 +1148,7 @@ internal object OverlayCard {
         chip.surface.setColor(if (on) (if (risky) RISKY_RED else card.botColour) else card.background)
         chip.surface.setStroke(max(1, dpF(context, EDGE_DP).toInt()), if (on) (if (risky) RISKY_RED else card.botColour) else edgeColour(card))
         chip.label.setTextColor(if (on) (if (risky) 0xFFFFFFFF.toInt() else card.onBot) else card.ink)
-        chip.view.alpha = if (index == -1 || on) 1f else 0.6f
+        pop(chip, on)
         chip.hint.visibility = if (on && risky) View.VISIBLE else View.GONE
         chip.fill.animate().cancel()
         chip.fill.scaleX = 0f
@@ -1155,6 +1170,33 @@ internal object OverlayCard {
         holdStart = done
         main.postDelayed(done, HOLD_MS)
       }
+    }
+
+    /**
+     * Grows the answer to the card's width and [CHIP_POP_DP] tall, or back to rest, over [POP_MS].
+     * A real change of size, so the others make room and the gaps stay as they are.
+     */
+    private fun pop(chip: Chip, on: Boolean) {
+      val lp = chip.view.layoutParams as LinearLayout.LayoutParams
+      val toW = if (on) box.width else restWidth
+      val toH = if (on) popHeight else restHeight
+      chip.view.animate().translationZ(if (on) dp(context, 7).toFloat() else 0f).setDuration(POP_MS).start()
+      (chip.view.getTag(TAG_POP_ANIMATOR) as? ValueAnimator)?.cancel()
+      if (lp.width == toW && lp.height == toH) return
+      val fromW = lp.width
+      val fromH = lp.height
+      val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+        duration = if (motionEnabled()) POP_MS else 0L
+        interpolator = DecelerateInterpolator(1.4f)
+        addUpdateListener {
+          val f = it.animatedValue as Float
+          lp.width = lerpI(fromW, toW, f)
+          lp.height = lerpI(fromH, toH, f)
+          chip.view.layoutParams = lp
+        }
+        start()
+      }
+      chip.view.setTag(TAG_POP_ANIMATOR, animator)
     }
 
     /** Takes the answers away; returns the one to act on (null: none, or a risky one let go too soon). */
@@ -1671,6 +1713,26 @@ internal object OverlayCard {
   }
 
   private fun lerpF(from: Float, to: Float, t: Float): Float = from + (to - from) * t
+
+  private fun lerpI(from: Int, to: Int, t: Float): Int = (from + (to - from) * t).toInt()
+
+  /**
+   * Which answer the finger is on, from where the answers sit at rest: answer `i` (0 nearest the
+   * card) spans `chip` pixels ending `i * (chip + gap)` above `nearestBottom`. Below the nearest by
+   * more than `slack`: none (-1, back on the card). Above them all: the topmost. In a gap: the
+   * nearer one.
+   */
+  fun answerAt(y: Float, nearestBottom: Float, chip: Float, gap: Float, count: Int, slack: Float): Int {
+    if (count <= 0 || y > nearestBottom + slack) return -1
+    val step = chip + gap
+    val fromBottom = nearestBottom - y
+    if (fromBottom <= 0f) return 0
+    val index = (fromBottom / step).toInt()
+    if (index >= count) return count - 1
+    // In the gap above answer `index`: whichever centre is nearer.
+    val within = fromBottom - index * step
+    return if (within > chip + gap / 2f && index + 1 < count) index + 1 else index
+  }
 
   /**
    * The alert screen's wash, drawn at screen size: AlertFrame's `radial-gradient(120% 60% at 50% 18%,
