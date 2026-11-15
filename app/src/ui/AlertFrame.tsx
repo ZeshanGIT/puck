@@ -13,6 +13,7 @@
  * answer does.
  */
 import {
+  type ComponentRef,
   type ReactNode,
   type RefObject,
   useCallback,
@@ -46,6 +47,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 import { shouldFlowBottom } from "./alertLayout";
+import { reportAlertBlob, takeOverlayBlobFlight } from "puck-full-screen";
 import { Blob, type BlobHandle } from "./Blob";
 import { ringBox, ringGeometry, type RingGeometry } from "./blobCentre";
 import type { BlobBot, Offset } from "./blobShapes";
@@ -403,10 +405,18 @@ function AlertFrameBody({
   };
   const urgent = priority === "urgent";
   const ownBlob = useRef<BlobHandle>(null);
+  const blobBox = useRef<ComponentRef<typeof View>>(null);
+  // Where the blob sits on screen, for the card that flies its own blob here when it opens Puck.
+  const reportBlobPlace = () => {
+    blobBox.current?.measureInWindow((x, y, width) => {
+      if (width > 0) reportAlertBlob(x, y, width);
+    });
+  };
   const blob = blobRef ?? ownBlob;
-  // `blob.arrive` on open (the prototype renders the unstacked blob with `arrive`).
+  // `blob.arrive` on open (the prototype renders the unstacked blob with `arrive`), unless the card
+  // has just flown its blob onto this spot: then it is already here.
   useLayoutEffect(() => {
-    blob.current?.arrive();
+    if (!takeOverlayBlobFlight()) blob.current?.arrive();
     // Once, on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -451,7 +461,11 @@ function AlertFrameBody({
         >
           {clock ? <LockClock now={now} /> : null}
 
-          <View style={[styles.ablob, { width: blobSize, height: blobSize }]}>
+          <View
+            ref={blobBox}
+            onLayout={clock ? undefined : reportBlobPlace}
+            style={[styles.ablob, { width: blobSize, height: blobSize }]}
+          >
             {urgent && !answered ? <UrgentRings colour={nightMode ? bt.glowRing : bt.mark} geometry={ringGeometry(bot, blobSize)} /> : null}
             <Blob ref={blob} bot={bot} size={blobSize} live look={look} />
           </View>

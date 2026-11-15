@@ -219,6 +219,52 @@ internal object OverlayCard {
     else -> SNOOZE_UNTIL_BACK
   }
 
+  // Where the full-screen alert draws the bot's blob, in dp, as the alert screen last reported it.
+  private const val BLOB_X = "alertBlobX"
+  private const val BLOB_Y = "alertBlobY"
+  private const val BLOB_SIZE = "alertBlobSize"
+  // The alert screen's blob when it has never reported one (AlertFrame's default).
+  private const val ALERT_BLOB_DP = 156
+
+  /** When a card opening last flew its blob into the app; the alert skips its arrival once for it. */
+  @Volatile private var blobFlownAt = 0L
+
+  fun rememberAlertBlob(context: Context, x: Float, y: Float, size: Float) {
+    prefs(context).edit().putFloat(BLOB_X, x).putFloat(BLOB_Y, y).putFloat(BLOB_SIZE, size).apply()
+  }
+
+  /** True once, within a few seconds of a card flying its blob into the app. */
+  fun takeBlobFlight(): Boolean {
+    val at = blobFlownAt
+    blobFlownAt = 0L
+    return at != 0L && SystemClock.elapsedRealtime() - at < 5_000L
+  }
+
+  /**
+   * Where the alert screen's blob is, in screen pixels: as last reported, or, before the alert has
+   * ever been shown, where AlertFrame puts it (centred, under the status bar and the top row).
+   */
+  private fun alertBlobTarget(context: Context): RectF {
+    val density = context.resources.displayMetrics.density
+    val saved = prefs(context)
+    if (saved.contains(BLOB_SIZE)) {
+      val x = saved.getFloat(BLOB_X, 0f) * density
+      val y = saved.getFloat(BLOB_Y, 0f) * density
+      val size = saved.getFloat(BLOB_SIZE, 0f) * density
+      if (size > 0f) return RectF(x, y, x + size, y + size)
+    }
+    val size = ALERT_BLOB_DP * density
+    val statusBar = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      windowManager(context).currentWindowMetrics.windowInsets
+        .getInsets(android.view.WindowInsets.Type.statusBars()).top.toFloat()
+    } else {
+      24 * density
+    }
+    val x = (screenSize(context).first - size) / 2f
+    val y = statusBar + (8 + 26 + 18) * density
+    return RectF(x, y, x + size, y + size)
+  }
+
   fun canDraw(context: Context): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
 
@@ -930,7 +976,10 @@ internal object OverlayCard {
    * fills the screen as the finger reaches the bottom. Its colour turns to the app's background by
    * [COLOUR_DONE] and the picture is gone by then. [complete] finishes the growth, starts Puck
    * beneath, holds a moment and fades the sheet away so the alert appears to come in through it.
-   * [cancel] eases it back onto the card. A tap runs the same growth with `follow` off: the copy
+   * [cancel] eases it back onto the card. The bot's blob is not part of the picture: it is a live
+   * copy above the sheet, so it stays whole while the rest of the card fades, and when the sheet
+   * finishes it flies to where the alert screen draws the blob (see [alertBlobTarget]), so the
+   * sheet fades away onto the same blob. A tap runs the same growth with `follow` off: the copy
    * grows from where the card is instead of moving down first.
    *
    * Positions: the card's place comes from `getLocationOnScreen`, in screen pixels. The sheet's own
@@ -954,10 +1003,21 @@ internal object OverlayCard {
     private val elevationFrom = dp(context, ELEVATION_DP).toFloat()
     private val edgeWidth = max(1, dpF(context, EDGE_DP).toInt())
     private val edge = edgeColour(card)
-    private val fillBackground = GradientDrawable().apply {
-      setColor(card.background)
-      cornerRadius = radiusFrom
-    }
+    // The card's own surface, wash and all: the picture holds only the card's content, so the sheet
+    // is the one surface with the one edge, and nothing inside it draws a second border.
+    private val wash = ColorUtils.blendARGB(card.background, card.botColour, 0.07f)
+    private val fillBackground = GradientDrawable(
+      GradientDrawable.Orientation.LEFT_RIGHT,
+      intArrayOf(wash, card.background),
+    ).apply { cornerRadius = radiusFrom }
+    private val blob: View? = box.findViewWithTag(TAG_BLOB)
+    private val blobAt = IntArray(2)
+    private val blobFrom = blob?.width ?: 0
+    private val target = alertBlobTarget(context)
+    private val flyer = BlobView(context, card)
+    /** 0 while the blob rides on the card, 1 once it is on the alert's blob. */
+    private var flight = 0f
+    private var flightAnimator: ValueAnimator? = null
     private val picture = ImageView(context)
     private val fill = FrameLayout(context)
     private val sheet = FrameLayout(context)
@@ -976,9 +1036,23 @@ internal object OverlayCard {
 
     fun begin() {
       if (width <= 0 || height <= 0) return
+      // The picture is the card's content alone: no background (the sheet draws it, with the edge)
+      // and no blob (the flyer is the blob).
       val snapshot = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-      box.draw(Canvas(snapshot))
+      val canvas = Canvas(snapshot)
+      blob?.visibility = View.INVISIBLE
+      if (box is android.view.ViewGroup) {
+        for (index in 0 until box.childCount) {
+          val child = box.getChildAt(index)
+          canvas.save()
+          canvas.translate(child.left.toFloat(), child.top.toFloat())
+          child.draw(canvas)
+          canvas.restore()
+        }
+      }
+      blob?.visibility = View.VISIBLE
       box.getLocationOnScreen(at)
+      blob?.getLocationOnScreen(blobAt)
       picture.setImageBitmap(snapshot)
       fill.background = fillBackground
       fill.elevation = elevationFrom
@@ -989,6 +1063,15 @@ internal object OverlayCard {
       fill.visibility = View.INVISIBLE
       fill.addView(picture, FrameLayout.LayoutParams(width, height, Gravity.TOP or Gravity.START))
       sheet.addView(fill, FrameLayout.LayoutParams(width, height))
+      if (blob != null && blobFrom > 0) {
+        // Drawn at the alert's size and scaled down to the card's, so it is sharp when it lands.
+        // Above the sheet's shadow, which would otherwise draw over it.
+        flyer.pivotX = 0f
+        flyer.pivotY = 0f
+        flyer.translationZ = elevationFrom + 1f
+        flyer.visibility = View.INVISIBLE
+        sheet.addView(flyer, FrameLayout.LayoutParams(target.width().toInt(), target.height().toInt()))
+      }
       sheet.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ -> placeSheet(view) }
       guardCover(sheet) { animator?.isRunning == true }
       try {
@@ -1015,6 +1098,7 @@ internal object OverlayCard {
       apply()
       if (fill.visibility != View.VISIBLE) {
         fill.visibility = View.VISIBLE
+        if (flyer.parent != null) flyer.visibility = View.VISIBLE
         sheet.post {
           if (!done || growing) {
             box.alpha = 0f
@@ -1058,10 +1142,46 @@ internal object OverlayCard {
       // both go only over the last stretch, as it meets the screen's edges and corners.
       val landing = ((t - 0.85f) / 0.15f).coerceIn(0f, 1f)
       fillBackground.cornerRadius = lerpF(radiusFrom, radiusTo, t)
-      fillBackground.setColor(colours.evaluate(colour, card.background, card.screen) as Int)
+      fillBackground.colors = intArrayOf(
+        colours.evaluate(colour, wash, card.screen) as Int,
+        colours.evaluate(colour, card.background, card.screen) as Int,
+      )
       fillBackground.setStroke(edgeWidth, ColorUtils.setAlphaComponent(edge, (android.graphics.Color.alpha(edge) * (1f - landing)).toInt()))
       fill.elevation = elevationFrom * (1f - landing)
       picture.alpha = 1f - colour
+      placeFlyer(left, top)
+    }
+
+    /** The blob: on the card's copy (whose top left is `left`, `top`), `flight` of the way to the alert's. */
+    private fun placeFlyer(left: Float, top: Float) {
+      if (flyer.parent == null || target.width() <= 0f) return
+      val fromX = left + (blobAt[0] - at[0])
+      val fromY = top + (blobAt[1] - at[1])
+      val toX = target.left - origin[0]
+      val toY = target.top - origin[1]
+      val f = flight
+      flyer.translationX = lerpF(fromX, toX, f)
+      flyer.translationY = lerpF(fromY, toY, f)
+      val scale = lerpF(blobFrom / target.width(), 1f, f)
+      flyer.scaleX = scale
+      flyer.scaleY = scale
+    }
+
+    /** Flies the blob onto the alert's, on the same spring as the sheet. */
+    private fun fly() {
+      if (flyer.parent == null) return
+      blobFlownAt = SystemClock.elapsedRealtime()
+      flightAnimator?.cancel()
+      val seconds = 0.42f * 1.4f
+      flightAnimator = ValueAnimator.ofFloat(flight, 1f).apply {
+        duration = if (motionEnabled()) (seconds * 1000f).toLong() else 0L
+        interpolator = Spring(0.42f, 0.86f, seconds)
+        addUpdateListener {
+          flight = it.animatedValue as Float
+          if (placed) apply()
+        }
+        start()
+      }
     }
 
     /** Springs the pull to `target`: [Spring] with this response and damping. */
@@ -1097,6 +1217,7 @@ internal object OverlayCard {
       val grow = {
         // The copy is on screen now, so the card's own window can go.
         sheet.post { removeView() }
+        fly()
         springTo(travel, response = 0.42f, damping = 0.86f) {
           openingAnimating = false
           if (openingReady) fadeOutCover(sheet)

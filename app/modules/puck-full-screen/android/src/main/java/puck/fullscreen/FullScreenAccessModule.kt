@@ -359,6 +359,16 @@ class FullScreenAccessModule : Module() {
       true
     }
 
+    Function("reportAlertBlob") { x: Double, y: Double, size: Double ->
+      val context = appContext.reactContext ?: return@Function false
+      OverlayCard.rememberAlertBlob(context, x.toFloat(), y.toFloat(), size.toFloat())
+      true
+    }
+
+    Function("takeOverlayBlobFlight") {
+      OverlayCard.takeBlobFlight()
+    }
+
     // Removes the compact card when it shows this alert (or whichever card, with an empty id).
     Function("hideOverlayCard") { questionId: String ->
       OverlayCard.hide(questionId.ifEmpty { null })

@@ -27,6 +27,8 @@ type FullScreenNative = {
   showOverlayCardAsync?: (card: Record<string, string | number>) => Promise<boolean>;
   peekOverlayOpen?: () => OverlayOpen | null;
   overlayAlertReady?: (questionId: string) => boolean;
+  reportAlertBlob?: (x: number, y: number, size: number) => boolean;
+  takeOverlayBlobFlight?: () => boolean;
   hideOverlayCard?: (questionId: string) => boolean;
   takeOverlayOpen?: () => { questionId: string; snooze: boolean; snoozeMinutes?: number; nonce?: number } | null;
   pendingOverlayReplies?: () => { questionId: string; text: string; nonce: number }[];
@@ -370,6 +372,22 @@ export function peekOverlayOpen(): OverlayOpen | null {
 /** Release the native launch cover after the requested screen commits. */
 export function overlayAlertReady(questionId: string): void {
   try { nativeModule()?.overlayAlertReady?.(questionId); } catch { /* Older client. */ }
+}
+
+/**
+ * Tells the card where the full-screen alert draws the bot's blob (window dp, which is screen dp in
+ * this edge-to-edge app), so a card opening the app flies its blob to that spot.
+ */
+export function reportAlertBlob(x: number, y: number, size: number): void {
+  try { nativeModule()?.reportAlertBlob?.(x, y, size); } catch { /* Older client. */ }
+}
+
+/**
+ * True once after a card opened the app by flying its blob onto the alert's: the alert then skips
+ * its own arrival bounce, since the blob is already in place.
+ */
+export function takeOverlayBlobFlight(): boolean {
+  try { return nativeModule()?.takeOverlayBlobFlight?.() === true; } catch { return false; }
 }
 
 /** Calls `listener` when a tap on the card (or its Snooze) arrives while the app is running. */
