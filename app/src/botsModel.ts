@@ -178,7 +178,7 @@ export function bypassChange(choice: BypassChoice): BypassMode | null {
 
 /* ----------------------------------------------------------------------- home */
 
-/** The flock under "All quiet" (and "N bots can page you"): one blob per paired bot, in its colour, oldest first. */
+/** One blob per paired bot, in its colour, oldest first (the Archive screen draws them). */
 export function flockBots(bots: readonly BotListItem[]): KnownBot[] {
   return [...bots]
     .sort((a, b) => a.createdAt - b.createdAt || a.name.localeCompare(b.name))

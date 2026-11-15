@@ -6,7 +6,7 @@
  *
  * - `home`: banners (lock screen, offline), an urgent alert, a snoozed one, one waiting to send, and
  *   the history over three days, with "Load more" bringing older ones.
- * - `home-clear`: nothing waiting: "All quiet", the flock, and Earlier.
+ * - `home-clear`: nothing waiting: "All quiet" with the Puck blob asleep; the history is behind the Archive icon.
  * - `home-empty`: no bot has paged him yet (H2).
  *
  * Times are relative to the moment a sample is opened; `freshHome` turns them into real times.

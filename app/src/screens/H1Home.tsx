@@ -1,19 +1,19 @@
 /**
  * H1 Home: the calm place he lands when nothing is paging him, and the list of everything that has.
  * Also H2 (no bots yet) and H3 (health banners). Prototype: `SCREENS.home`, `rowHTML`, `.hdr`,
- * `.sect`, `.needs`, `.clear`, `.flock` (`vault/Projects/Puck/mockups/Puck prototype.html`);
+ * `.sect`, `.needs`, `.clear` (`vault/Projects/Puck/mockups/Puck prototype.html`);
  * `App screens.md` H1, H2, H3; `User journeys.md` J10, J12.
  *
  * Top to bottom (each only when it has something):
- * - the header: the Puck wordmark with its blob, and the Bots and Settings icons;
+ * - the header: the Puck wordmark with its blob, and the Archive, Bots and Settings icons;
  * - H3 banners, most serious first (`healthBanners` in `homeModel.ts`);
  * - H2 in place of the empty sections when no bot has ever paged him;
  * - "Needs you": a `NeedCard` per waiting alert, and "Go through all N" (two or more that can be
  *   answered from a stack);
  * - "Working now": a `LiveCard` per running task (`WorkingNow`), hidden when none;
- * - "All quiet" with the flock of still blobs, when nothing needs him;
- * - one "Archive · N earlier" row at the bottom, when there is any history. The history itself (by day,
- *   "Load more", the alert detail) lives on the Archive screen (`Archive.tsx`), not on Home.
+ * - "All quiet": a nearly blank page with the Puck blob asleep and one line, when nothing needs him;
+ * The history (by day, "Load more", the alert detail) is not on Home: the Archive icon in the header
+ * opens the Archive screen (`Archive.tsx`).
  *
  * `H1Home` only draws: it is given its data and callbacks, so the dev sample route can show it with
  * no backend. `ConnectedH1Home` reads `alerts.waiting` and `alerts.history` from Convex and works
@@ -30,28 +30,21 @@ import { isQueuedLocally } from "../answerQueue";
 import {
   BANNER_COPY,
   dndBypassActive,
-  flockText,
   ALL_QUIET_BODY,
-  archiveRowLabel,
   healthBanners,
-  knownBots,
   needsTitle,
   goThroughLabel,
   needsYou,
   stackableCount,
   type BannerId,
-  type HistoryItem,
   type HistoryRowModel,
-  type KnownBot,
   type NeedItem,
   type WaitingAlert,
 } from "../homeModel";
-import { flockBots } from "../botsModel";
 import { loadLocalSettings } from "../localSettings";
 import { formatCode, fromText, requestLook, type PairingRequest } from "../pairingModel";
 import type { LiveActivity } from "../liveCardModel";
 import { useBots } from "../useBots";
-import { type HistoryStatus, useHistory } from "../useHistory";
 import { useLiveActivities } from "../useLiveActivities";
 import { usePairingRequests } from "../usePairingRequests";
 import { openDndAccessSettings } from "../onboarding/dndAccess";
@@ -61,7 +54,7 @@ import { readableError } from "../session";
 import { ageLabel, Glyph, ICON } from "../ui/AlertFrame";
 import { Banner } from "../ui/Banner";
 import { Blob } from "../ui/Blob";
-import type { BlobBot } from "../ui/blobShapes";
+import { RestingBlob } from "../ui/RestingBlob";
 import { botLook } from "../ui/botLook";
 import { Btn } from "../ui/Btn";
 import { NeedCard } from "../ui/NeedCard";
@@ -77,19 +70,12 @@ const COMMAND = "puck add sheldon --colour coral";
 
 /* ----------------------------------------------------------------------- the screen */
 
-export type { HistoryStatus };
-
 export interface H1HomeProps {
   /** The banners to show, in order. */
   banners: readonly BannerId[];
   onBanner: (id: BannerId) => void;
   /** The "Needs you" cards; undefined while they load. */
   needs: readonly NeedItem[] | undefined;
-  /** The history so far, newest first; undefined while the first page loads. Home only counts it. */
-  history: readonly HistoryItem[] | undefined;
-  historyStatus: HistoryStatus;
-  /** The bots seen so far (the flock under "All quiet"). */
-  bots: readonly KnownBot[];
   /** H2: nothing has ever paged him. */
   noBots: boolean;
   /** Now, so the ages and the day groups follow the clock. */
@@ -98,11 +84,10 @@ export interface H1HomeProps {
   onOpenNeed: (item: NeedItem) => void;
   /** "Go through all N". */
   onGoThroughAll: () => void;
-  /** A tap on the Archive row: the Archive screen. */
+  /** A tap on the Archive icon in the header: the Archive screen. */
   onOpenArchive: () => void;
   onBots: () => void;
   onSettings: () => void;
-  onPairBot: () => void;
   /** Open pairing requests (P6): PAIRING cards, first in "Needs you". */
   pairings?: readonly PairingRequest[];
   /** A tap on a PAIRING card: B4 for that bot. */
@@ -116,12 +101,11 @@ export interface H1HomeProps {
 }
 
 export function H1Home(props: H1HomeProps) {
-  const { banners, onBanner, needs, history, historyStatus, bots, now } = props;
+  const { banners, onBanner, needs, now } = props;
   const pairings = props.pairings ?? [];
   // A waiting pairing request is the first bot coming in: H2's "run this command" has done its job.
   const noBots = props.noBots && pairings.length === 0;
   const t = useTheme().tokens;
-  const archiveLabel = history ? archiveRowLabel(history.length, historyStatus === "exhausted") : null;
   const stackable = needs ? stackableCount(needs) : 0;
   const live = (props.live?.length ?? 0) > 0;
   const allClear = !noBots && needs !== undefined && needs.length === 0 && pairings.length === 0 && !live;
@@ -129,8 +113,8 @@ export function H1Home(props: H1HomeProps) {
 
   return (
     <OnboardingFrame>
-      <Header onBots={props.onBots} onSettings={props.onSettings} />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <Header onArchive={props.onOpenArchive} onBots={props.onBots} onSettings={props.onSettings} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={allClear ? styles.scrollFill : styles.scroll}>
         {banners.map((id) => (
           <Banner
             key={id}
@@ -139,7 +123,7 @@ export function H1Home(props: H1HomeProps) {
           />
         ))}
 
-        {noBots ? <NoBots onPairBot={props.onPairBot} /> : null}
+        {noBots ? <NoBots /> : null}
 
         {needCount > 0 ? (
           <>
@@ -165,19 +149,13 @@ export function H1Home(props: H1HomeProps) {
 
         {allClear ? (
           <View style={styles.clear}>
+            <RestingBlob />
             <Text accessibilityRole="header" maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.clearTitle, { color: t.ink }]}>
               All quiet
             </Text>
             <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.clearBody, { color: t.ink2 }]}>
               {ALL_QUIET_BODY}
             </Text>
-            {bots.length > 0 ? <Flock bots={bots} /> : null}
-          </View>
-        ) : null}
-
-        {archiveLabel ? (
-          <View style={styles.archive}>
-            <Row title={archiveLabel} chevron onPress={props.onOpenArchive} testID="archive-row" />
           </View>
         ) : null}
 
@@ -190,7 +168,7 @@ export function H1Home(props: H1HomeProps) {
 /* ------------------------------------------------------------------------- parts */
 
 /** `.hdr`: 56 dp high, the wordmark on the left, the two icon buttons on the right. */
-function Header({ onBots, onSettings }: { onBots: () => void; onSettings: () => void }) {
+function Header({ onArchive, onBots, onSettings }: { onArchive: () => void; onBots: () => void; onSettings: () => void }) {
   const t = useTheme().tokens;
   return (
     <View style={styles.header}>
@@ -201,6 +179,13 @@ function Header({ onBots, onSettings }: { onBots: () => void; onSettings: () => 
         </Text>
       </View>
       <View style={styles.icons}>
+        <IconButton label="Archive" onPress={onArchive} testID="archive-button">
+          <Svg width={23} height={23} viewBox="0 0 24 24">
+            <Path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1" {...iconStroke(t.ink)} />
+            <Path d="M3.5 4.4v4.3h4.3" {...iconStroke(t.ink)} />
+            <Path d="M12 7.8V12l2.9 1.8" {...iconStroke(t.ink)} />
+          </Svg>
+        </IconButton>
         <IconButton label="Bots" onPress={onBots}>
           <Svg width={23} height={23} viewBox="0 0 24 24">
             <Circle cx={8} cy={9} r={4.2} {...iconStroke(t.ink)} />
@@ -234,13 +219,24 @@ function iconStroke(colour: string) {
 }
 
 /** `.iconbtn`: 44 dp round, the icon in `ink`. */
-function IconButton({ label, onPress, children }: { label: string; onPress: () => void; children: ReactNode }) {
+function IconButton({
+  label,
+  onPress,
+  children,
+  testID,
+}: {
+  label: string;
+  onPress: () => void;
+  children: ReactNode;
+  testID?: string;
+}) {
   const t = useTheme().tokens;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
+      testID={testID}
       style={({ pressed }) => [styles.iconButton, pressed ? { backgroundColor: t.fill } : null]}
     >
       {children}
@@ -334,30 +330,11 @@ export function HistoryRow({
 
 const WARN = "M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01";
 
-/** `.flock`: the bots' blobs at 26 dp, 4 dp apart, and how many can page him. */
-function Flock({ bots }: { bots: readonly KnownBot[] }) {
-  const t = useTheme().tokens;
-  return (
-    <View style={styles.flock} accessible accessibilityLabel={flockText(bots.length)}>
-      {bots.map((bot) => (
-        <FlockBlob key={bot.botName} bot={bot} />
-      ))}
-      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.flockText, { color: t.ink3 }]}>
-        {flockText(bots.length)}
-      </Text>
-    </View>
-  );
-}
-
-function FlockBlob({ bot }: { bot: KnownBot }) {
-  const { botId, botName } = bot;
-  const { colour } = bot;
-  const look = useMemo(() => botLook({ botId, botName, ...(colour === undefined ? {} : { colour }) }), [botId, botName, colour]);
-  return <Blob bot={look} size={26} />;
-}
-
-/** H2: what to run on a computer, and Pair a bot (the words of O4, "Bring in your first bot"). */
-function NoBots({ onPairBot }: { onPairBot: () => void }) {
+/**
+ * H2: what to run on a computer (the words of O4, "Bring in your first bot"). No button: the request
+ * shows up here on its own, and pairing from the app is on the Bots screen.
+ */
+function NoBots() {
   const t = useTheme().tokens;
   return (
     <View>
@@ -368,10 +345,9 @@ function NoBots({ onPairBot }: { onPairBot: () => void }) {
         </Text>
         <CopyIcon colour={t.ink2} />
       </View>
-      <Caption>The request shows up here on its own. You'll check a six-digit code and approve it.</Caption>
-      <View style={styles.pair}>
-        <Btn label="Pair a bot" variant="primary" onPress={onPairBot} />
-      </View>
+      <Caption>
+        The request shows up here on its own. You'll check a six-digit code and approve it. You can also pair from Bots, at the top.
+      </Caption>
     </View>
   );
 }
@@ -391,7 +367,6 @@ export interface ConnectedH1HomeProps {
   onOpenArchive: () => void;
   onBots: () => void;
   onSettings: () => void;
-  onPairBot: () => void;
   /** A tap on a PAIRING card: B4 for that bot. */
   onOpenPairing?: (botId: string) => void;
   footer?: ReactNode;
@@ -476,7 +451,6 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
   const live = useLiveActivities(clientId);
 
   const waiting = useQuery(anyApi.alerts.waiting, clientId ? { clientId } : "skip") as WaitingAlert[] | undefined;
-  const { history, loading: historyLoading, status: historyStatus } = useHistory(clientId);
 
   const queuedKey = (waiting ?? []).map((alert) => (isQueuedLocally(alert.questionId) ? alert.questionId : "")).join("|");
   const needs = useMemo(() => {
@@ -485,13 +459,8 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
     return needsYou(waiting, { now, queuedIds });
   }, [waiting, clientId, now, queuedKey]);
 
-  // The flock and "no bots yet" come from the paired bots (`bots.list`); the legacy path with no
-  // client id has no list and keeps the derived data.
+  // "No bots yet" comes from the paired bots (`bots.list`); the legacy path with no client id has no list.
   const botList = useBots(clientId);
-  const bots = useMemo(
-    () => (botList ? flockBots(botList) : knownBots(waiting ?? [], history)),
-    [botList, waiting, history],
-  );
   const noBots = Boolean(clientId) && botList !== undefined && botList.length === 0;
 
   return (
@@ -499,9 +468,6 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
       banners={health.banners}
       onBanner={(id) => (id === "fullScreen" ? props.onAllowFullScreen() : health.fix(id))}
       needs={needs}
-      history={historyLoading ? undefined : history}
-      historyStatus={historyStatus}
-      bots={bots}
       noBots={noBots}
       now={now}
       onOpenNeed={props.onOpenNeed}
@@ -509,7 +475,6 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
       onOpenArchive={props.onOpenArchive}
       onBots={props.onBots}
       onSettings={props.onSettings}
-      onPairBot={props.onPairBot}
       pairings={pairings ?? []}
       onOpenPairing={props.onOpenPairing}
       live={live}
@@ -552,16 +517,19 @@ const styles = StyleSheet.create({
   needs: { gap: 10, paddingTop: 2, paddingHorizontal: 16 },
   /** The "Go through all" wrapper: `padding:12px 16px 0`. */
   all: { paddingTop: 12, paddingHorizontal: 16 },
-  /** `.clear{padding:34px 22px 12px}` */
-  clear: { paddingTop: 34, paddingHorizontal: 22, paddingBottom: 12 },
-  clearTitle: { fontFamily: fontFamily.black, fontSize: 26, fontWeight: "900", letterSpacing: 26 * -0.01 },
-  clearBody: { fontFamily: fontFamily.semiBold, fontSize: 15.5, fontWeight: "600", marginTop: 6 },
-  /** `.flock{gap:4px; margin-top:16px}`, its text `margin-left:8px` */
-  flock: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 16 },
-  flockText: { fontFamily: fontFamily.bold, fontSize: 13.5, fontWeight: "700", marginLeft: 8 },
-  /** The Archive row: a quiet line under everything, set apart from the cards above. */
-  archive: { paddingTop: 26 },
-  pair: { paddingTop: 22, paddingHorizontal: 20 },
+  /** All quiet: the scroll fills the screen, and the footer (the dev links) stays at the bottom. */
+  scrollFill: { flexGrow: 1, paddingBottom: 28 },
+  /** The blob, the title and the line sit in the middle of the empty space, a little above centre. */
+  clear: { flexGrow: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 36, paddingBottom: 72 },
+  clearTitle: {
+    fontFamily: fontFamily.black,
+    fontSize: 28,
+    fontWeight: "900",
+    letterSpacing: 28 * -0.01,
+    marginTop: 22,
+    textAlign: "center",
+  },
+  clearBody: { fontFamily: fontFamily.semiBold, fontSize: 16, fontWeight: "600", marginTop: 8, textAlign: "center" },
   code: {
     marginHorizontal: 22,
     borderRadius: 14,

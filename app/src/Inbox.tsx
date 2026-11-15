@@ -380,12 +380,9 @@ function InboxBody({
             onOpenArchive={openArchive}
             onBots={openBots}
             onSettings={openSettings}
-            onPairBot={startPairing}
             onOpenPairing={openPairing}
             footer={
               <View style={styles.footer}>
-                <TextLink label="Pair a bot" onPress={startPairing} />
-                {email ? <FooterNote>Signed in as {email}.</FooterNote> : null}
                 {__DEV__ && onDevReplayOnboarding ? (
                   <TextLink label="Dev: replay onboarding" onPress={onDevReplayOnboarding} />
                 ) : null}
@@ -450,12 +447,6 @@ function ErrorScreen({ message }: { message: string }) {
   );
 }
 
-/** A line of quiet text under the footer link (13.5 / 600 `ink3`, as the captions elsewhere). */
-function FooterNote({ children }: { children: ReactNode }) {
-  const t = useTheme().tokens;
-  return <Text style={[styles.note, { color: t.ink3 }]}>{children}</Text>;
-}
-
 /** The screen background, nothing else (a captioned page here showed as a flash on every start). */
 function Blank() {
   const t = useTheme().tokens;
@@ -503,5 +494,4 @@ const styles = StyleSheet.create({
   error: { flex: 1, justifyContent: "center", paddingHorizontal: 28 },
   errorTitle: { fontFamily: fontFamily.black, fontSize: 24, fontWeight: "900" },
   errorBody: { fontFamily: fontFamily.semiBold, fontSize: 15.5, fontWeight: "600", marginTop: 8 },
-  note: { fontFamily: fontFamily.semiBold, fontSize: 13.5, fontWeight: "600", paddingVertical: 4 },
 });

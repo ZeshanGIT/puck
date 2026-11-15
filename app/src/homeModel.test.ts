@@ -1,11 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   ALL_QUIET_BODY,
-  archiveRowLabel,
   BANNER_COPY,
   dayLabel,
   dndBypassActive,
-  flockText,
   groupByDay,
   healthBanners,
   historyRow,
@@ -258,31 +256,10 @@ describe("H2 and the flock", () => {
       { botId: "Brow", botName: "Brow" },
     ]);
   });
-
-  test("the flock line", () => {
-    expect(flockText(1)).toBe("1 bot can page you");
-    expect(flockText(3)).toBe("3 bots can page you");
-  });
-});
-
-describe("archiveRowLabel", () => {
-  test("no history, no row", () => {
-    expect(archiveRowLabel(0, true)).toBeNull();
-    expect(archiveRowLabel(0, false)).toBeNull();
-  });
-
-  test("an exact count once the history is done", () => {
-    expect(archiveRowLabel(1, true)).toBe("Archive · 1 earlier");
-    expect(archiveRowLabel(12, true)).toBe("Archive · 12 earlier");
-  });
-
-  test("a plus while more pages remain", () => {
-    expect(archiveRowLabel(20, false)).toBe("Archive · 20+ earlier");
-  });
 });
 
 describe("all quiet copy", () => {
-  test("says nothing is waiting for a response or action", () => {
-    expect(ALL_QUIET_BODY).toBe("Nothing is waiting for your response or action.");
+  test("says nothing is waiting for a response", () => {
+    expect(ALL_QUIET_BODY).toBe("Nothing is waiting for your response.");
   });
 });

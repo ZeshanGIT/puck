@@ -214,9 +214,6 @@ function DevHome({ name }: { name: string }) {
         banners={sample.banners}
         onBanner={later}
         needs={needs}
-        history={history}
-        historyStatus={historyStatus}
-        bots={knownBots(sample.waiting, history)}
         noBots={sample.noBots}
         now={now}
         onOpenNeed={later}
@@ -224,7 +221,6 @@ function DevHome({ name }: { name: string }) {
         onOpenArchive={() => setArchiveOpen(true)}
         onBots={later}
         onSettings={later}
-        onPairBot={() => setPairing({ kind: "code" })}
         pairings={sample.pairings}
         onOpenPairing={(botId) => setPairing({ kind: "approve", botId })}
         live={live}

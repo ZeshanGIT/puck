@@ -276,17 +276,8 @@ export function groupByDay(items: readonly HistoryItem[], now: number): HistoryG
 /** How many more rows one tap on "Load more" asks for. */
 export const HISTORY_PAGE = 20;
 
-/**
- * The words on Home's one Archive row, or null when there is no history to open. The count is what
- * has loaded: "20+" while more pages remain (the first page is all Home asks for), exact once the history is done.
- */
-export function archiveRowLabel(count: number, exhausted: boolean): string | null {
-  if (count <= 0) return null;
-  return `Archive · ${count}${exhausted ? "" : "+"} earlier`;
-}
-
-/** The line under "All quiet": nothing is waiting for his answer or any action from him. */
-export const ALL_QUIET_BODY = "Nothing is waiting for your response or action.";
+/** The line under "All quiet", in the middle of an otherwise blank Home. */
+export const ALL_QUIET_BODY = "Nothing is waiting for your response.";
 
 /* ------------------------------------------------------------- H2 and all clear */
 
@@ -314,7 +305,7 @@ export interface KnownBot {
 /**
  * The bots seen so far, one per name: from the waiting alerts (which carry the bot's id) and the
  * history (which carries only the name, so the name stands in as the id for a bot not seen waiting).
- * The flock under "All quiet" draws these.
+ * The Archive screen draws these.
  */
 export function knownBots(
   waiting: readonly Pick<WaitingAlert, "botId" | "botName">[],
@@ -324,9 +315,4 @@ export function knownBots(
   for (const alert of waiting) byName.set(alert.botName, { botId: alert.botId, botName: alert.botName });
   for (const item of history) if (!byName.has(item.botName)) byName.set(item.botName, { botId: item.botName, botName: item.botName });
   return [...byName.values()];
-}
-
-/** `${n} bots can page you` under the flock. */
-export function flockText(count: number): string {
-  return count === 1 ? "1 bot can page you" : `${count} bots can page you`;
 }

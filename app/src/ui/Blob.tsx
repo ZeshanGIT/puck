@@ -68,6 +68,8 @@ export interface BlobProps {
    * avatar on a Home card). Left out for the black bot in dark and night, whose own rim already does the job.
    */
   ring?: string;
+  /** Closed eyes, a short line each: the blob asleep (the all-quiet illustration). Still blobs only. */
+  asleep?: boolean;
 }
 
 const EYE_FILL = "#fff";
@@ -129,7 +131,7 @@ const NOOP_HANDLE: BlobHandle = {
 };
 
 const StillBlob = forwardRef<BlobHandle, Omit<BlobProps, "live" | "still">>(function StillBlob(
-  { bot, size, look, ring },
+  { bot, size, look, ring, asleep },
   ref,
 ) {
   useImperativeHandle(ref, () => NOOP_HANDLE, []);
@@ -142,9 +144,13 @@ const StillBlob = forwardRef<BlobHandle, Omit<BlobProps, "live" | "still">>(func
         <Body bot={bot} fill={fill} outline={outline} ring={ring} />
         <G transform={`translate(${ex} ${ey})`}>
           <G transform={`rotate(${EYE_GROUP_ROTATION} ${EYE_GROUP_ORIGIN.x} ${EYE_GROUP_ORIGIN.y})`}>
-            {EYES.map((e) => (
-              <Rect key={e.x} x={e.x} y={e.y} width={e.width} height={e.height} rx={e.rx} fill={EYE_FILL} />
-            ))}
+            {EYES.map((e) =>
+              asleep ? (
+                <Rect key={e.x} x={e.x - 0.5} y={e.y + e.height / 2 + 2} width={e.width + 1} height={3.2} rx={1.6} fill={EYE_FILL} />
+              ) : (
+                <Rect key={e.x} x={e.x} y={e.y} width={e.width} height={e.height} rx={e.rx} fill={EYE_FILL} />
+              ),
+            )}
           </G>
         </G>
       </Svg>
