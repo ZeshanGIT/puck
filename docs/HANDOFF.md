@@ -2,6 +2,10 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## Puck plays the ringtone (2026-11-15)
+
+The ringtone was the alert notification's channel sound, and Android's single notification sound player let any later notification cut it off. `RingService` (module manifest: foreground service type `mediaPlayback`) plays it with `MediaPlayer` on the ringtone or alarm usage with transient focus; it plays once or loops for the ring time, and shows a silent `puck-ringing-now` notification with Stop. JS (`startRinging`) decides with `puckRing(decision, soundPolicy())` (`ringPlayback.ts`), starts it with `startRing`, and posts the alert on a `-quiet` channel; `stopRing` runs in `forget`, `settleNow`, a press, and `OverlayCard.silenceNotifications`. No policy (older build) or a refused service: the old sounding channel. Reminders still use sounding channels. Verified on the Pixel with Puck in front only.
+
 ## Alerts by kind: bypass and reminders per section (2026-11-15)
 
 Alerts (S4) and the bot page (B2) are one section per kind of alert: full screen while in use, ringtone, Repeat, ring through Do Not Disturb, ring in silent mode, Remind me. `BypassMode` gained `"normal"` so any combination of the two switches is one stored value (`modeAllows`, `withModeFor`, `followAppFor` for a bot's per-kind reset). Normal alerts now bypass when asked and allowed: `normalChannelId` gives `puck-alerts-dnd`, `-alarm`, `-bypass`, and `ensureChannel` builds both kinds; before this, `alertRingingPlan` ignored bypass for normal alerts entirely, so "All alerts" only ever applied to urgent ones. Reminders: `reminderMinutesNormal` (default 0) and a per-bot override; `reminderMinutes` stays the urgent one; reminders are scheduled for both kinds. Owner check on the phone pending.
