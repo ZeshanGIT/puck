@@ -1,7 +1,8 @@
 /**
- * S4 Alerts (once "Alert sounds"): per kind of alert, card or full screen while the phone is in use, and the ringtone for normal alerts and for urgent alerts (each opens the phone's
- * ringtone picker; a ringtone plays once), how often an unanswered urgent alert reminds, and
- * whether bots may bypass Do Not Disturb and silent mode (Off, Urgent only, All alerts). Prototype:
+ * S4 Alerts (once "Alert sounds"): one section per kind of alert (normal, urgent), each with card or
+ * full screen while the phone is in use, the ringtone (opens the phone's picker; it plays once),
+ * Repeat, whether it may ring through Do Not Disturb and in silent mode (when the alert asks), and
+ * how often it reminds while unanswered (urgent every 5 minutes, normal off, by default). Prototype:
  * `SCREENS.sounds` and `.chips` (`vault/Projects/Puck/mockups/Puck prototype.html`);
  * `App screens.md` S4, Q6.
  *
@@ -10,13 +11,15 @@
  */
 import { ScrollView, StyleSheet, View } from "react-native";
 import type { SoundKind } from "../botSoundSettings";
-import type { BypassMode } from "../localSettings";
+import { modeAllows, type BypassMode } from "../localSettings";
 import { REMINDER_CHIPS } from "../reminderChoices";
-import { GLOBAL_BYPASS_CHIPS } from "../settingsModel";
+import { Text } from "../ui/Text";
+import { useTheme } from "../ui/theme";
+import { fontFamily } from "../ui/tokens";
 import { OnboardingFrame } from "../onboarding/parts";
 import { Chip } from "../ui/Chip";
 import { Group } from "../ui/Group";
-import { NavBar } from "./PairingParts";
+import { MAX_FONT_SCALE, NavBar } from "./PairingParts";
 import { Caption, ErrorLine, Section, SettingsRow, SettingsToggleRow } from "./SettingsParts";
 
 export interface S4SoundsProps {
@@ -29,18 +32,17 @@ export interface S4SoundsProps {
   /** While the phone is in use, the alert takes the whole screen instead of the card, per kind of alert. */
   fullScreenNormal: boolean;
   fullScreenUrgent: boolean;
-  /** Minutes between reminders; 0 is off. */
-  reminderMinutes: number;
+  /** Minutes between reminders per kind of alert; 0 is off. */
+  reminderNormal: number;
+  reminderUrgent: number;
+  /** Which kinds may ring through Do Not Disturb and silent mode (when the alert asks). */
   bypassDnd: BypassMode;
   bypassSilent: BypassMode;
   onSound: (kind: SoundKind) => void;
-  onLoopNormal: (loop: boolean) => void;
-  onLoopUrgent: (loop: boolean) => void;
-  onFullScreenNormal: (fullScreen: boolean) => void;
-  onFullScreenUrgent: (fullScreen: boolean) => void;
-  onReminder: (minutes: number) => void;
-  onBypassDnd: (mode: BypassMode) => void;
-  onBypassSilent: (mode: BypassMode) => void;
+  onLoop: (kind: SoundKind, loop: boolean) => void;
+  onFullScreen: (kind: SoundKind, fullScreen: boolean) => void;
+  onReminder: (kind: SoundKind, minutes: number) => void;
+  onBypass: (which: "dnd" | "silent", kind: SoundKind, on: boolean) => void;
   error?: string | null;
   onBack: () => void;
 }
@@ -50,102 +52,77 @@ export function S4Sounds(props: S4SoundsProps) {
     <OnboardingFrame>
       <NavBar title="Alerts" onBack={props.onBack} backTestID="back" />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        <Section label="Normal alerts" />
-        <Group>
-          <SettingsRow
-            icon="bell"
-            label="Ringtone"
-            value={props.normalRingtone}
-            onPress={() => props.onSound("normal")}
-            testID="sounds-normal"
-          />
-          <SettingsToggleRow
-            icon="sound"
-            label="Repeat the ringtone"
-            value={props.loopNormal}
-            onChange={props.onLoopNormal}
-            testID="sounds-loop-normal"
-          />
-          <SettingsToggleRow
-            icon="phone"
-            label="Full screen while I use my phone"
-            value={props.fullScreenNormal}
-            onChange={props.onFullScreenNormal}
-            testID="sounds-fullscreen-normal"
-          />
-        </Group>
-
-        <Section label="Urgent alerts" />
-        <Group>
-          <SettingsRow
-            icon="bell"
-            label="Ringtone"
-            value={props.urgentRingtone}
-            onPress={() => props.onSound("urgent")}
-            testID="sounds-urgent"
-          />
-          <SettingsToggleRow
-            icon="sound"
-            label="Repeat the ringtone"
-            value={props.loopUrgent}
-            onChange={props.onLoopUrgent}
-            testID="sounds-loop-urgent"
-          />
-          <SettingsToggleRow
-            icon="phone"
-            label="Full screen while I use my phone"
-            value={props.fullScreenUrgent}
-            onChange={props.onFullScreenUrgent}
-            testID="sounds-fullscreen-urgent"
-          />
-        </Group>
+        {(["normal", "urgent"] as const).map((kind) => (
+          <KindSection key={kind} kind={kind} {...props} />
+        ))}
         <Caption>
-          Pick from your phone's ringtones. A ringtone plays once, through to the end. With Repeat on it repeats until you answer or the alert's ring time is up. While you use your phone an alert shows as a small card over the app you are in; with Full screen on it takes the whole screen instead, as it does on a locked phone. Both need "Show over other apps" in Alert health. Each bot can have its own.
+          While you use your phone an alert shows as a small card over the app you are in; with Full screen on it takes the whole screen instead, as on a locked phone. Both need "Show over other apps" in Alert health. A ringtone plays once, through to the end, unless Repeat is on. Do Not Disturb and silent mode are bypassed only for alerts that ask. An unanswered alert rings again this often, for up to an hour. Each bot can have its own.
         </Caption>
-
-        <Section label="Remind me about an urgent alert" />
-        <View style={styles.chips}>
-          {REMINDER_CHIPS.map((chip) => (
-            <Chip
-              key={chip.minutes}
-              label={chip.label}
-              selected={chip.minutes === props.reminderMinutes}
-              onPress={() => props.onReminder(chip.minutes)}
-              testID={`reminder-${chip.minutes}`}
-            />
-          ))}
-        </View>
-        <Caption>An urgent alert nobody has answered rings again this often, for up to an hour. Each bot can set its own.</Caption>
-
-        <Section label="Bots may bypass Do Not Disturb" />
-        <View style={styles.chips}>
-          {GLOBAL_BYPASS_CHIPS.map((chip) => (
-            <Chip
-              key={chip.id}
-              label={chip.label}
-              selected={chip.id === props.bypassDnd}
-              onPress={() => props.onBypassDnd(chip.id)}
-              testID={`global-dnd-${chip.id}`}
-            />
-          ))}
-        </View>
-
-        <Section label="Bots may bypass silent mode" />
-        <View style={styles.chips}>
-          {GLOBAL_BYPASS_CHIPS.map((chip) => (
-            <Chip
-              key={chip.id}
-              label={chip.label}
-              selected={chip.id === props.bypassSilent}
-              onPress={() => props.onBypassSilent(chip.id)}
-              testID={`global-silent-${chip.id}`}
-            />
-          ))}
-        </View>
-        <Caption>Only alerts that ask to bypass. Each bot can override this on its own page.</Caption>
         <ErrorLine message={props.error ?? null} />
       </ScrollView>
     </OnboardingFrame>
+  );
+}
+
+/** One kind of alert: how it shows, how it sounds, what it may ring through, and its reminders. */
+function KindSection({ kind, ...props }: S4SoundsProps & { kind: SoundKind }) {
+  const t = useTheme().tokens;
+  const urgent = kind === "urgent";
+  return (
+    <>
+      <Section label={urgent ? "Urgent alerts" : "Normal alerts"} />
+      <Group>
+        <SettingsToggleRow
+          icon="phone"
+          label="Full screen while I use my phone"
+          value={urgent ? props.fullScreenUrgent : props.fullScreenNormal}
+          onChange={(next) => props.onFullScreen(kind, next)}
+          testID={`sounds-fullscreen-${kind}`}
+        />
+        <SettingsRow
+          icon="bell"
+          label="Ringtone"
+          value={urgent ? props.urgentRingtone : props.normalRingtone}
+          onPress={() => props.onSound(kind)}
+          testID={`sounds-${kind}`}
+        />
+        <SettingsToggleRow
+          icon="sound"
+          label="Repeat the ringtone"
+          value={urgent ? props.loopUrgent : props.loopNormal}
+          onChange={(next) => props.onLoop(kind, next)}
+          testID={`sounds-loop-${kind}`}
+        />
+        <SettingsToggleRow
+          icon="moon"
+          label="Ring through Do Not Disturb"
+          value={modeAllows(props.bypassDnd, kind)}
+          onChange={(next) => props.onBypass("dnd", kind, next)}
+          testID={`sounds-dnd-${kind}`}
+        />
+        <SettingsToggleRow
+          icon="mute"
+          label="Ring in silent mode"
+          value={modeAllows(props.bypassSilent, kind)}
+          onChange={(next) => props.onBypass("silent", kind, next)}
+          testID={`sounds-silent-${kind}`}
+        />
+      </Group>
+      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.sub, { color: t.ink3 }]}>
+        Remind me
+      </Text>
+      <View style={styles.chips}>
+        {REMINDER_CHIPS.map((chip) => (
+          <Chip
+            key={chip.minutes}
+            label={chip.label}
+            selected={chip.minutes === (urgent ? props.reminderUrgent : props.reminderNormal)}
+            onPress={() => props.onReminder(kind, chip.minutes)}
+            testID={`reminder-${kind}-${chip.minutes}`}
+          />
+        ))}
+      </View>
+    </>
   );
 }
 
@@ -153,4 +130,5 @@ const styles = StyleSheet.create({
   scroll: { paddingBottom: 28 },
   /** `.chips{gap:8px; padding:4px 16px 0}` */
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingTop: 4, paddingHorizontal: 16 },
+  sub: { fontFamily: fontFamily.extraBold, fontSize: 13, paddingTop: 14, paddingHorizontal: 18 },
 });

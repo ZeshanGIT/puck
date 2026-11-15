@@ -289,6 +289,8 @@ function DevBots({ name }: { name: string }) {
           else if (change.silent !== undefined) next.silent = change.silent;
           if (change.reminderMinutes === null) delete next.reminderMinutes;
           else if (change.reminderMinutes !== undefined) next.reminderMinutes = change.reminderMinutes;
+          if (change.reminderMinutesNormal === null) delete next.reminderMinutesNormal;
+          else if (change.reminderMinutesNormal !== undefined) next.reminderMinutesNormal = change.reminderMinutesNormal;
           if (change.normalRingtone === null) delete next.normalRingtone;
           else if (change.normalRingtone !== undefined) next.normalRingtone = change.normalRingtone;
           if (change.urgentRingtone === null) delete next.urgentRingtone;
@@ -314,6 +316,8 @@ function DevBots({ name }: { name: string }) {
         }),
       appLoop: { normal: false, urgent: false },
       appFullScreen: { normal: false, urgent: false },
+      appBypass: { dnd: "urgent", silent: "urgent" },
+      appReminder: { normal: 0, urgent: 5 },
     }),
     [bots, bypass, show],
   );

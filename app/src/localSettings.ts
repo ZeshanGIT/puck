@@ -13,8 +13,12 @@ import { DEFAULT_THEME_PREFERENCE, isThemePreference, type ThemePreference } fro
 
 /* ----------------------------------------------------------------- settings */
 
-/** Q6: each global setting is Off, Urgent only, or All alerts. */
-export type BypassMode = "off" | "urgent" | "all";
+/**
+ * Q6: which kinds of alert may bypass Do Not Disturb (or silent mode). The Alerts screen shows it
+ * as one switch in each kind's section, so every combination is possible: off, urgent only,
+ * normal only, or all. Stored as one value so earlier settings ("off", "urgent", "all") still read.
+ */
+export type BypassMode = "off" | "urgent" | "normal" | "all";
 
 export type AlertPriority = "normal" | "urgent";
 
@@ -24,6 +28,8 @@ export interface BotBypass {
   silent?: BypassMode;
   /** Minutes between reminders for this bot's unanswered urgent alerts; 0 is off. */
   reminderMinutes?: number;
+  /** The same for its normal alerts. */
+  reminderMinutesNormal?: number;
   /** This bot's own ringtone for normal alerts (a URI; empty is the phone's own). Absent follows the global one. */
   normalRingtone?: string;
   /** This bot's own ringtone for urgent alerts. Absent follows the global one. */
@@ -63,6 +69,8 @@ export interface LocalSettings {
   fullScreenUrgent: boolean;
   /** Minutes between reminders for an unanswered urgent alert; 0 is off. A bot can override it. */
   reminderMinutes: number;
+  /** The same for a normal alert. Default: off. */
+  reminderMinutesNormal: number;
   /** Per-bot overrides, keyed by bot id. */
   bots: Record<string, BotBypass>;
 }
@@ -92,11 +100,12 @@ export const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
   fullScreenNormal: false,
   fullScreenUrgent: false,
   reminderMinutes: DEFAULT_REMINDER_MINUTES,
+  reminderMinutesNormal: 0,
   bots: {},
 };
 
 export function isBypassMode(value: unknown): value is BypassMode {
-  return value === "off" || value === "urgent" || value === "all";
+  return value === "off" || value === "urgent" || value === "normal" || value === "all";
 }
 
 export function isReminderMinutes(value: unknown): value is number {
@@ -114,6 +123,7 @@ function hasOverride(entry: BotBypass): boolean {
     entry.dnd !== undefined ||
     entry.silent !== undefined ||
     entry.reminderMinutes !== undefined ||
+    entry.reminderMinutesNormal !== undefined ||
     entry.normalRingtone !== undefined ||
     entry.urgentRingtone !== undefined ||
     entry.loopNormal !== undefined ||
@@ -144,6 +154,7 @@ export function parseLocalSettings(raw: string | null | undefined): LocalSetting
       if (isBypassMode(override.dnd)) entry.dnd = override.dnd;
       if (isBypassMode(override.silent)) entry.silent = override.silent;
       if (isReminderMinutes(override.reminderMinutes)) entry.reminderMinutes = override.reminderMinutes;
+      if (isReminderMinutes(override.reminderMinutesNormal)) entry.reminderMinutesNormal = override.reminderMinutesNormal;
       if (typeof override.normalRingtone === "string") entry.normalRingtone = override.normalRingtone;
       if (typeof override.urgentRingtone === "string") entry.urgentRingtone = override.urgentRingtone;
       if (typeof override.loopNormal === "boolean") entry.loopNormal = override.loopNormal;
@@ -164,6 +175,9 @@ export function parseLocalSettings(raw: string | null | undefined): LocalSetting
     fullScreenNormal: typeof record.fullScreenNormal === "boolean" ? record.fullScreenNormal : defaults.fullScreenNormal,
     fullScreenUrgent: typeof record.fullScreenUrgent === "boolean" ? record.fullScreenUrgent : defaults.fullScreenUrgent,
     reminderMinutes: isReminderMinutes(record.reminderMinutes) ? record.reminderMinutes : defaults.reminderMinutes,
+    reminderMinutesNormal: isReminderMinutes(record.reminderMinutesNormal)
+      ? record.reminderMinutesNormal
+      : defaults.reminderMinutesNormal,
     bots,
   };
 }
@@ -207,6 +221,7 @@ export interface BotBypassChange {
   dnd?: BypassMode | null;
   silent?: BypassMode | null;
   reminderMinutes?: number | null;
+  reminderMinutesNormal?: number | null;
   /** A ringtone URI sets it (empty is the phone's own), `null` follows the global one again. */
   normalRingtone?: string | null;
   urgentRingtone?: string | null;
@@ -231,6 +246,8 @@ export function withBotBypass(settings: LocalSettings, botId: string, change: Bo
   else if (change.silent !== undefined) next.silent = change.silent;
   if (change.reminderMinutes === null) delete next.reminderMinutes;
   else if (change.reminderMinutes !== undefined) next.reminderMinutes = change.reminderMinutes;
+  if (change.reminderMinutesNormal === null) delete next.reminderMinutesNormal;
+  else if (change.reminderMinutesNormal !== undefined) next.reminderMinutesNormal = change.reminderMinutesNormal;
   if (change.normalRingtone === null) delete next.normalRingtone;
   else if (change.normalRingtone !== undefined) next.normalRingtone = change.normalRingtone;
   if (change.urgentRingtone === null) delete next.urgentRingtone;
@@ -269,10 +286,18 @@ export async function forgetBotBypass(botId: string): Promise<LocalSettings> {
 
 /* ------------------------------------------------------------------- bypass */
 
-function modeAllows(mode: BypassMode, priority: AlertPriority): boolean {
+/** Whether a bypass setting lets this kind of alert through. */
+export function modeAllows(mode: BypassMode, priority: AlertPriority): boolean {
   if (mode === "off") return false;
-  if (mode === "urgent") return priority === "urgent";
-  return true;
+  if (mode === "all") return true;
+  return mode === priority;
+}
+
+/** The setting with one kind of alert switched on or off and the other left as it was. */
+export function withModeFor(mode: BypassMode, priority: AlertPriority, on: boolean): BypassMode {
+  const urgent = priority === "urgent" ? on : modeAllows(mode, "urgent");
+  const normal = priority === "normal" ? on : modeAllows(mode, "normal");
+  return urgent && normal ? "all" : urgent ? "urgent" : normal ? "normal" : "off";
 }
 
 export interface BypassDecision {
@@ -341,10 +366,24 @@ export function ringtonesInUse(settings: LocalSettings): { normal: string[]; urg
   return { normal: [...normal], urgent: [...urgent] };
 }
 
-/** Minutes between reminders for a bot's unanswered urgent alerts: the bot's own setting, else the global one. 0 is off. */
-export function reminderMinutesFor(settings: LocalSettings, botId?: string): number {
-  const own = botId === undefined ? undefined : settings.bots[botId]?.reminderMinutes;
-  return own ?? settings.reminderMinutes;
+/**
+ * Minutes between reminders for a bot's unanswered alerts of this kind (urgent unless said): the
+ * bot's own setting, else the global one. 0 is off.
+ */
+export function reminderMinutesFor(settings: LocalSettings, botId?: string, priority: AlertPriority = "urgent"): number {
+  const own = botId === undefined ? undefined : settings.bots[botId];
+  if (priority === "normal") return own?.reminderMinutesNormal ?? settings.reminderMinutesNormal;
+  return own?.reminderMinutes ?? settings.reminderMinutes;
+}
+
+/**
+ * A bot's Do Not Disturb (or silent mode) override with one kind of alert following the app again.
+ * Null when what is left matches the app's setting entirely: the bot has no override any more.
+ */
+export function followAppFor(own: BypassMode | undefined, app: BypassMode, priority: AlertPriority): BypassMode | null {
+  if (own === undefined) return null;
+  const next = withModeFor(own, priority, modeAllows(app, priority));
+  return next === app ? null : next;
 }
 
 /* ----------------------------------------------------------------- channels */
@@ -384,6 +423,20 @@ export function urgentChannelId(decision: BypassDecision, alarmChannels: boolean
       : URGENT_CHANNEL.plain;
   return card ? cardChannelId(id) : id;
 }
+
+/**
+ * The ringing channel for a normal alert: `puck-alerts`, or its variants through Do Not Disturb, on
+ * the alarm stream (through silent mode) or both, when the alert asked and the settings allow it.
+ */
+export function normalChannelId(decision: BypassDecision, alarmChannels: boolean, card = false): string {
+  const silent = decision.silent && alarmChannels;
+  const suffix = silent ? (decision.dnd ? "-bypass" : "-alarm") : decision.dnd ? "-dnd" : "";
+  const id = `${NORMAL_CHANNEL_BASE}${suffix}`;
+  return card ? cardChannelId(id) : id;
+}
+
+/** `PUSH_CHANNEL_ID` in `@puck/shared`; repeated here so this file stays free of imports. */
+export const NORMAL_CHANNEL_BASE = "puck-alerts";
 
 /**
  * The same channel as `base`, but without a heads-up banner: used when the compact card shows the

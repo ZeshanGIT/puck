@@ -1,5 +1,5 @@
 import { pickRingtone } from "puck-full-screen";
-import { loadLocalSettings, ringtonesInUse, saveBotBypass, saveLocalSettings } from "./localSettings";
+import { followAppFor, loadLocalSettings, ringtonesInUse, saveBotBypass, saveLocalSettings } from "./localSettings";
 import { staleRingChannelIds } from "./ringChannels";
 
 /** Which sound row was tapped. */
@@ -56,13 +56,20 @@ export async function chooseRingtone(kind: SoundKind, botId?: string): Promise<b
   }
 }
 
-/** Makes a bot follow app settings again for this kind of alert: the ringtone, whether it repeats, and card or full screen. */
+/**
+ * Makes a bot follow app settings again for this kind of alert: the ringtone, Repeat, card or full
+ * screen, reminders, and Do Not Disturb and silent mode (for this kind only; the other kind keeps
+ * the bot's own choice).
+ */
 export async function resetBotSound(botId: string, kind: SoundKind): Promise<void> {
-  await saveBotBypass(
-    botId,
-    kind === "urgent"
-      ? { urgentRingtone: null, loopUrgent: null, fullScreenUrgent: null }
-      : { normalRingtone: null, loopNormal: null, fullScreenNormal: null },
-  );
+  const settings = await loadLocalSettings();
+  const own = settings.bots[botId];
+  await saveBotBypass(botId, {
+    ...(kind === "urgent"
+      ? { urgentRingtone: null, loopUrgent: null, fullScreenUrgent: null, reminderMinutes: null }
+      : { normalRingtone: null, loopNormal: null, fullScreenNormal: null, reminderMinutesNormal: null }),
+    dnd: followAppFor(own?.dnd, settings.bypassDnd, kind),
+    silent: followAppFor(own?.silent, settings.bypassSilent, kind),
+  });
   await removeStaleRingChannels();
 }

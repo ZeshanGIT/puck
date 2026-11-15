@@ -15,6 +15,7 @@ import { ringtoneTitle } from "puck-full-screen";
 import { chooseRingtone, resetBotSound, type SoundKind } from "../botSoundSettings";
 import { muteUntil, type BotListItem, type MuteChoice } from "../botsModel";
 import {
+  DEFAULT_LOCAL_SETTINGS,
   forgetBotBypass,
   loadLocalSettings,
   saveBotBypass,
@@ -55,6 +56,9 @@ export interface BotsSource {
   appLoop: { normal: boolean; urgent: boolean };
   /** What Alert sounds says about full screen while the phone is in use, which a bot follows unless it has its own. */
   appFullScreen: { normal: boolean; urgent: boolean };
+  /** What Alerts says about Do Not Disturb, silent mode and reminders, which a bot follows unless it has its own. */
+  appBypass: { dnd: BypassMode; silent: BypassMode };
+  appReminder: { normal: number; urgent: number };
 }
 
 /** Where the screens start. */
@@ -146,7 +150,13 @@ export function BotsHost({ source, start = { kind: "list" }, pairings, onOpenPai
         onMute={(choice: MuteChoice) => void run(() => source.mute(bot.botId, muteUntil(choice, Date.now())))}
         onBypass={(which, mode: BypassMode | null) => void run(() => source.setBypass(bot.botId, { [which]: mode }))}
         onColour={(colour) => void run(() => source.setColour(bot.botId, colour))}
-        onReminder={(minutes) => void run(() => source.setBypass(bot.botId, { reminderMinutes: minutes }))}
+        onReminder={(kind, minutes) =>
+          void run(() =>
+            source.setBypass(bot.botId, kind === "urgent" ? { reminderMinutes: minutes } : { reminderMinutesNormal: minutes }),
+          )
+        }
+        appBypass={source.appBypass}
+        appReminder={source.appReminder}
         normalRingtone={ownRingtone(bypass[bot.botId]?.normalRingtone)}
         urgentRingtone={ownRingtone(bypass[bot.botId]?.urgentRingtone)}
         onRingtone={(kind) =>
@@ -204,12 +214,22 @@ export function ConnectedBotsHost({
   const [bypass, setBypass] = useState<Record<string, BotBypass>>({});
   const [appLoop, setAppLoop] = useState({ normal: false, urgent: false });
   const [appFullScreen, setAppFullScreen] = useState({ normal: false, urgent: false });
+  const [appBypass, setAppBypass] = useState<{ dnd: BypassMode; silent: BypassMode }>({
+    dnd: DEFAULT_LOCAL_SETTINGS.bypassDnd,
+    silent: DEFAULT_LOCAL_SETTINGS.bypassSilent,
+  });
+  const [appReminder, setAppReminder] = useState({
+    normal: DEFAULT_LOCAL_SETTINGS.reminderMinutesNormal,
+    urgent: DEFAULT_LOCAL_SETTINGS.reminderMinutes,
+  });
   useEffect(() => {
     let cancelled = false;
     const apply = (settings: LocalSettings) => {
       setBypass(settings.bots);
       setAppLoop({ normal: settings.loopNormal, urgent: settings.loopUrgent });
       setAppFullScreen({ normal: settings.fullScreenNormal, urgent: settings.fullScreenUrgent });
+      setAppBypass({ dnd: settings.bypassDnd, silent: settings.bypassSilent });
+      setAppReminder({ normal: settings.reminderMinutesNormal, urgent: settings.reminderMinutes });
     };
     void loadLocalSettings().then((settings) => {
       if (!cancelled) apply(settings);
@@ -248,8 +268,10 @@ export function ConnectedBotsHost({
       resetSound: (botId, kind) => resetBotSound(botId, kind),
       appLoop,
       appFullScreen,
+      appBypass,
+      appReminder,
     };
-  }, [clientId, bots, bypass, appLoop, appFullScreen, updateMutation, removeMutation]);
+  }, [clientId, bots, bypass, appLoop, appFullScreen, appBypass, appReminder, updateMutation, removeMutation]);
 
   return (
     <BotsHost

@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BackHandler, StyleSheet, View } from "react-native";
 import { ringtoneTitle } from "puck-full-screen";
 import type { SoundKind } from "../botSoundSettings";
-import type { LocalSettings } from "../localSettings";
+import { withModeFor, type LocalSettings } from "../localSettings";
 import type { ThemePreference } from "../ui/themePreference";
 import {
   healthRowValue,
@@ -52,7 +52,7 @@ function ringtoneName(uri: string): string {
 }
 
 /** The settings the Sounds screen changes. */
-export type SettingsChange = Partial<Pick<LocalSettings, "theme" | "bypassDnd" | "bypassSilent" | "reminderMinutes" | "loopNormal" | "loopUrgent" | "fullScreenNormal" | "fullScreenUrgent">>;
+export type SettingsChange = Partial<Pick<LocalSettings, "theme" | "bypassDnd" | "bypassSilent" | "reminderMinutes" | "reminderMinutesNormal" | "loopNormal" | "loopUrgent" | "fullScreenNormal" | "fullScreenUrgent">>;
 
 export interface SettingsSource {
   email: string | null;
@@ -218,7 +218,8 @@ export function SettingsHost({ source, nav, onNav, testStatus, onClose }: Settin
           loopUrgent={settings.loopUrgent}
           fullScreenNormal={settings.fullScreenNormal}
           fullScreenUrgent={settings.fullScreenUrgent}
-          reminderMinutes={settings.reminderMinutes}
+          reminderNormal={settings.reminderMinutesNormal}
+          reminderUrgent={settings.reminderMinutes}
           bypassDnd={settings.bypassDnd}
           bypassSilent={settings.bypassSilent}
           error={error}
@@ -227,13 +228,26 @@ export function SettingsHost({ source, nav, onNav, testStatus, onClose }: Settin
               if (!ok) toast.show("Couldn't open the ringtone picker");
             })
           }
-          onLoopNormal={(loopNormal) => void run(() => source.setSettings({ loopNormal }))}
-          onLoopUrgent={(loopUrgent) => void run(() => source.setSettings({ loopUrgent }))}
-          onFullScreenNormal={(fullScreenNormal) => void run(() => source.setSettings({ fullScreenNormal }))}
-          onFullScreenUrgent={(fullScreenUrgent) => void run(() => source.setSettings({ fullScreenUrgent }))}
-          onReminder={(reminderMinutes) => void run(() => source.setSettings({ reminderMinutes }))}
-          onBypassDnd={(bypassDnd) => void run(() => source.setSettings({ bypassDnd }))}
-          onBypassSilent={(bypassSilent) => void run(() => source.setSettings({ bypassSilent }))}
+          onLoop={(kind, loop) =>
+            void run(() => source.setSettings(kind === "urgent" ? { loopUrgent: loop } : { loopNormal: loop }))
+          }
+          onFullScreen={(kind, on) =>
+            void run(() => source.setSettings(kind === "urgent" ? { fullScreenUrgent: on } : { fullScreenNormal: on }))
+          }
+          onReminder={(kind, minutes) =>
+            void run(() =>
+              source.setSettings(kind === "urgent" ? { reminderMinutes: minutes } : { reminderMinutesNormal: minutes }),
+            )
+          }
+          onBypass={(which, kind, on) =>
+            void run(() =>
+              source.setSettings(
+                which === "dnd"
+                  ? { bypassDnd: withModeFor(settings.bypassDnd, kind, on) }
+                  : { bypassSilent: withModeFor(settings.bypassSilent, kind, on) },
+              ),
+            )
+          }
           onBack={back}
         />
       );

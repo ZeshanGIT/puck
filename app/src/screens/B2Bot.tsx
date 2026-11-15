@@ -13,20 +13,16 @@ import { Text } from "../ui/Text";
 import { PALETTE } from "../ui/botTheme";
 import {
   botBlob,
-  bypassChange,
-  bypassChoice,
-  BYPASS_CHIPS,
   dateText,
   MUTE_CHIPS,
   mutedLabel,
   selectedMuteChip,
   type BotListItem,
-  type BypassChoice,
   type MuteChoice,
 } from "../botsModel";
-import type { BotBypass, BypassMode } from "../localSettings";
+import { modeAllows, withModeFor, type BotBypass, type BypassMode } from "../localSettings";
 import type { SoundKind } from "../botSoundSettings";
-import { BOT_REMINDER_CHIPS, reminderChange, reminderChoice, type ReminderChoice } from "../reminderChoices";
+import { REMINDER_CHIPS } from "../reminderChoices";
 import { fromText } from "../pairingModel";
 import { Blob } from "../ui/Blob";
 import { Btn } from "../ui/Btn";
@@ -47,8 +43,12 @@ export interface B2BotProps {
   /** A mode, or null to follow app settings. */
   onBypass: (which: "dnd" | "silent", mode: BypassMode | null) => void;
   onColour: (colour: string) => void;
-  /** Minutes between reminders, or null to follow app settings. */
-  onReminder: (minutes: number | null) => void;
+  /** Minutes between reminders for this kind of alert, or null to follow app settings. */
+  onReminder: (kind: SoundKind, minutes: number | null) => void;
+  /** What Alerts in Settings says about Do Not Disturb and silent mode, which this bot follows unless it has its own. */
+  appBypass: { dnd: BypassMode; silent: BypassMode };
+  /** What Alerts in Settings says about reminders, per kind. */
+  appReminder: { normal: number; urgent: number };
   /** This bot's own ringtone for each kind of alert, by name; null when it follows the default. */
   normalRingtone: string | null;
   urgentRingtone: string | null;
@@ -88,6 +88,8 @@ export function B2Bot({
   onLoop,
   appFullScreen,
   onFullScreen,
+  appBypass,
+  appReminder,
   onResetSound,
   onRemove,
   onBack,
@@ -129,62 +131,50 @@ export function B2Bot({
           {muted ? `${muted}. ` : ""}A muted bot makes no sound or notification and never takes over the screen. Its alerts wait under Needs you.
         </Caption>
 
-        <Section label="Through Do Not Disturb" />
-        <BypassChips
-          which="dnd"
-          current={bypassChoice(bypass, "dnd")}
-          onChoose={(choice) => onBypass("dnd", bypassChange(choice))}
-        />
-        <Section label="Through silent mode" />
-        <BypassChips
-          which="silent"
-          current={bypassChoice(bypass, "silent")}
-          onChoose={(choice) => onBypass("silent", bypassChange(choice))}
-        />
-        <Caption>Only when {bot.name} asks. Follow app settings uses Alert sounds in Settings (urgent only).</Caption>
-
-        <SoundSection
-          title="Normal alerts"
-          kind="normal"
-          ringtone={normalRingtone}
-          loop={bypass?.loopNormal ?? appLoop.normal}
-          fullScreen={bypass?.fullScreenNormal ?? appFullScreen.normal}
-          following={normalRingtone === null && bypass?.loopNormal === undefined && bypass?.fullScreenNormal === undefined}
-          onRingtone={onRingtone}
-          onLoop={onLoop}
-          onFullScreen={onFullScreen}
-          onReset={onResetSound}
-        />
-        <SoundSection
-          title="Urgent alerts"
-          kind="urgent"
-          ringtone={urgentRingtone}
-          loop={bypass?.loopUrgent ?? appLoop.urgent}
-          fullScreen={bypass?.fullScreenUrgent ?? appFullScreen.urgent}
-          following={urgentRingtone === null && bypass?.loopUrgent === undefined && bypass?.fullScreenUrgent === undefined}
-          onRingtone={onRingtone}
-          onLoop={onLoop}
-          onFullScreen={onFullScreen}
-          onReset={onResetSound}
-        />
-        <Caption>
-          These apply to {bot.name} only. Until you change one, it follows app settings.
-        </Caption>
-
-        <Section label="Remind me" />
-        <View style={styles.chips}>
-          {BOT_REMINDER_CHIPS.map((chip) => (
-            <Chip
-              key={String(chip.id)}
-              label={chip.label}
-              selected={chip.id === reminderChoice(bypass)}
-              onPress={() => onReminder(reminderChange(chip.id as ReminderChoice))}
-              testID={`reminder-${chip.id}`}
+        {(["normal", "urgent"] as const).map((kind) => {
+          const urgent = kind === "urgent";
+          const dnd = bypass?.dnd ?? appBypass.dnd;
+          const silent = bypass?.silent ?? appBypass.silent;
+          const ownReminder = urgent ? bypass?.reminderMinutes : bypass?.reminderMinutesNormal;
+          const appReminderFor = urgent ? appReminder.urgent : appReminder.normal;
+          const ringtone = urgent ? urgentRingtone : normalRingtone;
+          const following =
+            ringtone === null &&
+            (urgent ? bypass?.loopUrgent : bypass?.loopNormal) === undefined &&
+            (urgent ? bypass?.fullScreenUrgent : bypass?.fullScreenNormal) === undefined &&
+            ownReminder === undefined &&
+            modeAllows(dnd, kind) === modeAllows(appBypass.dnd, kind) &&
+            modeAllows(silent, kind) === modeAllows(appBypass.silent, kind);
+          const setBypass = (which: "dnd" | "silent", on: boolean) => {
+            const app = which === "dnd" ? appBypass.dnd : appBypass.silent;
+            const next = withModeFor(which === "dnd" ? dnd : silent, kind, on);
+            onBypass(which, next === app ? null : next);
+          };
+          return (
+            <KindSection
+              key={kind}
+              kind={kind}
+              ringtone={ringtone}
+              loop={(urgent ? bypass?.loopUrgent : bypass?.loopNormal) ?? (urgent ? appLoop.urgent : appLoop.normal)}
+              fullScreen={
+                (urgent ? bypass?.fullScreenUrgent : bypass?.fullScreenNormal) ??
+                (urgent ? appFullScreen.urgent : appFullScreen.normal)
+              }
+              dnd={modeAllows(dnd, kind)}
+              silent={modeAllows(silent, kind)}
+              reminder={ownReminder ?? appReminderFor}
+              following={following}
+              onRingtone={onRingtone}
+              onLoop={onLoop}
+              onFullScreen={onFullScreen}
+              onBypass={setBypass}
+              onReminder={(minutes) => onReminder(kind, minutes === appReminderFor ? null : minutes)}
+              onReset={onResetSound}
             />
-          ))}
-        </View>
+          );
+        })}
         <Caption>
-          How often an urgent alert from {bot.name} rings again while nobody has answered it. Follow app settings uses Alert sounds in Settings.
+          These apply to {bot.name} only. Until you change one, it follows Alerts in Settings. Do Not Disturb and silent mode are bypassed only when {bot.name} asks.
         </Caption>
 
         <Section label="Colour" />
@@ -241,39 +231,56 @@ export function B2Bot({
 }
 
 /**
- * One kind of alert's sound on a bot's page: its ringtone, whether it repeats, and, once either is
- * the bot's own, a row that puts the bot back on Alert sounds. Built from the same rows as the Alert
- * sounds screen, so the two read alike.
+ * One kind of alert for this bot: card or full screen, ringtone, Repeat, Do Not Disturb, silent
+ * mode and reminders, each showing the bot's own value or the app's, and, once anything is the
+ * bot's own, a row that puts this kind back on the app's settings.
  */
-function SoundSection({
-  title,
+function KindSection({
   kind,
   ringtone,
   loop,
   fullScreen,
+  dnd,
+  silent,
+  reminder,
   following,
   onRingtone,
   onLoop,
   onFullScreen,
+  onBypass,
+  onReminder,
   onReset,
 }: {
-  title: string;
   kind: SoundKind;
   /** The bot's own ringtone by name; null when it follows app settings. */
   ringtone: string | null;
   loop: boolean;
   fullScreen: boolean;
+  dnd: boolean;
+  silent: boolean;
+  /** Minutes between reminders; 0 is off. */
+  reminder: number;
   /** Nothing here is the bot's own: it follows app settings entirely. */
   following: boolean;
   onRingtone: (kind: SoundKind) => void;
   onLoop: (kind: SoundKind, loop: boolean) => void;
   onFullScreen: (kind: SoundKind, fullScreen: boolean) => void;
+  onBypass: (which: "dnd" | "silent", on: boolean) => void;
+  onReminder: (minutes: number) => void;
   onReset: (kind: SoundKind) => void;
 }) {
+  const t = useTheme().tokens;
   return (
     <>
-      <Section label={title} />
+      <Section label={kind === "urgent" ? "Urgent alerts" : "Normal alerts"} />
       <Group>
+        <SettingsToggleRow
+          icon="phone"
+          label="Full screen while I use my phone"
+          value={fullScreen}
+          onChange={(next) => onFullScreen(kind, next)}
+          testID={`sound-${kind}-fullscreen`}
+        />
         <SettingsRow
           icon="bell"
           label="Ringtone"
@@ -289,11 +296,18 @@ function SoundSection({
           testID={`sound-${kind}-loop`}
         />
         <SettingsToggleRow
-          icon="phone"
-          label="Full screen while I use my phone"
-          value={fullScreen}
-          onChange={(next) => onFullScreen(kind, next)}
-          testID={`sound-${kind}-fullscreen`}
+          icon="moon"
+          label="Ring through Do Not Disturb"
+          value={dnd}
+          onChange={(next) => onBypass("dnd", next)}
+          testID={`${kind}-dnd`}
+        />
+        <SettingsToggleRow
+          icon="mute"
+          label="Ring in silent mode"
+          value={silent}
+          onChange={(next) => onBypass("silent", next)}
+          testID={`${kind}-silent`}
         />
         {following ? null : (
           <SettingsRow
@@ -305,31 +319,21 @@ function SoundSection({
           />
         )}
       </Group>
+      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.sub, { color: t.ink3 }]}>
+        Remind me
+      </Text>
+      <View style={styles.chips}>
+        {REMINDER_CHIPS.map((chip) => (
+          <Chip
+            key={chip.minutes}
+            label={chip.label}
+            selected={chip.minutes === reminder}
+            onPress={() => onReminder(chip.minutes)}
+            testID={`reminder-${kind}-${chip.minutes}`}
+          />
+        ))}
+      </View>
     </>
-  );
-}
-
-function BypassChips({
-  which,
-  current,
-  onChoose,
-}: {
-  which: "dnd" | "silent";
-  current: BypassChoice;
-  onChoose: (choice: BypassChoice) => void;
-}) {
-  return (
-    <View style={styles.chips}>
-      {BYPASS_CHIPS.map((chip) => (
-        <Chip
-          key={chip.id}
-          label={chip.label}
-          selected={chip.id === current}
-          onPress={() => onChoose(chip.id)}
-          testID={`${which}-${chip.id}`}
-        />
-      ))}
-    </View>
   );
 }
 
@@ -369,6 +373,7 @@ const styles = StyleSheet.create({
   },
   /** `.chips{gap:8px; padding:4px 16px 0}` */
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingTop: 4, paddingHorizontal: 16 },
+  sub: { fontFamily: fontFamily.extraBold, fontSize: 13, paddingTop: 14, paddingHorizontal: 18 },
   caption: {
     fontFamily: fontFamily.semiBold,
     fontSize: 13.5,

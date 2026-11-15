@@ -21,8 +21,8 @@ export function ringChannelId(base: string, ringtone: string): string {
   return `${base}-r${ringtoneKey(ringtone)}`;
 }
 
-/** The channels that ring: `puck-alerts` for normal alerts, `puck-urgent...` for urgent ones, with or without the card. */
-const WITH_RINGTONE = /^(puck-alerts|puck-urgent(?:-dnd|-alarm|-bypass)?)(?:-card)?-r([0-9a-z]+)$/;
+/** The channels that ring: `puck-alerts...` for normal alerts, `puck-urgent...` for urgent ones, each with its bypass variants, with or without the card. */
+const WITH_RINGTONE = /^(puck-alerts|puck-urgent)(?:-dnd|-alarm|-bypass)?(?:-card)?-r([0-9a-z]+)$/;
 /** The same ids before the ringtone was part of them. `puck-alerts` itself is kept: a push that Android shows by itself uses it. */
 const LEGACY = /^(?:puck-alerts-card|puck-urgent(?:-dnd|-alarm|-bypass)?(?:-card)?)$/;
 

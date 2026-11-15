@@ -5,7 +5,7 @@
  * React, so it can be tested.
  */
 import type { KnownBot } from "./homeModel";
-import { clockText, type BotBypass, type BypassMode } from "./localSettings";
+import { clockText } from "./localSettings";
 import { requestedColour } from "./pairingModel";
 import type { BlobBot } from "./ui/blobShapes";
 import { botLook } from "./ui/botLook";
@@ -152,28 +152,6 @@ export function sortBots(bots: readonly BotListItem[]): BotListItem[] {
 export function botBlob(bot: Pick<BotListItem, "botId" | "name" | "colour">): BlobBot {
   const colour = requestedColour(bot.colour);
   return botLook({ botId: bot.botId, botName: bot.name, ...(colour === null ? {} : { colour }) });
-}
-
-/* ------------------------------------------------------------------- bypass */
-
-/** A chip of "Through Do Not Disturb" or "Through silent mode": the bot's own choice, or its default. */
-export type BypassChoice = "default" | BypassMode;
-
-export const BYPASS_CHIPS: readonly { id: BypassChoice; label: string }[] = [
-  { id: "default", label: "Follow app settings" },
-  { id: "off", label: "Off" },
-  { id: "urgent", label: "Urgent only" },
-  { id: "all", label: "All alerts" },
-];
-
-/** The chip for a bot's override of one setting: "default" when it has none. */
-export function bypassChoice(bypass: BotBypass | undefined, which: "dnd" | "silent"): BypassChoice {
-  return bypass?.[which] ?? "default";
-}
-
-/** What a chip stores: a mode, or null to go back to the default. */
-export function bypassChange(choice: BypassChoice): BypassMode | null {
-  return choice === "default" ? null : choice;
 }
 
 /* ----------------------------------------------------------------------- home */

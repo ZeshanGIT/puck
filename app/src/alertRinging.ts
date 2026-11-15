@@ -1,6 +1,6 @@
-import { PUSH_CHANNEL_ID } from "@puck/shared";
 import {
   bypassDecision,
+  normalChannelId,
   ringSecondsFor,
   urgentChannelId,
   type AlertPriority,
@@ -12,15 +12,15 @@ export interface RingingPlan {
   channelId: string;
   /** How long the card and the spoken text stay up before the alert settles into a quiet copy. The ringtone plays once, to the end. */
   ringSeconds: number;
-  /** Whether the channel is on the alarm stream, so it rings in silent mode (urgent + silent bypass only). */
+  /** Whether the channel is on the alarm stream, so it rings in silent mode (silent bypass allowed for its kind). */
   useAlarmChannel: boolean;
   bypassDndOnChannel: boolean;
 }
 
 /**
- * How a full-screen push should ring on the phone. Normal alerts always use the shared
- * `puck-alerts` channel so they never pick up urgent bypass channels (see bypass QA matrix).
- * Urgent alerts use the existing per-decision urgent channels. Neither repeats its ringtone.
+ * How a full-screen push should ring on the phone. A normal alert rings on `puck-alerts`, an urgent
+ * one on `puck-urgent`; either moves to its Do Not Disturb or alarm-stream variant only when the
+ * alert asked to bypass and the setting for its kind (the bot's own, else the app's) allows it.
  */
 export function alertRingingPlan(
   alert: {
@@ -34,18 +34,13 @@ export function alertRingingPlan(
   alarmChannelsCapable: boolean,
 ): RingingPlan {
   const ringSeconds = ringSecondsFor(alert.ringSeconds);
-  if (alert.priority === "normal") {
-    return {
-      channelId: PUSH_CHANNEL_ID,
-      ringSeconds,
-      useAlarmChannel: false,
-      bypassDndOnChannel: false,
-    };
-  }
   const decision = bypassDecision(alert, settings, botId);
   const useAlarm = decision.silent && alarmChannelsCapable;
   return {
-    channelId: urgentChannelId(decision, alarmChannelsCapable),
+    channelId:
+      alert.priority === "urgent"
+        ? urgentChannelId(decision, alarmChannelsCapable)
+        : normalChannelId(decision, alarmChannelsCapable),
     ringSeconds,
     useAlarmChannel: useAlarm,
     bypassDndOnChannel: decision.dnd,

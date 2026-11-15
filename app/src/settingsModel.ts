@@ -8,15 +8,6 @@
  * reminder interval stay on the phone (`localSettings.ts`); the client list, names and flags are on the backend.
  */
 import { dateText } from "./botsModel";
-import type { BypassMode } from "./localSettings";
-
-/* ------------------------------------------------------------------- S4 chips */
-
-export const GLOBAL_BYPASS_CHIPS: readonly { id: BypassMode; label: string }[] = [
-  { id: "off", label: "Off" },
-  { id: "urgent", label: "Urgent only" },
-  { id: "all", label: "All alerts" },
-];
 
 /* ------------------------------------------------------------------- S7 about */
 

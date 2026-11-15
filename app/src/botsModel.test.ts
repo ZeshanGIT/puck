@@ -3,8 +3,6 @@ import { BOT_COLOURS } from "@puck/shared";
 import {
   botBlob,
   botTestId,
-  bypassChange,
-  bypassChoice,
   dateText,
   flockBots,
   mutedBotIds,
@@ -137,16 +135,6 @@ describe("look and colours", () => {
 
   test("the swatches (the palette) are exactly the colours the backend accepts", () => {
     expect(PALETTE.map((entry) => entry.name)).toEqual([...BOT_COLOURS]);
-  });
-});
-
-describe("bypass chips", () => {
-  test("default means no override", () => {
-    expect(bypassChoice(undefined, "dnd")).toBe("default");
-    expect(bypassChoice({ silent: "all" }, "dnd")).toBe("default");
-    expect(bypassChoice({ dnd: "off", silent: "all" }, "silent")).toBe("all");
-    expect(bypassChange("default")).toBeNull();
-    expect(bypassChange("urgent")).toBe("urgent");
   });
 });
 

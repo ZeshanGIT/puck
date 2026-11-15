@@ -5,7 +5,11 @@ import {
   clockText,
   DEFAULT_LOCAL_SETTINGS,
   isNight,
+  followAppFor,
   fullScreenFor,
+  modeAllows,
+  reminderMinutesFor,
+  withModeFor,
   loopsFor,
   parseLocalSettings,
   ringSecondsFor,
@@ -106,6 +110,7 @@ describe("parseLocalSettings", () => {
       fullScreenNormal: false,
       fullScreenUrgent: false,
       reminderMinutes: 10,
+      reminderMinutesNormal: 0,
       bots: { a: { dnd: "all", reminderMinutes: 2 } },
     });
   });
@@ -319,5 +324,45 @@ describe("fullScreenFor", () => {
     expect(settings.bots.bot?.fullScreenNormal).toBe(true);
     settings = withBotBypass(settings, "bot", { fullScreenNormal: null });
     expect(settings.bots.bot).toBeUndefined();
+  });
+});
+
+describe("bypass per kind of alert", () => {
+  test("each mode lets through exactly its kinds", () => {
+    expect([modeAllows("off", "normal"), modeAllows("off", "urgent")]).toEqual([false, false]);
+    expect([modeAllows("urgent", "normal"), modeAllows("urgent", "urgent")]).toEqual([false, true]);
+    expect([modeAllows("normal", "normal"), modeAllows("normal", "urgent")]).toEqual([true, false]);
+    expect([modeAllows("all", "normal"), modeAllows("all", "urgent")]).toEqual([true, true]);
+  });
+
+  test("one kind's switch leaves the other kind as it was", () => {
+    expect(withModeFor("urgent", "normal", true)).toBe("all");
+    expect(withModeFor("all", "urgent", false)).toBe("normal");
+    expect(withModeFor("normal", "normal", false)).toBe("off");
+    expect(withModeFor("off", "urgent", true)).toBe("urgent");
+  });
+
+  test("normal only is stored and read back", () => {
+    expect(parseLocalSettings(JSON.stringify({ bypassDnd: "normal" })).bypassDnd).toBe("normal");
+  });
+
+  test("a bot following the app for one kind keeps its own choice for the other, or drops the override", () => {
+    expect(followAppFor("all", "urgent", "normal")).toBeNull();
+    expect(followAppFor("off", "urgent", "normal")).toBe("off");
+    expect(followAppFor("off", "urgent", "urgent")).toBeNull();
+    expect(followAppFor("normal", "off", "urgent")).toBe("normal");
+    expect(followAppFor(undefined, "all", "urgent")).toBeNull();
+  });
+});
+
+describe("reminders per kind of alert", () => {
+  test("urgent every 5 minutes and normal off by default; a bot can set either", () => {
+    let settings = parseLocalSettings(null);
+    expect(reminderMinutesFor(settings, undefined, "urgent")).toBe(5);
+    expect(reminderMinutesFor(settings, undefined, "normal")).toBe(0);
+    settings = withBotBypass(settings, "bot", { reminderMinutesNormal: 15 });
+    expect(reminderMinutesFor(settings, "bot", "normal")).toBe(15);
+    expect(reminderMinutesFor(settings, "bot", "urgent")).toBe(5);
+    expect(parseLocalSettings(JSON.stringify(settings)).bots.bot?.reminderMinutesNormal).toBe(15);
   });
 });

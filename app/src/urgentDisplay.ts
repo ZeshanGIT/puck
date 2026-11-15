@@ -6,7 +6,6 @@ import notifee, {
   TriggerType,
   type Event,
 } from "@notifee/react-native";
-import { PUSH_CHANNEL_ID } from "@puck/shared";
 import { alertRingingPlan } from "./alertRinging";
 import {
   canCreateRingChannel,
@@ -33,7 +32,9 @@ import {
   reminderMinutesFor,
   ringtoneFor,
   URGENT_CHANNEL,
+  normalChannelId,
   urgentChannelId,
+  type AlertPriority,
   type BypassDecision,
   type LocalSettings,
 } from "./localSettings";
@@ -64,7 +65,7 @@ import { themeIsDark } from "./ui/themePreference";
  * swiping it away or a volume key stops it sooner. After `ringSeconds` (or when it is silenced) a
  * quiet copy takes its place in the shade, and the alert screen itself stays up.
  *
- * An urgent alert that nobody answers reminds: it rings again every few minutes (`reminders.ts`,
+ * An alert that nobody answers can remind (urgent ones by default): it rings again every few minutes (`reminders.ts`,
  * the person's choice, per bot), as notifications scheduled with Android, so they come even when
  * the app is closed. Answering, snoozing or dismissing the alert cancels them.
  *
@@ -126,33 +127,34 @@ function inUseWanted(settings: LocalSettings, alert: FullScreenAlert): InUsePres
   );
 }
 
-/** Normal full-screen alerts always use the shared `puck-alerts` channel (not urgent bypass), with the normal ringtone. */
-async function ensureNormalChannel(card: boolean, ringtone: string): Promise<string> {
-  const id = ringChannelId(card ? cardChannelId(PUSH_CHANNEL_ID) : PUSH_CHANNEL_ID, ringtone);
-  const name = card ? "Alerts on the card" : "Alerts";
-  if (canCreateRingChannel() && createRingChannel(id, name, ringtone, "ring", false, !card)) return id;
-  await notifee.createChannel({
-    id,
-    name,
-    importance: card ? AndroidImportance.DEFAULT : AndroidImportance.HIGH,
-    // Notifee is silent unless this is set. "default" is the system notification sound.
-    sound: "default",
-    vibration: true,
-    visibility: AndroidVisibility.PUBLIC,
-    bypassDnd: false,
-  });
-  return id;
+/** A normal alert's plain ringing channel: no bypass. */
+function ensureNormalChannel(card: boolean, ringtone: string): Promise<string> {
+  return ensureChannel("normal", { dnd: false, silent: false }, card, ringtone);
 }
 
-async function ensureChannel(decision: BypassDecision, card: boolean, ringtone: string): Promise<string> {
+/**
+ * The ringing channel for this kind of alert and bypass decision: `puck-alerts...` for normal
+ * alerts, `puck-urgent...` for urgent ones, through Do Not Disturb and on the alarm stream (through
+ * silent mode) as the decision says.
+ */
+async function ensureChannel(
+  priority: AlertPriority,
+  decision: BypassDecision,
+  card: boolean,
+  ringtone: string,
+): Promise<string> {
   const alarm = decision.silent && canCreateRingChannel();
-  const id = ringChannelId(urgentChannelId(decision, alarm, card), ringtone);
-  const label = decision.dnd ? "Urgent alerts (Do Not Disturb)" : "Urgent alerts";
+  const base =
+    priority === "urgent" ? urgentChannelId(decision, alarm, card) : normalChannelId(decision, alarm, card);
+  const id = ringChannelId(base, ringtone);
+  const kind = priority === "urgent" ? "Urgent alerts" : "Alerts";
   const name = alarm
     ? decision.dnd
-      ? "Urgent alerts (alarm, Do Not Disturb)"
-      : "Urgent alerts (alarm)"
-    : label;
+      ? `${kind} (alarm, Do Not Disturb)`
+      : `${kind} (alarm)`
+    : decision.dnd
+      ? `${kind} (Do Not Disturb)`
+      : kind;
   const channelName = card ? `${name}, on the card` : name;
   if (
     canCreateRingChannel() &&
@@ -161,11 +163,12 @@ async function ensureChannel(decision: BypassDecision, card: boolean, ringtone: 
     return id;
   }
   // The native channel failed: ring on the notification stream instead.
-  if (alarm) return ensureChannel({ ...decision, silent: false }, card, ringtone);
+  if (alarm) return ensureChannel(priority, { ...decision, silent: false }, card, ringtone);
   await notifee.createChannel({
     id,
     name: channelName,
     importance: card ? AndroidImportance.DEFAULT : AndroidImportance.HIGH,
+    // Notifee is silent unless this is set. "default" is the system notification sound.
     sound: "default",
     vibration: true,
     visibility: AndroidVisibility.PUBLIC,
@@ -239,7 +242,7 @@ async function cancelReminders(questionId: string): Promise<void> {
 }
 
 /**
- * Schedules the reminders for an urgent alert that is ringing now. They are Android's own scheduled
+ * Schedules the reminders for an alert that is ringing now (urgent: every 5 minutes by default; normal: off by default). They are Android's own scheduled
  * notifications (so they come with the app closed), each on the alert's ringing channel with no
  * full screen, and each clears itself when the next arrives.
  */
@@ -250,10 +253,10 @@ async function scheduleReminders(
   ringtone: string,
 ): Promise<void> {
   await cancelReminders(alert.questionId);
-  const minutes = reminderMinutesFor(settings, alert.botId);
+  const minutes = reminderMinutesFor(settings, alert.botId, alert.priority);
   const times = reminderTimes(Date.now(), minutes);
   if (times.length === 0) return;
-  const channelId = await ensureChannel(decision, false, ringtone);
+  const channelId = await ensureChannel(alert.priority, decision, false, ringtone);
   for (const [index, timestamp] of times.entries()) {
     await notifee.createTriggerNotification(
       {
@@ -343,18 +346,12 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings, ver
   const presentation = inUseWanted(settings, alert);
   // Puck shows this alert itself (card or full screen), so the ring uses the quiet-banner channels.
   const card = presentation !== "none";
-  let channelId: string;
-  let decision: BypassDecision | null = null;
-  if (alert.priority === "urgent") {
-    // Do Not Disturb access is what lets the channel override it; without it the alert rings normally.
-    decision = {
-      dnd: plan.bypassDndOnChannel && hasDndAccess() === true,
-      silent: plan.useAlarmChannel,
-    };
-    channelId = await ensureChannel(decision, card, ringtone);
-  } else {
-    channelId = await ensureNormalChannel(card, ringtone);
-  }
+  // Do Not Disturb access is what lets the channel override it; without it the alert rings normally.
+  const decision: BypassDecision = {
+    dnd: plan.bypassDndOnChannel && hasDndAccess() === true,
+    silent: plan.useAlarmChannel,
+  };
+  const channelId = await ensureChannel(alert.priority, decision, card, ringtone);
   if (revision(alert.questionId) !== version) return;
   forget(alert.questionId);
   // A soft cue from a call may still be up. Post fresh so the screen and sound start again.
@@ -374,7 +371,7 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings, ver
   };
   rings.set(alert.questionId, ring);
   await postRinging(alert, channelId, loopsFor(settings, alert.priority, alert.botId) ? seconds * 1000 : null);
-  if (decision !== null && revision(alert.questionId) === version) {
+  if (revision(alert.questionId) === version) {
     try {
       await scheduleReminders(alert, settings, decision, ringtone);
     } catch {
@@ -406,7 +403,7 @@ async function showCard(alert: FullScreenAlert, settings: LocalSettings, version
     const ringtone = ringtoneFor(settings, alert.botId, alert.priority);
     const fallback = alert.priority === "normal"
       ? await ensureNormalChannel(false, ringtone)
-      : await ensureChannel({ dnd: false, silent: false }, false, ringtone);
+      : await ensureChannel("urgent", { dnd: false, silent: false }, false, ringtone);
     if (revision(alert.questionId) === version) {
       await postRinging(alert, fallback, loopsFor(settings, alert.priority, alert.botId) ? plan.ringSeconds * 1000 : null);
     }

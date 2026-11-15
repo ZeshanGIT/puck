@@ -165,8 +165,8 @@ async function ring(alert: ReturnType<typeof asking>) {
 }
 
 describe("normal full-screen presentation", () => {
-  test("rings once on the normal alerts channel, on the ring volume, even when bypass is all", async () => {
-    await settings.saveLocalSettings({ bypassDnd: "all", bypassSilent: "all" });
+  test("rings once on the normal alerts channel, on the ring volume, when only urgent alerts may bypass", async () => {
+    await settings.saveLocalSettings({ bypassDnd: "urgent", bypassSilent: "urgent" });
     const note = await ring(asking({ priority: "normal", bypassDnd: true, bypassSilent: true }));
     expect(note.channelId).toBe(`${PUSH_CHANNEL_ID}-rd`);
     expect(note.loopSound).toBeUndefined();
@@ -178,6 +178,28 @@ describe("normal full-screen presentation", () => {
       bypassDnd: false,
       headsUp: true,
     });
+  });
+
+  test("with its own switches on, a normal alert rings through Do Not Disturb on the alarm stream", async () => {
+    await settings.saveLocalSettings({ bypassDnd: "normal", bypassSilent: "all" });
+    const note = await ring(asking({ priority: "normal", bypassDnd: true, bypassSilent: true }));
+    expect(note.channelId).toBe(`${PUSH_CHANNEL_ID}-bypass-rd`);
+    expect(ringChannels[0]).toMatchObject({ stream: "alarm", bypassDnd: true });
+  });
+
+  test("a normal alert reminds only when its reminders are on; urgent ones every 5 minutes by default", async () => {
+    await urgent.displayUrgent(asking({ priority: "normal" }));
+    expect(scheduled).toEqual([]);
+    await urgent.displayUrgent(asking({ priority: "urgent" }));
+    expect(scheduled.length).toBeGreaterThan(0);
+    expect(scheduled[1]!.timestamp - scheduled[0]!.timestamp).toBe(5 * 60_000);
+    scheduled.length = 0;
+    await settings.saveLocalSettings({ reminderMinutesNormal: 10 });
+    const calm = asking({ priority: "normal" });
+    await urgent.displayUrgent(calm);
+    expect(scheduled.length).toBeGreaterThan(0);
+    expect(scheduled[0]!.channelId.startsWith(PUSH_CHANNEL_ID)).toBe(true);
+    expect(scheduled[1]!.timestamp - scheduled[0]!.timestamp).toBe(10 * 60_000);
   });
 
   test("a normal alert plays the ringtone chosen for normal alerts, not the urgent one", async () => {
