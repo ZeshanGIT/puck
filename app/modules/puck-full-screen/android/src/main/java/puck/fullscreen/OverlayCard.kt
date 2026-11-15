@@ -364,6 +364,7 @@ internal object OverlayCard {
         val night = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
         setBackgroundColor(if (night) 0xFF141312.toInt() else 0xFFFFFFFF.toInt())
       }
+      guardCover(sheet) { false }
       try { windowManager(context).addView(sheet, fullScreenParams()); cover = sheet } catch (_: RuntimeException) { }
     }
     val openingCover = cover
@@ -469,7 +470,10 @@ internal object OverlayCard {
         outlineAmbientShadowColor = 0x40000000
         outlineSpotShadowColor = 0x73000000
       }
-      setOnClickListener { openApp(context, card.questionId, snooze = false); removeView() }
+      // A tap opens Puck the way a pull does: the card grows into the screen, without the pull.
+      setOnClickListener { view ->
+        Expander(context, view, card, travel = 1f, follow = false).apply { begin(); complete() }
+      }
     }
 
     val blob = BlobView(context, card).apply { tag = TAG_BLOB }
@@ -781,8 +785,11 @@ internal object OverlayCard {
   }
 
   /**
-   * A full-screen window that draws over the whole display, status bar strip included, and takes no
-   * touches. Since Android 11 a window is fitted inside the system bars unless it says otherwise
+   * A full-screen window that draws over the whole display, status bar strip included. It takes
+   * touches on purpose: since Android 12 an overlay that lets touches through (FLAG_NOT_TOUCHABLE)
+   * is drawn at no more than 80% opacity (the "maximum obscuring opacity"), which made the white
+   * sheet see-through, with Puck loading visibly behind it. [guardCover] makes sure such a window
+   * can never trap the screen. Since Android 11 a window is fitted inside the system bars unless it says otherwise
    * (FLAG_LAYOUT_IN_SCREEN no longer does), so without `fitInsetsTypes = 0` the window starts below
    * the status bar and anything placed in it by screen position lands that much lower.
    */
@@ -792,7 +799,6 @@ internal object OverlayCard {
       WindowManager.LayoutParams.MATCH_PARENT,
       overlayType(),
       WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
       PixelFormat.TRANSLUCENT,
@@ -924,7 +930,8 @@ internal object OverlayCard {
    * fills the screen as the finger reaches the bottom. Its colour turns to the app's background by
    * [COLOUR_DONE] and the picture is gone by then. [complete] finishes the growth, starts Puck
    * beneath, holds a moment and fades the sheet away so the alert appears to come in through it.
-   * [cancel] eases it back onto the card.
+   * [cancel] eases it back onto the card. A tap runs the same growth with `follow` off: the copy
+   * grows from where the card is instead of moving down first.
    *
    * Positions: the card's place comes from `getLocationOnScreen`, in screen pixels. The sheet's own
    * window is measured the same way once it is laid out, and everything is placed relative to it,
@@ -936,12 +943,14 @@ internal object OverlayCard {
     private val box: View,
     private val card: Spec,
     val travel: Float,
+    private val follow: Boolean = true,
   ) {
     private val width = box.width
     private val height = box.height
     private val at = IntArray(2)
     private val origin = IntArray(2)
     private val radiusFrom = dp(context, CORNER_DP).toFloat()
+    private val radiusTo = screenCornerRadius(context)
     private val elevationFrom = dp(context, ELEVATION_DP).toFloat()
     private val edgeWidth = max(1, dpF(context, EDGE_DP).toInt())
     private val edge = edgeColour(card)
@@ -957,6 +966,9 @@ internal object OverlayCard {
     private var placed = false
     private var done = false
     private var animator: ValueAnimator? = null
+    private var growing = false
+    /** Runs once the copy is placed: a completion asked for before the sheet was laid out. */
+    private var whenPlaced: (() -> Unit)? = null
     /** How far the finger has pulled down from where it pressed, in pixels. */
     private var pull = 0f
     var progress = 0f
@@ -978,6 +990,7 @@ internal object OverlayCard {
       fill.addView(picture, FrameLayout.LayoutParams(width, height, Gravity.TOP or Gravity.START))
       sheet.addView(fill, FrameLayout.LayoutParams(width, height))
       sheet.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ -> placeSheet(view) }
+      guardCover(sheet) { animator?.isRunning == true }
       try {
         windowManager(context).addView(sheet, fullScreenParams())
       } catch (error: RuntimeException) {
@@ -1003,11 +1016,12 @@ internal object OverlayCard {
       if (fill.visibility != View.VISIBLE) {
         fill.visibility = View.VISIBLE
         sheet.post {
-          if (!done) {
+          if (!done || growing) {
             box.alpha = 0f
             box.translationY = 0f
           }
         }
+        whenPlaced?.let { whenPlaced = null; sheet.post(it) }
       }
     }
 
@@ -1026,7 +1040,7 @@ internal object OverlayCard {
       // The card's rectangle moved down by the pull, and the sheet's own (the whole screen), in the
       // sheet's coordinates; the copy is t of the way from the first to the second.
       val cardLeft = (at[0] - origin[0]).toFloat()
-      val cardTop = (at[1] - origin[1]) + pull
+      val cardTop = (at[1] - origin[1]) + if (follow) pull else 0f
       val screenW = if (sheet.width > 0) sheet.width else screenSize(context).first
       val screenH = if (sheet.height > 0) sheet.height else screenSize(context).second
       val left = lerpF(cardLeft, 0f, t)
@@ -1040,21 +1054,29 @@ internal object OverlayCard {
       lp.height = (bottom - top).toInt()
       fill.layoutParams = lp
       val colour = min(1f, t / COLOUR_DONE)
-      fillBackground.cornerRadius = radiusFrom * (1f - t)
+      // The sheet keeps its edge and shadow while it grows, so it reads as one card getting bigger;
+      // both go only over the last stretch, as it meets the screen's edges and corners.
+      val landing = ((t - 0.85f) / 0.15f).coerceIn(0f, 1f)
+      fillBackground.cornerRadius = lerpF(radiusFrom, radiusTo, t)
       fillBackground.setColor(colours.evaluate(colour, card.background, card.screen) as Int)
-      fillBackground.setStroke(edgeWidth, ColorUtils.setAlphaComponent(edge, (android.graphics.Color.alpha(edge) * (1f - colour)).toInt()))
-      fill.elevation = elevationFrom * (1f - t)
+      fillBackground.setStroke(edgeWidth, ColorUtils.setAlphaComponent(edge, (android.graphics.Color.alpha(edge) * (1f - landing)).toInt()))
+      fill.elevation = elevationFrom * (1f - landing)
       picture.alpha = 1f - colour
     }
 
-    private fun animateTo(target: Float, durationMs: Long, onEnd: () -> Unit) {
+    /** Springs the pull to `target`: [Spring] with this response and damping. */
+    private fun springTo(target: Float, response: Float, damping: Float, onEnd: () -> Unit) {
       animator?.cancel()
+      val seconds = response * 1.4f
       animator = ValueAnimator.ofFloat(pull, target).apply {
-        duration = if (motionEnabled()) durationMs else 0L
-        interpolator = DecelerateInterpolator(1.6f)
+        duration = if (motionEnabled()) (seconds * 1000f).toLong() else 0L
+        interpolator = Spring(response, damping, seconds)
         addUpdateListener { update(it.animatedValue as Float) }
         addListener(object : android.animation.AnimatorListenerAdapter() {
-          override fun onAnimationEnd(animation: android.animation.Animator) = onEnd()
+          override fun onAnimationEnd(animation: android.animation.Animator) {
+            update(target)
+            onEnd()
+          }
         })
         start()
       }
@@ -1069,13 +1091,18 @@ internal object OverlayCard {
         return
       }
       openingAnimating = true
+      growing = true
       openApp(context, card.questionId, snooze = false)
-      main.post { removeView() }
-      animateTo(travel, 180L + (320L * (1f - progress)).toLong()) {
-        openingAnimating = false
-        if (openingReady) fadeOutCover(sheet)
-      }
       main.postDelayed({ removeCover(sheet) }, COVER_SAFETY_MS)
+      val grow = {
+        // The copy is on screen now, so the card's own window can go.
+        sheet.post { removeView() }
+        springTo(travel, response = 0.42f, damping = 0.86f) {
+          openingAnimating = false
+          if (openingReady) fadeOutCover(sheet)
+        }
+      }
+      if (placed) grow() else whenPlaced = grow
     }
 
     /**
@@ -1089,16 +1116,59 @@ internal object OverlayCard {
         if (ready) removeCover(sheet)
         return
       }
-      animateTo(0f, 220L) {
+      springTo(0f, response = 0.34f, damping = 0.9f) {
         box.alpha = 1f
         sheet.post { removeCover(sheet) }
       }
     }
   }
 
+  /**
+   * A full-screen sheet swallows touches while it animates (a finger already on the card keeps
+   * going to the card). Once it is only waiting for Puck, a touch takes it away at once, so it can
+   * never leave the phone stuck behind a blank screen.
+   */
+  private fun guardCover(sheet: View, animating: () -> Boolean) {
+    sheet.setOnTouchListener { _, event ->
+      if (event.actionMasked == MotionEvent.ACTION_DOWN && !animating()) removeCover(sheet)
+      true
+    }
+  }
+
+  /** A sheet's corners at full size: the screen's own rounded corners, where Android reports them. */
+  private fun screenCornerRadius(context: Context): Float {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      val corner = windowManager(context).currentWindowMetrics.windowInsets
+        .getRoundedCorner(android.view.RoundedCorner.POSITION_TOP_LEFT)
+      if (corner != null) return corner.radius.toFloat()
+    }
+    return 0f
+  }
+
+  /**
+   * A damped spring as an interpolator, the way iOS moves a notification into its app: quick off
+   * the mark, then settling without a bounce you can see. `response` is the spring's period in
+   * seconds, `damping` its damping ratio (1 is no overshoot); the animation should last about
+   * 1.4 x `response` so it has settled by the end.
+   */
+  private class Spring(private val response: Float, private val damping: Float, private val seconds: Float) :
+    android.animation.TimeInterpolator {
+    private val omega = (2.0 * Math.PI / response).toFloat()
+    private val decay = damping * omega
+    private val omegaD = omega * kotlin.math.sqrt(1f - damping * damping)
+
+    override fun getInterpolation(input: Float): Float {
+      if (input >= 1f) return 1f
+      val t = input * seconds
+      return 1f - kotlin.math.exp(-decay * t) * (kotlin.math.cos(omegaD * t) + decay / omegaD * kotlin.math.sin(omegaD * t))
+    }
+  }
+
   private fun fadeOutCover(sheet: View) {
     if (cover !== sheet) return
-    sheet.animate().alpha(0f).setDuration(if (motionEnabled()) 140L else 0L).withEndAction { removeCover(sheet) }.start()
+    sheet.animate().alpha(0f).setDuration(if (motionEnabled()) 200L else 0L)
+      .setInterpolator(DecelerateInterpolator())
+      .withEndAction { removeCover(sheet) }.start()
   }
 
   private fun removeCover(sheet: View) {
