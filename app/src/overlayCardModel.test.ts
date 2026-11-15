@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { darkTokens, lightTokens } from "./ui/tokens";
-import { androidAlpha, hex6, overlayBotLook, overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
+import { androidAlpha, hex6, inUsePresentation, overlayBotLook, overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
 import { SAMPLE_BOTS, SHAPES } from "./ui/blobShapes";
 
 const ready = { locked: false, allowed: true, inCall: false, appOpen: false, screenOn: true };
@@ -119,5 +119,21 @@ describe("every colour the card gets is one Android can parse", () => {
     expect(hex6("#fff")).toBe("#ffffff");
     expect(hex6("#0a3")).toBe("#00aa33");
     expect(hex6("#3d8fd6")).toBe("#3d8fd6");
+  });
+});
+
+describe("inUsePresentation", () => {
+  const inUse = { locked: false, allowed: true, inCall: false, appOpen: false, screenOn: true };
+
+  test("the card by default, the whole screen when chosen", () => {
+    expect(inUsePresentation(inUse, false)).toBe("card");
+    expect(inUsePresentation(inUse, true)).toBe("fullScreen");
+  });
+
+  test("neither when the card could not show either", () => {
+    for (const change of [{ locked: true }, { locked: null }, { allowed: false }, { inCall: true }, { appOpen: true }, { screenOn: false }]) {
+      expect(inUsePresentation({ ...inUse, ...change }, true)).toBe("none");
+      expect(inUsePresentation({ ...inUse, ...change }, false)).toBe("none");
+    }
   });
 });

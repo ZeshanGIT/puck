@@ -56,11 +56,13 @@ export async function chooseRingtone(kind: SoundKind, botId?: string): Promise<b
   }
 }
 
-/** Makes a bot follow app settings again for this kind of alert: the ringtone and whether it repeats. */
+/** Makes a bot follow app settings again for this kind of alert: the ringtone, whether it repeats, and card or full screen. */
 export async function resetBotSound(botId: string, kind: SoundKind): Promise<void> {
   await saveBotBypass(
     botId,
-    kind === "urgent" ? { urgentRingtone: null, loopUrgent: null } : { normalRingtone: null, loopNormal: null },
+    kind === "urgent"
+      ? { urgentRingtone: null, loopUrgent: null, fullScreenUrgent: null }
+      : { normalRingtone: null, loopNormal: null, fullScreenNormal: null },
   );
   await removeStaleRingChannels();
 }

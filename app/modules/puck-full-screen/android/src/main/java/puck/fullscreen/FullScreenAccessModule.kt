@@ -365,6 +365,11 @@ class FullScreenAccessModule : Module() {
       true
     }
 
+    Function("openAlertFullScreen") { questionId: String ->
+      val context = appContext.reactContext ?: return@Function false
+      OverlayCard.openFullScreen(context, questionId)
+    }
+
     Function("takeOverlayBlobFlight") {
       OverlayCard.takeBlobFlight()
     }

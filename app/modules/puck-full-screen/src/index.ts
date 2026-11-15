@@ -30,6 +30,7 @@ type FullScreenNative = {
   reportAlertBlob?: (x: number, y: number, size: number) => boolean;
   takeOverlayBlobFlight?: () => boolean;
   hideOverlayCard?: (questionId: string) => boolean;
+  openAlertFullScreen?: (questionId: string) => boolean;
   takeOverlayOpen?: () => { questionId: string; snooze: boolean; snoozeMinutes?: number; nonce?: number } | null;
   pendingOverlayReplies?: () => { questionId: string; text: string; nonce: number }[];
   clearOverlayReply?: (nonce: number) => boolean;
@@ -367,6 +368,14 @@ export function takeOverlayOpen(): OverlayOpen | null {
 /** Read pending native routing without consuming it during React rendering. */
 export function peekOverlayOpen(): OverlayOpen | null {
   try { return nativeModule()?.peekOverlayOpen?.() ?? null; } catch { return null; }
+}
+
+/**
+ * Brings Puck to the front on this alert, over the app in use (the person chose full screen while
+ * the phone is in use). Needs the overlay permission. False when it cannot: show the card instead.
+ */
+export function openAlertFullScreen(questionId: string): boolean {
+  try { return nativeModule()?.openAlertFullScreen?.(questionId) === true; } catch { return false; }
 }
 
 /** Release the native launch cover after the requested screen commits. */

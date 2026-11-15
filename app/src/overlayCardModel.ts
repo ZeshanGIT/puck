@@ -30,6 +30,21 @@ export function shouldShowOverlayCard(input: OverlayCardInput): boolean {
   return input.locked === false && input.allowed && !input.inCall && !input.appOpen && input.screenOn;
 }
 
+/** How an alert shows over an unlocked phone in use: the card, the whole screen, or neither. */
+export type InUsePresentation = "card" | "fullScreen" | "none";
+
+/**
+ * The card, or the whole screen when the person chose full screen for this kind of alert (or this
+ * bot). Both need the same conditions: an unlocked phone with the screen on, another app in front,
+ * no call, and the "Display over other apps" permission, which is also what lets Puck bring its
+ * alert to the front. Anywhere else neither applies: a locked phone gets the full-screen alert the
+ * usual way, through the notification.
+ */
+export function inUsePresentation(input: OverlayCardInput, fullScreen: boolean): InUsePresentation {
+  if (!shouldShowOverlayCard(input)) return "none";
+  return fullScreen ? "fullScreen" : "card";
+}
+
 export interface OverlayCardText {
   label: string;
   title: string;

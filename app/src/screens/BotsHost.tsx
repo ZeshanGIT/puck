@@ -53,6 +53,8 @@ export interface BotsSource {
   resetSound: (botId: string, kind: SoundKind) => Promise<void>;
   /** What Alert sounds says about repeating, which a bot follows unless it has its own. */
   appLoop: { normal: boolean; urgent: boolean };
+  /** What Alert sounds says about full screen while the phone is in use, which a bot follows unless it has its own. */
+  appFullScreen: { normal: boolean; urgent: boolean };
 }
 
 /** Where the screens start. */
@@ -153,6 +155,12 @@ export function BotsHost({ source, start = { kind: "list" }, pairings, onOpenPai
           })
         }
         appLoop={source.appLoop}
+        appFullScreen={source.appFullScreen}
+        onFullScreen={(kind, fullScreen) =>
+          void run(() =>
+            source.setBypass(bot.botId, kind === "urgent" ? { fullScreenUrgent: fullScreen } : { fullScreenNormal: fullScreen }),
+          )
+        }
         onLoop={(kind, loop) =>
           void run(() => source.setBypass(bot.botId, kind === "urgent" ? { loopUrgent: loop } : { loopNormal: loop }))
         }
@@ -195,11 +203,13 @@ export function ConnectedBotsHost({
   const removeMutation = useMutation(anyApi.bots.remove);
   const [bypass, setBypass] = useState<Record<string, BotBypass>>({});
   const [appLoop, setAppLoop] = useState({ normal: false, urgent: false });
+  const [appFullScreen, setAppFullScreen] = useState({ normal: false, urgent: false });
   useEffect(() => {
     let cancelled = false;
     const apply = (settings: LocalSettings) => {
       setBypass(settings.bots);
       setAppLoop({ normal: settings.loopNormal, urgent: settings.loopUrgent });
+      setAppFullScreen({ normal: settings.fullScreenNormal, urgent: settings.fullScreenUrgent });
     };
     void loadLocalSettings().then((settings) => {
       if (!cancelled) apply(settings);
@@ -237,8 +247,9 @@ export function ConnectedBotsHost({
       pickRingtone: (botId, kind) => chooseRingtone(kind, botId),
       resetSound: (botId, kind) => resetBotSound(botId, kind),
       appLoop,
+      appFullScreen,
     };
-  }, [clientId, bots, bypass, appLoop, updateMutation, removeMutation]);
+  }, [clientId, bots, bypass, appLoop, appFullScreen, updateMutation, removeMutation]);
 
   return (
     <BotsHost

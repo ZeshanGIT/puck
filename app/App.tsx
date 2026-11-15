@@ -313,6 +313,7 @@ function DevBots({ name }: { name: string }) {
           return { ...all, [botId]: next };
         }),
       appLoop: { normal: false, urgent: false },
+      appFullScreen: { normal: false, urgent: false },
     }),
     [bots, bypass, show],
   );

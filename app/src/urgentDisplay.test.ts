@@ -22,7 +22,8 @@ const scheduled: { id: string; channelId: string; timestamp: number; timeoutAfte
 const cancelled: string[] = [];
 const cards: { questionId: string; title: string; label: string; background: string }[] = [];
 const hidden: string[] = [];
-const overlay = { allowed: false, locked: false, shown: true, appOpen: false, screenOn: true, nativeRing: true };
+const fullScreens: string[] = [];
+const overlay = { allowed: false, locked: false, shown: true, appOpen: false, screenOn: true, nativeRing: true, opens: true };
 let channelGate: Promise<void> | null = null;
 let channelEntered: (() => void) | null = null;
 // Appearance is a native boundary; do not load the RN runtime in a Bun unit test.
@@ -102,6 +103,10 @@ mock.module("puck-full-screen", () => ({
   hideOverlayCard: (questionId: string) => {
     hidden.push(questionId);
   },
+  openAlertFullScreen: (questionId: string) => {
+    fullScreens.push(questionId);
+    return overlay.opens;
+  },
   takeOverlayOpen: () => null,
   subscribeOverlayOpen: () => () => {},
   subscribeOverlayAction: () => () => {},
@@ -126,6 +131,8 @@ beforeEach(() => {
   cancelled.length = 0;
   cards.length = 0;
   hidden.length = 0;
+  fullScreens.length = 0;
+  overlay.opens = true;
   overlay.allowed = false;
   overlay.locked = false;
   overlay.shown = true;
@@ -191,6 +198,50 @@ describe("the compact card over other apps", () => {
     expect(cards[0]!.label).toBe("Alert");
     await urgent.clearDisplayedAlert(alert.questionId);
     expect(hidden).toContain(alert.questionId);
+  });
+
+  test("full screen chosen for urgent alerts: an urgent alert takes the screen, a normal one keeps the card", async () => {
+    overlay.allowed = true;
+    await settings.saveLocalSettings({ fullScreenUrgent: true });
+    const loud = asking({ priority: "urgent" });
+    const note = await ring(loud);
+    expect(fullScreens).toEqual([loud.questionId]);
+    expect(cards).toEqual([]);
+    // No heads-up banner on top of the full-screen alert either.
+    expect(note.channelId).toContain("-card");
+    const calm = asking({ priority: "normal" });
+    await urgent.displayUrgent(calm);
+    expect(fullScreens).toEqual([loud.questionId]);
+    expect(cards.map((card) => card.questionId)).toEqual([calm.questionId]);
+  });
+
+  test("a bot's own choice wins over the app's, either way", async () => {
+    overlay.allowed = true;
+    await settings.saveLocalSettings({ fullScreenNormal: true });
+    const alert = asking({ priority: "normal", botId: "sheldon-11019" });
+    await settings.saveBotBypass("sheldon-11019", { fullScreenNormal: false });
+    await urgent.displayUrgent(alert);
+    expect(fullScreens).toEqual([]);
+    expect(cards.map((card) => card.questionId)).toEqual([alert.questionId]);
+  });
+
+  test("when Android refuses the full screen, the card shows instead", async () => {
+    overlay.allowed = true;
+    overlay.opens = false;
+    await settings.saveLocalSettings({ fullScreenNormal: true });
+    const alert = asking({ priority: "normal" });
+    await urgent.displayUrgent(alert);
+    expect(fullScreens).toEqual([alert.questionId]);
+    expect(cards.map((card) => card.questionId)).toEqual([alert.questionId]);
+  });
+
+  test("full screen chosen but the phone is locked: the usual full-screen alert, nothing extra", async () => {
+    overlay.allowed = true;
+    overlay.locked = true;
+    await settings.saveLocalSettings({ fullScreenUrgent: true, fullScreenNormal: true });
+    await urgent.displayUrgent(asking());
+    expect(fullScreens).toEqual([]);
+    expect(cards).toEqual([]);
   });
 
   test("a locked phone keeps the full-screen alert: no card", async () => {

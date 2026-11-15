@@ -26,6 +26,9 @@ export interface S4SoundsProps {
   /** The ringtone repeats until the alert is answered or its ring time is up, per kind of alert. */
   loopNormal: boolean;
   loopUrgent: boolean;
+  /** While the phone is in use, the alert takes the whole screen instead of the card, per kind of alert. */
+  fullScreenNormal: boolean;
+  fullScreenUrgent: boolean;
   /** Minutes between reminders; 0 is off. */
   reminderMinutes: number;
   bypassDnd: BypassMode;
@@ -33,6 +36,8 @@ export interface S4SoundsProps {
   onSound: (kind: SoundKind) => void;
   onLoopNormal: (loop: boolean) => void;
   onLoopUrgent: (loop: boolean) => void;
+  onFullScreenNormal: (fullScreen: boolean) => void;
+  onFullScreenUrgent: (fullScreen: boolean) => void;
   onReminder: (minutes: number) => void;
   onBypassDnd: (mode: BypassMode) => void;
   onBypassSilent: (mode: BypassMode) => void;
@@ -61,6 +66,13 @@ export function S4Sounds(props: S4SoundsProps) {
             onChange={props.onLoopNormal}
             testID="sounds-loop-normal"
           />
+          <SettingsToggleRow
+            icon="phone"
+            label="Full screen while I use my phone"
+            value={props.fullScreenNormal}
+            onChange={props.onFullScreenNormal}
+            testID="sounds-fullscreen-normal"
+          />
         </Group>
 
         <Section label="Urgent alerts" />
@@ -79,9 +91,16 @@ export function S4Sounds(props: S4SoundsProps) {
             onChange={props.onLoopUrgent}
             testID="sounds-loop-urgent"
           />
+          <SettingsToggleRow
+            icon="phone"
+            label="Full screen while I use my phone"
+            value={props.fullScreenUrgent}
+            onChange={props.onFullScreenUrgent}
+            testID="sounds-fullscreen-urgent"
+          />
         </Group>
         <Caption>
-          Pick from your phone's ringtones. A ringtone plays once, through to the end. With Repeat on it repeats until you answer or the alert's ring time is up. Each bot can have its own ringtones.
+          Pick from your phone's ringtones. A ringtone plays once, through to the end. With Repeat on it repeats until you answer or the alert's ring time is up. While you use your phone an alert shows as a small card over the app you are in; with Full screen on it takes the whole screen instead, as it does on a locked phone. Both need Alert cards over apps. Each bot can have its own.
         </Caption>
 
         <Section label="Remind me about an urgent alert" />

@@ -32,6 +32,10 @@ export interface BotBypass {
   loopNormal?: boolean;
   /** The same for urgent alerts. */
   loopUrgent?: boolean;
+  /** Whether this bot's normal alerts take the whole screen while the phone is in use. Absent follows the global setting. */
+  fullScreenNormal?: boolean;
+  /** The same for urgent alerts. */
+  fullScreenUrgent?: boolean;
 }
 
 export interface LocalSettings {
@@ -49,6 +53,14 @@ export interface LocalSettings {
   loopNormal: boolean;
   /** The same for urgent alerts. */
   loopUrgent: boolean;
+  /**
+   * While the phone is unlocked and in use, a normal alert takes the whole screen instead of showing
+   * as the card over the app in use. Default: the card. Needs the same "Display over other apps"
+   * permission as the card.
+   */
+  fullScreenNormal: boolean;
+  /** The same for urgent alerts. */
+  fullScreenUrgent: boolean;
   /** Minutes between reminders for an unanswered urgent alert; 0 is off. A bot can override it. */
   reminderMinutes: number;
   /** Per-bot overrides, keyed by bot id. */
@@ -77,6 +89,8 @@ export const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
   urgentRingtone: "",
   loopNormal: false,
   loopUrgent: false,
+  fullScreenNormal: false,
+  fullScreenUrgent: false,
   reminderMinutes: DEFAULT_REMINDER_MINUTES,
   bots: {},
 };
@@ -103,7 +117,9 @@ function hasOverride(entry: BotBypass): boolean {
     entry.normalRingtone !== undefined ||
     entry.urgentRingtone !== undefined ||
     entry.loopNormal !== undefined ||
-    entry.loopUrgent !== undefined
+    entry.loopUrgent !== undefined ||
+    entry.fullScreenNormal !== undefined ||
+    entry.fullScreenUrgent !== undefined
   );
 }
 
@@ -132,6 +148,8 @@ export function parseLocalSettings(raw: string | null | undefined): LocalSetting
       if (typeof override.urgentRingtone === "string") entry.urgentRingtone = override.urgentRingtone;
       if (typeof override.loopNormal === "boolean") entry.loopNormal = override.loopNormal;
       if (typeof override.loopUrgent === "boolean") entry.loopUrgent = override.loopUrgent;
+      if (typeof override.fullScreenNormal === "boolean") entry.fullScreenNormal = override.fullScreenNormal;
+      if (typeof override.fullScreenUrgent === "boolean") entry.fullScreenUrgent = override.fullScreenUrgent;
       if (hasOverride(entry)) bots[botId] = entry;
     }
   }
@@ -143,6 +161,8 @@ export function parseLocalSettings(raw: string | null | undefined): LocalSetting
     urgentRingtone: typeof record.urgentRingtone === "string" ? record.urgentRingtone : defaults.urgentRingtone,
     loopNormal: typeof record.loopNormal === "boolean" ? record.loopNormal : defaults.loopNormal,
     loopUrgent: typeof record.loopUrgent === "boolean" ? record.loopUrgent : defaults.loopUrgent,
+    fullScreenNormal: typeof record.fullScreenNormal === "boolean" ? record.fullScreenNormal : defaults.fullScreenNormal,
+    fullScreenUrgent: typeof record.fullScreenUrgent === "boolean" ? record.fullScreenUrgent : defaults.fullScreenUrgent,
     reminderMinutes: isReminderMinutes(record.reminderMinutes) ? record.reminderMinutes : defaults.reminderMinutes,
     bots,
   };
@@ -193,6 +213,9 @@ export interface BotBypassChange {
   /** On or off sets it for this bot, `null` follows the global setting again. */
   loopNormal?: boolean | null;
   loopUrgent?: boolean | null;
+  /** Full screen or card while the phone is in use, for this bot; `null` follows the global setting again. */
+  fullScreenNormal?: boolean | null;
+  fullScreenUrgent?: boolean | null;
 }
 
 /**
@@ -216,6 +239,10 @@ export function withBotBypass(settings: LocalSettings, botId: string, change: Bo
   else if (change.loopNormal !== undefined) next.loopNormal = change.loopNormal;
   if (change.loopUrgent === null) delete next.loopUrgent;
   else if (change.loopUrgent !== undefined) next.loopUrgent = change.loopUrgent;
+  if (change.fullScreenNormal === null) delete next.fullScreenNormal;
+  else if (change.fullScreenNormal !== undefined) next.fullScreenNormal = change.fullScreenNormal;
+  if (change.fullScreenUrgent === null) delete next.fullScreenUrgent;
+  else if (change.fullScreenUrgent !== undefined) next.fullScreenUrgent = change.fullScreenUrgent;
   const bots = { ...settings.bots };
   if (!hasOverride(next)) delete bots[botId];
   else bots[botId] = next;
@@ -291,6 +318,16 @@ export function loopsFor(settings: LocalSettings, priority: AlertPriority, botId
   const own = botId === undefined ? undefined : settings.bots[botId];
   const botChoice = priority === "urgent" ? own?.loopUrgent : own?.loopNormal;
   return botChoice ?? (priority === "urgent" ? settings.loopUrgent : settings.loopNormal);
+}
+
+/**
+ * Whether an alert takes the whole screen while the phone is in use, rather than the card: the
+ * bot's own choice for its kind of alert, else the global one.
+ */
+export function fullScreenFor(settings: LocalSettings, priority: AlertPriority, botId?: string): boolean {
+  const own = botId === undefined ? undefined : settings.bots[botId];
+  const botChoice = priority === "urgent" ? own?.fullScreenUrgent : own?.fullScreenNormal;
+  return botChoice ?? (priority === "urgent" ? settings.fullScreenUrgent : settings.fullScreenNormal);
 }
 
 /** Every ringtone in use: the global ones and each bot's own, so a channel for any of them is kept. */

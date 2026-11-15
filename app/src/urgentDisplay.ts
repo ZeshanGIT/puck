@@ -18,6 +18,7 @@ import {
   isInCall,
   isLocked,
   isScreenOn,
+  openAlertFullScreen,
   showOverlayCard,
 } from "puck-full-screen";
 import { useEffect, useState } from "react";
@@ -26,6 +27,7 @@ import { fullscreenAlert, type FullScreenAlert } from "./fullscreenPayload";
 import {
   cardChannelId,
   isNight,
+  fullScreenFor,
   loadLocalSettings,
   loopsFor,
   reminderMinutesFor,
@@ -39,7 +41,13 @@ import { handleLivePush } from "./liveNotification";
 import { allReminderIds, reminderId, reminderTimes } from "./reminders";
 import { ringChannelId } from "./ringChannels";
 import { systemIsDark } from "./overlayCard";
-import { overlayBotLook, overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
+import {
+  inUsePresentation,
+  overlayBotLook,
+  overlayCardText,
+  overlayPalette,
+  type InUsePresentation,
+} from "./overlayCardModel";
 import { botLook } from "./ui/botLook";
 import { livePush } from "./livePayload";
 import { openPairingFromNotificationData } from "./pairingOpen";
@@ -101,17 +109,21 @@ function serialize(id: string, work: () => Promise<void>): Promise<void> {
 /* ----------------------------------------------------------------- channels */
 
 /**
- * Whether the compact card will show this alert. The ring's channel must be chosen before the
- * notification is posted: a card means a quiet-banner channel, so no heads-up covers the card.
+ * How this alert shows on a phone in use: the compact card, the whole screen (the person's choice
+ * for this kind of alert or this bot), or neither. The ring's channel must be chosen before the
+ * notification is posted: either one means a quiet-banner channel, so no heads-up covers it.
  */
-function overlayCardWanted(): boolean {
-  return shouldShowOverlayCard({
-    locked: isLocked(),
-    allowed: canDrawOverlay(),
-    inCall: false,
-    appOpen: isAppInForeground(),
-    screenOn: isScreenOn(),
-  });
+function inUseWanted(settings: LocalSettings, alert: FullScreenAlert): InUsePresentation {
+  return inUsePresentation(
+    {
+      locked: isLocked(),
+      allowed: canDrawOverlay(),
+      inCall: false,
+      appOpen: isAppInForeground(),
+      screenOn: isScreenOn(),
+    },
+    fullScreenFor(settings, alert.priority, alert.botId),
+  );
 }
 
 /** Normal full-screen alerts always use the shared `puck-alerts` channel (not urgent bypass), with the normal ringtone. */
@@ -328,7 +340,9 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings, ver
   const plan = alertRingingPlan(alert, settings, alert.botId, canCreateRingChannel());
   const seconds = plan.ringSeconds;
   const ringtone = ringtoneFor(settings, alert.botId, alert.priority);
-  const card = overlayCardWanted();
+  const presentation = inUseWanted(settings, alert);
+  // Puck shows this alert itself (card or full screen), so the ring uses the quiet-banner channels.
+  const card = presentation !== "none";
   let channelId: string;
   let decision: BypassDecision | null = null;
   if (alert.priority === "urgent") {
@@ -367,7 +381,11 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings, ver
       // The alert has rung. Missing reminders are not worth failing it for.
     }
   }
-  if (card && revision(alert.questionId) === version) await showCard(alert, settings, version);
+  if (revision(alert.questionId) !== version) return;
+  // Full screen while in use: Puck brings its alert to the front over the app in use (allowed by the
+  // same permission as the card). If Android refuses, the card shows instead.
+  if (presentation === "fullScreen" && openAlertFullScreen(alert.questionId)) return;
+  if (card) await showCard(alert, settings, version);
 }
 
 /** On an unlocked phone the alert also shows as a compact card over other apps (when allowed). */

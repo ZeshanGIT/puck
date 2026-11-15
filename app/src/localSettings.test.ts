@@ -5,6 +5,7 @@ import {
   clockText,
   DEFAULT_LOCAL_SETTINGS,
   isNight,
+  fullScreenFor,
   loopsFor,
   parseLocalSettings,
   ringSecondsFor,
@@ -102,6 +103,8 @@ describe("parseLocalSettings", () => {
       urgentRingtone: "",
       loopNormal: false,
       loopUrgent: false,
+      fullScreenNormal: false,
+      fullScreenUrgent: false,
       reminderMinutes: 10,
       bots: { a: { dnd: "all", reminderMinutes: 2 } },
     });
@@ -288,5 +291,33 @@ describe("ringtones", () => {
     const reset = withBotBypass(settings, "chatty", { loopNormal: null, loopUrgent: null });
     expect(reset.bots).toEqual({});
     expect(loopsFor(reset, "normal", "chatty")).toBe(true);
+  });
+});
+
+describe("fullScreenFor", () => {
+  test("the card by default, for both kinds of alert", () => {
+    const settings = parseLocalSettings(null);
+    expect(fullScreenFor(settings, "normal")).toBe(false);
+    expect(fullScreenFor(settings, "urgent", "bot-1")).toBe(false);
+  });
+
+  test("the global choice per kind of alert, which a bot can override either way", () => {
+    let settings = parseLocalSettings(JSON.stringify({ fullScreenUrgent: true }));
+    expect(fullScreenFor(settings, "urgent")).toBe(true);
+    expect(fullScreenFor(settings, "normal")).toBe(false);
+    settings = withBotBypass(settings, "quiet", { fullScreenUrgent: false });
+    settings = withBotBypass(settings, "loud", { fullScreenNormal: true });
+    expect(fullScreenFor(settings, "urgent", "quiet")).toBe(false);
+    expect(fullScreenFor(settings, "normal", "loud")).toBe(true);
+    expect(fullScreenFor(settings, "urgent", "loud")).toBe(true);
+    expect(fullScreenFor(settings, "normal", "other")).toBe(false);
+  });
+
+  test("survives a save and goes back to following on null", () => {
+    let settings = withBotBypass(parseLocalSettings(null), "bot", { fullScreenNormal: true });
+    settings = parseLocalSettings(JSON.stringify(settings));
+    expect(settings.bots.bot?.fullScreenNormal).toBe(true);
+    settings = withBotBypass(settings, "bot", { fullScreenNormal: null });
+    expect(settings.bots.bot).toBeUndefined();
   });
 });

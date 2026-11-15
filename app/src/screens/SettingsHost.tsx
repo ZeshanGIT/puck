@@ -52,7 +52,7 @@ function ringtoneName(uri: string): string {
 }
 
 /** The settings the Sounds screen changes. */
-export type SettingsChange = Partial<Pick<LocalSettings, "theme" | "bypassDnd" | "bypassSilent" | "reminderMinutes" | "loopNormal" | "loopUrgent">>;
+export type SettingsChange = Partial<Pick<LocalSettings, "theme" | "bypassDnd" | "bypassSilent" | "reminderMinutes" | "loopNormal" | "loopUrgent" | "fullScreenNormal" | "fullScreenUrgent">>;
 
 export interface SettingsSource {
   email: string | null;
@@ -220,6 +220,8 @@ export function SettingsHost({ source, nav, onNav, testStatus, onClose }: Settin
           urgentRingtone={ringtoneName(settings.urgentRingtone)}
           loopNormal={settings.loopNormal}
           loopUrgent={settings.loopUrgent}
+          fullScreenNormal={settings.fullScreenNormal}
+          fullScreenUrgent={settings.fullScreenUrgent}
           reminderMinutes={settings.reminderMinutes}
           bypassDnd={settings.bypassDnd}
           bypassSilent={settings.bypassSilent}
@@ -231,6 +233,8 @@ export function SettingsHost({ source, nav, onNav, testStatus, onClose }: Settin
           }
           onLoopNormal={(loopNormal) => void run(() => source.setSettings({ loopNormal }))}
           onLoopUrgent={(loopUrgent) => void run(() => source.setSettings({ loopUrgent }))}
+          onFullScreenNormal={(fullScreenNormal) => void run(() => source.setSettings({ fullScreenNormal }))}
+          onFullScreenUrgent={(fullScreenUrgent) => void run(() => source.setSettings({ fullScreenUrgent }))}
           onReminder={(reminderMinutes) => void run(() => source.setSettings({ reminderMinutes }))}
           onBypassDnd={(bypassDnd) => void run(() => source.setSettings({ bypassDnd }))}
           onBypassSilent={(bypassSilent) => void run(() => source.setSettings({ bypassSilent }))}

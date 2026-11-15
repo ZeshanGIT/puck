@@ -58,7 +58,11 @@ export interface B2BotProps {
   appLoop: { normal: boolean; urgent: boolean };
   /** Turns repeating on or off for this bot. */
   onLoop: (kind: SoundKind, loop: boolean) => void;
-  /** Follows Alert sounds again for this kind of alert: the ringtone and repeating. */
+  /** What Alert sounds says about full screen while the phone is in use, which this bot follows unless it has its own. */
+  appFullScreen: { normal: boolean; urgent: boolean };
+  /** Full screen (true) or the card (false) for this bot's alerts while the phone is in use. */
+  onFullScreen: (kind: SoundKind, fullScreen: boolean) => void;
+  /** Follows Alert sounds again for this kind of alert: the ringtone, repeating, and full screen. */
   onResetSound: (kind: SoundKind) => void;
   /** The second tap of Remove. */
   onRemove: () => void;
@@ -82,6 +86,8 @@ export function B2Bot({
   onRingtone,
   appLoop,
   onLoop,
+  appFullScreen,
+  onFullScreen,
   onResetSound,
   onRemove,
   onBack,
@@ -142,9 +148,11 @@ export function B2Bot({
           kind="normal"
           ringtone={normalRingtone}
           loop={bypass?.loopNormal ?? appLoop.normal}
-          following={normalRingtone === null && bypass?.loopNormal === undefined}
+          fullScreen={bypass?.fullScreenNormal ?? appFullScreen.normal}
+          following={normalRingtone === null && bypass?.loopNormal === undefined && bypass?.fullScreenNormal === undefined}
           onRingtone={onRingtone}
           onLoop={onLoop}
+          onFullScreen={onFullScreen}
           onReset={onResetSound}
         />
         <SoundSection
@@ -152,9 +160,11 @@ export function B2Bot({
           kind="urgent"
           ringtone={urgentRingtone}
           loop={bypass?.loopUrgent ?? appLoop.urgent}
-          following={urgentRingtone === null && bypass?.loopUrgent === undefined}
+          fullScreen={bypass?.fullScreenUrgent ?? appFullScreen.urgent}
+          following={urgentRingtone === null && bypass?.loopUrgent === undefined && bypass?.fullScreenUrgent === undefined}
           onRingtone={onRingtone}
           onLoop={onLoop}
+          onFullScreen={onFullScreen}
           onReset={onResetSound}
         />
         <Caption>
@@ -240,9 +250,11 @@ function SoundSection({
   kind,
   ringtone,
   loop,
+  fullScreen,
   following,
   onRingtone,
   onLoop,
+  onFullScreen,
   onReset,
 }: {
   title: string;
@@ -250,10 +262,12 @@ function SoundSection({
   /** The bot's own ringtone by name; null when it follows app settings. */
   ringtone: string | null;
   loop: boolean;
+  fullScreen: boolean;
   /** Nothing here is the bot's own: it follows app settings entirely. */
   following: boolean;
   onRingtone: (kind: SoundKind) => void;
   onLoop: (kind: SoundKind, loop: boolean) => void;
+  onFullScreen: (kind: SoundKind, fullScreen: boolean) => void;
   onReset: (kind: SoundKind) => void;
 }) {
   return (
@@ -273,6 +287,13 @@ function SoundSection({
           value={loop}
           onChange={(next) => onLoop(kind, next)}
           testID={`sound-${kind}-loop`}
+        />
+        <SettingsToggleRow
+          icon="phone"
+          label="Full screen while I use my phone"
+          value={fullScreen}
+          onChange={(next) => onFullScreen(kind, next)}
+          testID={`sound-${kind}-fullscreen`}
         />
         {following ? null : (
           <SettingsRow

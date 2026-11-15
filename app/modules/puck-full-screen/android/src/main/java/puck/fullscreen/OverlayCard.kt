@@ -405,13 +405,21 @@ internal object OverlayCard {
     val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return
     openingId = questionId
     openingReady = false
+    var fresh: View? = null
     if (cover == null) {
       val sheet = FrameLayout(context).apply {
         val night = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
         setBackgroundColor(if (night) 0xFF141312.toInt() else 0xFFFFFFFF.toInt())
+        // Comes in softly rather than flashing white over the app in use.
+        if (motionEnabled()) alpha = 0f
       }
       guardCover(sheet) { false }
-      try { windowManager(context).addView(sheet, fullScreenParams()); cover = sheet } catch (_: RuntimeException) { }
+      try {
+        windowManager(context).addView(sheet, fullScreenParams())
+        cover = sheet
+        fresh = sheet
+        sheet.animate().alpha(1f).setDuration(180L).setInterpolator(DecelerateInterpolator()).start()
+      } catch (_: RuntimeException) { }
     }
     val openingCover = cover
     main.postDelayed({ if (openingId == questionId && cover === openingCover) openingCover?.let { removeCover(it) } }, 10_000L)
@@ -423,7 +431,35 @@ internal object OverlayCard {
     launch.putExtra(EXTRA_NONCE, nonce)
     pendingOpen = Opened(questionId, snooze, snoozeMinutes, nonce)
     pendingAt = SystemClock.elapsedRealtime()
-    context.startActivity(launch)
+    // A cover added in the same moment Puck launches stays hidden until Android's app-opening
+    // transition ends (see Expander.complete), so a new cover gets two frames on screen first.
+    val shown = fresh
+    if (shown == null) {
+      context.startActivity(launch)
+    } else {
+      shown.postOnAnimation { shown.postOnAnimation { context.startActivity(launch) } }
+    }
+  }
+
+  /**
+   * Brings Puck to the front on an alert over the app in use: the person chose full screen while
+   * the phone is in use. The same opening as a tap on the card, without the card: a cover fades in
+   * and fades onto the alert once it is ready. Android lets Puck start its screen from the
+   * background because it may draw over other apps. False without that permission.
+   */
+  fun openFullScreen(context: Context, questionId: String): Boolean {
+    if (!canDraw(context)) return false
+    val app = context.applicationContext
+    main.post {
+      if (Presence.inFront) return@post
+      removeView()
+      try {
+        openApp(app, questionId, snooze = false)
+      } catch (error: RuntimeException) {
+        // Refused: the notification still rings and opens the alert.
+      }
+    }
+    return true
   }
 
   private fun overlayType(): Int =
