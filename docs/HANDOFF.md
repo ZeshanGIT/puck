@@ -4,7 +4,7 @@ Updated when product direction or alert presentation behavior changes. Vault `Pr
 
 ## Card or full screen while in use (2026-11-15)
 
-`fullScreenNormal` and `fullScreenUrgent` in local settings (default false, the card), with per-bot overrides read by `fullScreenFor`. `inUsePresentation` picks card, full screen or neither from the card's conditions; full screen calls native `openAlertFullScreen` (`OverlayCard.openFullScreen`, the card tap's opening without the card), falling back to the card if refused. The ring uses the quiet-banner channel either way. `openApp` waits two frames after adding a new cover before starting Puck. Switches: Alert sounds (S4) and the bot page (B2) sound sections. Owner check on the phone pending.
+`fullScreenNormal` and `fullScreenUrgent` in local settings (default false, the card), with per-bot overrides read by `fullScreenFor`. `inUsePresentation` picks card, full screen or neither from the card's conditions; full screen calls native `openAlertFullScreen` (`OverlayCard.openFullScreen`, the card tap's opening without the card), falling back to the card if refused. The ring uses the quiet-banner channel either way. `openApp` waits two frames after adding a new cover before starting Puck. Switches: Alerts (S4, renamed from Alert sounds) and the bot page (B2) sound sections. The overlay permission is no longer a Settings row: it is the Alert health check `overlay` ("Show over other apps", from `usePhoneStates`), counted as a problem. Owner check on the phone pending.
 
 ## Card shadow, edge, font and pull-down (2026-11-15)
 
