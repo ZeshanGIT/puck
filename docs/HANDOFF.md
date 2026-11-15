@@ -2,6 +2,10 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## Card shadow, edge, font and pull-down (2026-11-15)
+
+The pull-down used to drop the card by a status bar's height and show the reply field in its place, then snap back on cancel. Causes: the full-screen sheet window that draws the pull was fitted below the status bar (Android 11+ fits windows to system bars unless `fitInsetsTypes = 0`; `FLAG_LAYOUT_IN_SCREEN` no longer does it), while the card copy was placed by screen position; and the reply area stayed visible behind the card after a right swipe sprang back. `fullScreenParams()` now opts the sheet and the opening cover out of insets and cutouts, the copy is placed relative to the sheet's measured position (logged once per pull under the `PuckCard` tag), the copy follows the finger as it grows and eases back on cancel, and under-card layers are shown only by their own gesture. The shadow was clipped by the root view's `clipToPadding`; it is now off, with 20 dp room, 10 dp elevation and a 1.5 dp edge (`overlayPalette().edge`, `#AARRGGBB`). The card uses Nunito from `modules/puck-full-screen/android/src/main/assets/puck-fonts/` (Bold, ExtraBold, Black; OFL), falling back to the system font. Dev build installed on the Pixel; owner check on the phone pending. The upward swipe still resizes the card window mid-drag (`setRoom`).
+
 ## Alert sounds and reminders (2026-11-15)
 
 Behaviour is decided in the vault: `Projects/Puck/docs/Alert sounds and reminders.md`. Alerts now play a ringtone from the phone's ringtone collection instead of a notification tone. Normal and urgent have their own choice, a bot can have its own, and each kind of alert has a Repeat switch (off: the ringtone plays once to its end). Ringing channels carry the ringtone in their id, because Android fixes a channel's sound when it is created; `removeStaleRingChannels` deletes the ones no choice uses. An urgent alert that gets past silent mode rings on the alarm stream, at the phone's alarm volume. Puck never changes the phone's volume.
