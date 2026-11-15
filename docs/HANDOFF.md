@@ -2,6 +2,10 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## Alerts by kind: bypass and reminders per section (2026-11-15)
+
+Alerts (S4) and the bot page (B2) are one section per kind of alert: full screen while in use, ringtone, Repeat, ring through Do Not Disturb, ring in silent mode, Remind me. `BypassMode` gained `"normal"` so any combination of the two switches is one stored value (`modeAllows`, `withModeFor`, `followAppFor` for a bot's per-kind reset). Normal alerts now bypass when asked and allowed: `normalChannelId` gives `puck-alerts-dnd`, `-alarm`, `-bypass`, and `ensureChannel` builds both kinds; before this, `alertRingingPlan` ignored bypass for normal alerts entirely, so "All alerts" only ever applied to urgent ones. Reminders: `reminderMinutesNormal` (default 0) and a per-bot override; `reminderMinutes` stays the urgent one; reminders are scheduled for both kinds. Owner check on the phone pending.
+
 ## Card or full screen while in use (2026-11-15)
 
 `fullScreenNormal` and `fullScreenUrgent` in local settings (default false, the card), with per-bot overrides read by `fullScreenFor`. `inUsePresentation` picks card, full screen or neither from the card's conditions; full screen calls native `openAlertFullScreen` (`OverlayCard.openFullScreen`, the card tap's opening without the card), falling back to the card if refused. The ring uses the quiet-banner channel either way. `openApp` waits two frames after adding a new cover before starting Puck. Switches: Alerts (S4, renamed from Alert sounds) and the bot page (B2) sound sections. The overlay permission is no longer a Settings row: it is the Alert health check `overlay` ("Show over other apps", from `usePhoneStates`), counted as a problem. Owner check on the phone pending.
