@@ -106,10 +106,9 @@ internal object OverlayCard {
   // The answers above the card: their height at rest and popped, how much narrower than the card
   // they rest, how far above the card the nearest one sits, and how long a pop takes.
   private const val CHIP_DP = 54
-  private const val CHIP_POP_DP = 62
-  private const val CHIP_INSET_DP = 12
   private const val CHIP_ABOVE_DP = 6
-  private const val POP_MS = 140L
+  private const val LIFT_SCALE = 1.02f
+  private const val LIFT_MS = 160L
   private val RISKY_RED = 0xFFD93A2E.toInt()
   // The opening from the card (as the card prototype): growth and the blob's flight, the card's
   // content fading out, and its edge and shadow fading out.
@@ -164,7 +163,14 @@ internal object OverlayCard {
   data class CardReply(val questionId: String, val text: String, val nonce: Long, val optionIds: List<String> = emptyList())
 
   /** An answer the card offers when swiped up (`cardChoices.ts`). `open` opens the alert instead. */
-  data class Choice(val id: String, val label: String, val risky: Boolean, val open: Boolean)
+  data class Choice(
+    val id: String,
+    val label: String,
+    val risky: Boolean,
+    val open: Boolean,
+    val desc: String = "",
+    val rec: Boolean = false,
+  )
 
   // The answers for each alert's card, from JavaScript once it has read them from the server.
   private val choicesById = java.util.concurrent.ConcurrentHashMap<String, List<Choice>>()
@@ -175,7 +181,14 @@ internal object OverlayCard {
       val array = JSONArray(json)
       choicesById[questionId] = (0 until array.length()).map { index ->
         val item = array.getJSONObject(index)
-        Choice(item.getString("id"), item.getString("label"), item.optBoolean("risky"), item.optBoolean("open"))
+        Choice(
+          item.getString("id"),
+          item.getString("label"),
+          item.optBoolean("risky"),
+          item.optBoolean("open"),
+          item.optString("desc"),
+          item.optBoolean("rec"),
+        )
       }
     } catch (error: org.json.JSONException) {
       // Leave the card with its way into the alert.
@@ -564,7 +577,6 @@ internal object OverlayCard {
   }
 
   private const val TAG_BOX = "puck-card-box"
-  private val TAG_POP_ANIMATOR = "puck-pop".hashCode()
   private const val TAG_BLOB = "puck-card-blob"
 
   /** The pieces of the sideways snooze reveal that change while the card is dragged. */
@@ -1015,12 +1027,11 @@ internal object OverlayCard {
    * The answers above the card while it is swiped up, in a full-screen window of their own (the
    * card's window is only the card's size). The finger stays with the card's window; this one only
    * draws. It takes touches so Android draws it fully opaque (see [fullScreenParams]); a second
-   * finger on it is ignored. The answers fade in where they sit, the first nearest the card, a
-   * little narrower than the card. The one under the finger pops: it really grows, to the card's
-   * exact width and a little taller, so the others slide apart and every gap stays the same (a
-   * scale would let it overlap them), takes the bot's colour (red when risky) and lifts, with a
-   * tick at each change. Which answer is under the finger is read from where the answers sit at
-   * rest, in fixed bands, so the pop moving them cannot make the choice flicker at a boundary. A
+   * finger on it is ignored. The answers fade in where they sit, the first nearest the card, each
+   * the card's exact width, with its description; the bot's recommended one says "Suggested". The
+   * one under the finger fills with the bot's colour (red when risky) and lifts a little: a 2%
+   * scale from its own size, which moves nothing else, with a tick at each change. (A pop that
+   * changed real size slid its text sideways and bounced the stack; Seshan found it cartoonish.) A
    * risky answer needs [HOLD_MS] under the finger before it can be sent.
    */
   private class Picker(
@@ -1039,18 +1050,23 @@ internal object OverlayCard {
       clipChildren = false
       clipToPadding = false
     }
-    private val restHeight = dp(context, CHIP_DP)
-    private val popHeight = dp(context, CHIP_POP_DP)
     private val gap = dp(context, 10)
     private val cardAt = IntArray(2)
-    private val restWidth get() = box.width - 2 * dp(context, CHIP_INSET_DP)
     private val chips = ArrayList<Chip>()
     private var hot = -1
     private var ready = false
     private var holdStart: Runnable? = null
     private var added = false
 
-    private inner class Chip(val choice: Choice, val view: FrameLayout, val label: TextView, val hint: TextView, val fill: View, val surface: GradientDrawable)
+    private inner class Chip(
+      val choice: Choice,
+      val view: FrameLayout,
+      val label: TextView,
+      val hint: TextView,
+      val fill: View,
+      val surface: GradientDrawable,
+      val desc: TextView,
+    )
 
     fun show() {
       val at = cardAt
@@ -1059,14 +1075,16 @@ internal object OverlayCard {
       for (choice in choices.asReversed()) {
         val chip = chip(choice)
         chips.add(0, chip)
-        column.addView(chip.view, LinearLayout.LayoutParams(restWidth, restHeight).apply { topMargin = gap })
+        column.addView(
+          chip.view,
+          LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = gap },
+        )
       }
       sheet.clipChildren = false
       // Exactly the card's width and left edge, so a popped answer lines up with the card.
       sheet.addView(column, FrameLayout.LayoutParams(box.width, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.START))
       sheet.setOnTouchListener { _, _ -> true }
-      // Anchored just above the card once the window's own position is known: a popped answer
-      // grows upward, pushing the ones above it, never down onto the card.
+      // Anchored just above the card once the window's own position is known.
       sheet.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
         val origin = IntArray(2)
         view.getLocationOnScreen(origin)
@@ -1093,7 +1111,7 @@ internal object OverlayCard {
       val surface = GradientDrawable().apply {
         setColor(card.background)
         cornerRadius = dp(context, 18).toFloat()
-        setStroke(max(1, dpF(context, EDGE_DP).toInt()), edgeColour(card))
+        setStroke(max(1, dpF(context, EDGE_DP).toInt()), restEdge(choice))
       }
       val fill = View(context).apply {
         setBackgroundColor(0x40FFFFFF)
@@ -1108,39 +1126,67 @@ internal object OverlayCard {
         typeface = font(context, Nunito.BLACK)
         maxLines = 1
         ellipsize = android.text.TextUtils.TruncateAt.END
+        includeFontPadding = false
       }
       val hint = TextView(context).apply {
-        text = "Hold"
-        setTextColor(0xFFFFFFFF.toInt())
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         typeface = font(context, Nunito.BLACK)
-        visibility = View.GONE
+        letterSpacing = 0.06f
+        isAllCaps = true
+        // The tag at the end: "Suggested" on the bot's recommendation; "Hold" / "Let go" on a risky one under the finger.
+        text = if (choice.rec) "Suggested" else ""
+        setTextColor(card.botDeep)
+        visibility = if (choice.rec) View.VISIBLE else View.GONE
       }
-      val row = LinearLayout(context).apply {
+      val desc = TextView(context).apply {
+        text = choice.desc
+        setTextColor(card.ink2)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
+        typeface = font(context, Nunito.BOLD)
+        maxLines = 2
+        ellipsize = android.text.TextUtils.TruncateAt.END
+        includeFontPadding = false
+        setPadding(0, dp(context, 4), 0, 0)
+        visibility = if (choice.desc.isBlank()) View.GONE else View.VISIBLE
+      }
+      val head = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(context, 18), 0, dp(context, 18), 0)
         addView(label, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        addView(hint)
+        addView(hint, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(context, 10) })
+      }
+      val body = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = dp(context, CHIP_DP)
+        setPadding(dp(context, 18), dp(context, 12), dp(context, 18), dp(context, 12))
+        addView(head)
+        addView(desc)
       }
       val view = FrameLayout(context).apply {
         background = surface
         clipToOutline = true
         elevation = dp(context, 3).toFloat()
         addView(fill, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-        addView(row, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        addView(body, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
       }
-      return Chip(choice, view, label, hint, fill, surface)
+      return Chip(choice, view, label, hint, fill, surface, desc)
     }
 
+    /** At rest, the recommended answer wears the bot's colour as its edge; the others the card's edge. */
+    private fun restEdge(choice: Choice): Int =
+      if (choice.rec) ColorUtils.setAlphaComponent(card.botColour, 0xB3) else edgeColour(card)
+
     /**
-     * The finger is at `rawY` (screen pixels): the answer whose resting band holds it, the topmost
-     * above them all, none back on the card. Bands are where the answers sit at rest, so the pop's
-     * movement never changes which one is chosen.
+     * The finger is at `rawY` (screen pixels): the answer under it, the nearer one in a gap, the
+     * topmost above them all, none back on the card. The lift is a scale that moves nothing, so the
+     * answers' places are fixed while the finger moves.
      */
     fun hover(rawY: Float) {
       if (!added || chips.isEmpty()) return
-      setHot(answerAt(rawY, cardAt[1].toFloat() - dp(context, CHIP_ABOVE_DP), restHeight.toFloat(), gap.toFloat(), chips.size, dp(context, 12).toFloat()))
+      val at = IntArray(2)
+      val spans = chips.map { it.view.getLocationOnScreen(at); Pair(at[1].toFloat(), at[1].toFloat() + it.view.height) }
+      setHot(answerAmong(rawY, spans, dp(context, 12).toFloat()))
     }
 
     private fun setHot(index: Int) {
@@ -1151,11 +1197,25 @@ internal object OverlayCard {
       chips.forEachIndexed { i, chip ->
         val on = i == index
         val risky = chip.choice.risky
+        val ink = if (risky) 0xFFFFFFFF.toInt() else card.onBot
         chip.surface.setColor(if (on) (if (risky) RISKY_RED else card.botColour) else card.background)
-        chip.surface.setStroke(max(1, dpF(context, EDGE_DP).toInt()), if (on) (if (risky) RISKY_RED else card.botColour) else edgeColour(card))
-        chip.label.setTextColor(if (on) (if (risky) 0xFFFFFFFF.toInt() else card.onBot) else card.ink)
-        pop(chip, on)
-        chip.hint.visibility = if (on && risky) View.VISIBLE else View.GONE
+        chip.surface.setStroke(max(1, dpF(context, EDGE_DP).toInt()), if (on) (if (risky) RISKY_RED else card.botColour) else restEdge(chip.choice))
+        chip.label.setTextColor(if (on) ink else card.ink)
+        chip.desc.setTextColor(if (on) ColorUtils.setAlphaComponent(ink, 0xD9) else card.ink2)
+        lift(chip, on)
+        when {
+          on && risky -> {
+            chip.hint.text = "Hold"
+            chip.hint.setTextColor(ink)
+            chip.hint.visibility = View.VISIBLE
+          }
+          chip.choice.rec -> {
+            chip.hint.text = "Suggested"
+            chip.hint.setTextColor(if (on) ink else card.botDeep)
+            chip.hint.visibility = View.VISIBLE
+          }
+          else -> chip.hint.visibility = View.GONE
+        }
         chip.fill.animate().cancel()
         chip.fill.scaleX = 0f
         chip.fill.visibility = if (on && risky) View.VISIBLE else View.INVISIBLE
@@ -1178,31 +1238,16 @@ internal object OverlayCard {
       }
     }
 
-    /**
-     * Grows the answer to the card's width and [CHIP_POP_DP] tall, or back to rest, over [POP_MS].
-     * A real change of size, so the others make room and the gaps stay as they are.
-     */
-    private fun pop(chip: Chip, on: Boolean) {
-      val lp = chip.view.layoutParams as LinearLayout.LayoutParams
-      val toW = if (on) box.width else restWidth
-      val toH = if (on) popHeight else restHeight
-      chip.view.animate().translationZ(if (on) dp(context, 7).toFloat() else 0f).setDuration(POP_MS).start()
-      (chip.view.getTag(TAG_POP_ANIMATOR) as? ValueAnimator)?.cancel()
-      if (lp.width == toW && lp.height == toH) return
-      val fromW = lp.width
-      val fromH = lp.height
-      val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = if (motionEnabled()) POP_MS else 0L
-        interpolator = DecelerateInterpolator(1.4f)
-        addUpdateListener {
-          val f = it.animatedValue as Float
-          lp.width = lerpI(fromW, toW, f)
-          lp.height = lerpI(fromH, toH, f)
-          chip.view.layoutParams = lp
-        }
-        start()
-      }
-      chip.view.setTag(TAG_POP_ANIMATOR, animator)
+    /** Lifts the answer a little ([LIFT_SCALE], from its own size, moving nothing else), or settles it. */
+    private fun lift(chip: Chip, on: Boolean) {
+      val scale = if (on) LIFT_SCALE else 1f
+      chip.view.animate()
+        .scaleX(scale)
+        .scaleY(scale)
+        .translationZ(if (on) dp(context, 4).toFloat() else 0f)
+        .setDuration(if (motionEnabled()) LIFT_MS else 0L)
+        .setInterpolator(DecelerateInterpolator(1.5f))
+        .start()
     }
 
     /** Takes the answers away; returns the one to act on (null: none, or a risky one let go too soon). */
@@ -1724,21 +1769,15 @@ internal object OverlayCard {
   private fun lerpI(from: Int, to: Int, t: Float): Int = (from + (to - from) * t).toInt()
 
   /**
-   * Which answer the finger is on, from where the answers sit at rest: answer `i` (0 nearest the
-   * card) spans `chip` pixels ending `i * (chip + gap)` above `nearestBottom`. Below the nearest by
-   * more than `slack`: none (-1, back on the card). Above them all: the topmost. In a gap: the
-   * nearer one.
+   * Which answer the finger at `y` is on: `spans` are the answers' top and bottom on screen, the
+   * first nearest the card (lowest). Below the nearest by more than `slack`: none (-1, back on the
+   * card). Above them all: the topmost. Otherwise the one holding `y`, or the nearer in a gap.
    */
-  fun answerAt(y: Float, nearestBottom: Float, chip: Float, gap: Float, count: Int, slack: Float): Int {
-    if (count <= 0 || y > nearestBottom + slack) return -1
-    val step = chip + gap
-    val fromBottom = nearestBottom - y
-    if (fromBottom <= 0f) return 0
-    val index = (fromBottom / step).toInt()
-    if (index >= count) return count - 1
-    // In the gap above answer `index`: whichever centre is nearer.
-    val within = fromBottom - index * step
-    return if (within > chip + gap / 2f && index + 1 < count) index + 1 else index
+  fun answerAmong(y: Float, spans: List<Pair<Float, Float>>, slack: Float): Int {
+    if (spans.isEmpty() || y > spans[0].second + slack) return -1
+    if (y < spans.last().first) return spans.size - 1
+    spans.forEachIndexed { index, span -> if (y >= span.first && y <= span.second) return index }
+    return spans.indices.minByOrNull { abs(y - (spans[it].first + spans[it].second) / 2f) } ?: -1
   }
 
   /**

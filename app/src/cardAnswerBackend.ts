@@ -23,7 +23,10 @@ export async function fetchCardChoices(questionId: string): Promise<CardChoice[]
     const alert = (await Promise.race([
       convex.query(anyApi.alerts.get, { clientId, questionId }),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), FETCH_TIMEOUT_MS)),
-    ])) as { selectionMode: string; options: { id: string; label: string; tone?: string | null }[] } | null;
+    ])) as {
+      selectionMode: string;
+      options: { id: string; label: string; tone?: string | null; desc?: string | null; rec?: boolean | null }[];
+    } | null;
     return alert ? cardChoices(alert) : null;
   } catch {
     return null;

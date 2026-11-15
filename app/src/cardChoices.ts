@@ -8,6 +8,10 @@
 export interface CardChoice {
   id: string;
   label: string;
+  /** The option's description as plain text (its markdown marks removed); "" when it has none. */
+  desc: string;
+  /** The bot recommends this one: the card marks it "Suggested". */
+  rec: boolean;
   /** A risky answer (`tone: "destructive"`): the card turns red and it needs a short hold. */
   risky: boolean;
   open: boolean;
@@ -16,7 +20,7 @@ export interface CardChoice {
 /** What the card needs to know about the alert. */
 export interface CardChoiceInput {
   selectionMode: string;
-  options: readonly { id: string; label: string; tone?: string | null }[];
+  options: readonly { id: string; label: string; tone?: string | null; desc?: string | null; rec?: boolean | null }[];
 }
 
 /** The most answers the card shows at once; with more, it shows one fewer and "More…". */
@@ -25,7 +29,22 @@ export const MAX_CARD_CHOICES = 4;
 const OPEN_ID = "__open";
 
 function openChoice(label: string): CardChoice {
-  return { id: OPEN_ID, label, risky: false, open: true };
+  return { id: OPEN_ID, label, desc: "", rec: false, risky: false, open: true };
+}
+
+/**
+ * A description written in the alert's light markdown (`**bold**`, `*italic*`, `__underline__`,
+ * `` `code` ``, `[text](url)`) as plain text for the card, on one line.
+ */
+export function plainText(markdown: string): string {
+  return markdown
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function cardChoices(alert: CardChoiceInput): CardChoice[] {
@@ -34,6 +53,8 @@ export function cardChoices(alert: CardChoiceInput): CardChoice[] {
   const answers = alert.options.map((option) => ({
     id: option.id,
     label: option.label,
+    desc: option.desc ? plainText(option.desc) : "",
+    rec: option.rec === true,
     risky: option.tone === "destructive",
     open: false,
   }));

@@ -350,6 +350,10 @@ export interface OverlayReply {
 export interface OverlayChoice {
   id: string;
   label: string;
+  /** Plain-text description; "" for none. */
+  desc: string;
+  /** The bot recommends it. */
+  rec: boolean;
   risky: boolean;
   open: boolean;
 }
