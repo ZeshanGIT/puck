@@ -1,5 +1,5 @@
 /**
- * The Preferences screen's theme choice (System, Light or Dark). Pure, so the rules can be tested
+ * The Appearance setting's theme choice (System, Light or Dark). Pure, so the rules can be tested
  * without React Native. The stored value lives in `localSettings.ts`; `themeSettings.ts` applies it.
  */
 import type { ThemeMode } from "./theme";

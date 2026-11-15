@@ -43,6 +43,7 @@ const ALL_OK: HealthSnapshot = {
   fullScreen: true,
   dndAccess: true,
   dndNeeded: true,
+  batteryUnrestricted: true,
   registered: true,
   pushToken: true,
   online: true,

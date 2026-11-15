@@ -11,12 +11,15 @@ import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BackHandler, StyleSheet, View } from "react-native";
+import { ringtoneTitle } from "puck-full-screen";
+import { chooseRingtone, resetBotSound, type SoundKind } from "../botSoundSettings";
 import { muteUntil, type BotListItem, type MuteChoice } from "../botsModel";
-import { openSoundSettings, type SoundKind } from "../botSoundSettings";
 import {
   forgetBotBypass,
   loadLocalSettings,
   saveBotBypass,
+  subscribeLocalSettings,
+  type LocalSettings,
   type BotBypass,
   type BotBypassChange,
   type BypassMode,
@@ -29,6 +32,11 @@ import { useBots } from "../useBots";
 import { B1Bots } from "./B1Bots";
 import { B2Bot } from "./B2Bot";
 
+/** A bot's own ringtone by name; null when it has none and follows the default. */
+function ownRingtone(uri: string | undefined): string | null {
+  return uri === undefined ? null : (ringtoneTitle(uri) ?? "Phone ringtone");
+}
+
 export interface BotsSource {
   /** The paired bots; undefined while they load. */
   bots: readonly BotListItem[] | undefined;
@@ -39,8 +47,12 @@ export interface BotsSource {
   setColour: (botId: string, colour: string) => Promise<void>;
   setBypass: (botId: string, change: BotBypassChange) => Promise<void>;
   remove: (botId: string) => Promise<void>;
-  /** Opens Android's sound settings; resolves false when it could not. */
-  openSound: (kind: SoundKind) => Promise<boolean>;
+  /** Opens the ringtone picker for this bot's normal or urgent alerts and keeps the choice; resolves false when it could not open. */
+  pickRingtone: (botId: string, kind: SoundKind) => Promise<boolean>;
+  /** Makes the bot follow app settings again for this kind of alert (the ringtone and whether it repeats). */
+  resetSound: (botId: string, kind: SoundKind) => Promise<void>;
+  /** What Alert sounds says about repeating, which a bot follows unless it has its own. */
+  appLoop: { normal: boolean; urgent: boolean };
 }
 
 /** Where the screens start. */
@@ -132,11 +144,19 @@ export function BotsHost({ source, start = { kind: "list" }, pairings, onOpenPai
         onMute={(choice: MuteChoice) => void run(() => source.mute(bot.botId, muteUntil(choice, Date.now())))}
         onBypass={(which, mode: BypassMode | null) => void run(() => source.setBypass(bot.botId, { [which]: mode }))}
         onColour={(colour) => void run(() => source.setColour(bot.botId, colour))}
-        onSound={(kind) =>
-          void source.openSound(kind).then((ok) => {
-            if (!ok) toast.show("Couldn't open Android's sound settings");
+        onReminder={(minutes) => void run(() => source.setBypass(bot.botId, { reminderMinutes: minutes }))}
+        normalRingtone={ownRingtone(bypass[bot.botId]?.normalRingtone)}
+        urgentRingtone={ownRingtone(bypass[bot.botId]?.urgentRingtone)}
+        onRingtone={(kind) =>
+          void source.pickRingtone(bot.botId, kind).then((ok) => {
+            if (!ok) toast.show("Couldn't open the ringtone picker");
           })
         }
+        appLoop={source.appLoop}
+        onLoop={(kind, loop) =>
+          void run(() => source.setBypass(bot.botId, kind === "urgent" ? { loopUrgent: loop } : { loopNormal: loop }))
+        }
+        onResetSound={(kind) => void run(() => source.resetSound(bot.botId, kind))}
         onRemove={() => {
           const name = bot.name;
           setBusy(true);
@@ -174,13 +194,21 @@ export function ConnectedBotsHost({
   const updateMutation = useMutation(anyApi.bots.update);
   const removeMutation = useMutation(anyApi.bots.remove);
   const [bypass, setBypass] = useState<Record<string, BotBypass>>({});
+  const [appLoop, setAppLoop] = useState({ normal: false, urgent: false });
   useEffect(() => {
     let cancelled = false;
+    const apply = (settings: LocalSettings) => {
+      setBypass(settings.bots);
+      setAppLoop({ normal: settings.loopNormal, urgent: settings.loopUrgent });
+    };
     void loadLocalSettings().then((settings) => {
-      if (!cancelled) setBypass(settings.bots);
+      if (!cancelled) apply(settings);
     });
+    // Every save (the ringtone picker saves on its own) shows at once.
+    const unsubscribe = subscribeLocalSettings(apply);
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, []);
 
@@ -206,9 +234,11 @@ export function ConnectedBotsHost({
         await removeMutation({ clientId: needClient(), botId });
         setBypass((await forgetBotBypass(botId)).bots);
       },
-      openSound: openSoundSettings,
+      pickRingtone: (botId, kind) => chooseRingtone(kind, botId),
+      resetSound: (botId, kind) => resetBotSound(botId, kind),
+      appLoop,
     };
-  }, [clientId, bots, bypass, updateMutation, removeMutation]);
+  }, [clientId, bots, bypass, appLoop, updateMutation, removeMutation]);
 
   return (
     <BotsHost

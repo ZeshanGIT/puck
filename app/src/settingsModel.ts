@@ -1,11 +1,11 @@
 /**
  * The choices behind the Settings screens (S1 to S7): what each row says, the chips for the
- * global bypass settings and the ring length, the alert-health checks and their fixes, the client
+ * global bypass settings, the alert-health checks and their fixes, the client
  * list, the test page result, the rename rules and the version text. Nothing here imports React
  * Native, so it is tested with `bun test`. The screens (`S1Settings.tsx` ...) only draw it.
  *
- * Where each setting lives (Protocol changes section 6): the bypass modes and the ring length
- * stay on the phone (`localSettings.ts`); the client list, names and flags are on the backend.
+ * Where each setting lives (Protocol changes section 6): the bypass modes, the ringtones and the
+ * reminder interval stay on the phone (`localSettings.ts`); the client list, names and flags are on the backend.
  */
 import { dateText } from "./botsModel";
 import type { BypassMode } from "./localSettings";
@@ -17,18 +17,6 @@ export const GLOBAL_BYPASS_CHIPS: readonly { id: BypassMode; label: string }[] =
   { id: "urgent", label: "Urgent only" },
   { id: "all", label: "All alerts" },
 ];
-
-/** The prototype's "30 s", "60 s" and "2 min". */
-export const RING_CHIPS: readonly { seconds: number; label: string }[] = [
-  { seconds: 30, label: "30 s" },
-  { seconds: 60, label: "60 s" },
-  { seconds: 120, label: "2 min" },
-];
-
-/** The chip that matches the stored ring length, or null for a length no chip offers. */
-export function selectedRingChip(seconds: number): number | null {
-  return RING_CHIPS.some((chip) => chip.seconds === seconds) ? seconds : null;
-}
 
 /* ------------------------------------------------------------------- S7 about */
 
@@ -170,6 +158,8 @@ export interface HealthSnapshot {
   dndAccess: boolean | null;
   /** Some bypass setting lets alerts through Do Not Disturb (`dndBypassActive`). */
   dndNeeded: boolean;
+  /** Puck's battery use is Unrestricted (`isBatteryUnrestricted`). Optional. */
+  batteryUnrestricted: boolean | null;
   /** This phone's client row is on the account. */
   registered: boolean | null;
   /** A push token is stored for this phone. */
@@ -190,8 +180,8 @@ export function clientHealth(
   return { registered: true, pushToken: row.hasPushToken ?? null };
 }
 
-export type HealthCheckId = "notifications" | "fullScreen" | "dnd" | "registered" | "push" | "network";
-export type HealthFixId = "notifications" | "fullScreen" | "dnd" | "push" | "signIn";
+export type HealthCheckId = "notifications" | "fullScreen" | "dnd" | "battery" | "registered" | "push" | "network";
+export type HealthFixId = "notifications" | "fullScreen" | "dnd" | "battery" | "push" | "signIn";
 /** "unknown" is not a problem: the build or the moment cannot tell. */
 export type HealthState = "ok" | "bad" | "unknown";
 
@@ -202,6 +192,8 @@ export interface HealthCheck {
   /** What is wrong, or what "ok" means. S5 shows it under the label when the check is not ok. */
   detail: string;
   fix?: { id: HealthFixId; label: string };
+  /** Not required for Puck to work, but better done. A warning, not a problem: it is left out of the count. */
+  optional?: boolean;
 }
 
 function tri(value: boolean | null, ok: Omit<HealthCheck, "state">, bad: Omit<HealthCheck, "state">): HealthCheck {
@@ -258,6 +250,20 @@ export function healthChecks(snapshot: HealthSnapshot): HealthCheck[] {
       ),
     );
   }
+  // Unrestricted battery use is optional: alerts mostly arrive without it, but Android may hold some back.
+  checks.push({
+    ...tri(
+      snapshot.batteryUnrestricted,
+      { id: "battery", label: "Unrestricted battery use", detail: "Unrestricted" },
+      {
+        id: "battery",
+        label: "Unrestricted battery use",
+        detail: "Optional, but without it some alerts may not get through",
+        fix: { id: "battery", label: "Allow" },
+      },
+    ),
+    optional: true,
+  });
   checks.push(
     tri(
       snapshot.registered,
@@ -285,7 +291,7 @@ export function healthChecks(snapshot: HealthSnapshot): HealthCheck[] {
 }
 
 export function problemCount(checks: readonly HealthCheck[]): number {
-  return checks.filter((check) => check.state === "bad").length;
+  return checks.filter((check) => check.state === "bad" && check.optional !== true).length;
 }
 
 /** S5's headline: "Puck can reach you", "One thing needs you", "2 things need you". */

@@ -12,7 +12,6 @@ import {
   problemCount,
   pushRow,
   registeredText,
-  selectedRingChip,
   testPageLine,
   testPageStatus,
   versionText,
@@ -30,6 +29,7 @@ const good: HealthSnapshot = {
   fullScreen: true,
   dndAccess: true,
   dndNeeded: true,
+  batteryUnrestricted: true,
   registered: true,
   pushToken: true,
   online: true,
@@ -40,9 +40,9 @@ function client(over: Partial<ClientItem> & { id: string }): ClientItem {
 }
 
 describe("healthChecks", () => {
-  test("all good: six ok rows, no fixes, 'Puck can reach you'", () => {
+  test("all good: seven ok rows, no fixes, 'Puck can reach you'", () => {
     const checks = healthChecks(good);
-    expect(checks.map((check) => check.id)).toEqual(["notifications", "fullScreen", "dnd", "registered", "push", "network"]);
+    expect(checks.map((check) => check.id)).toEqual(["notifications", "fullScreen", "dnd", "battery", "registered", "push", "network"]);
     expect(checks.every((check) => check.state === "ok" && check.fix === undefined)).toBe(true);
     expect(healthTitle(checks)).toBe("Puck can reach you");
     expect(healthRowValue(good)).toEqual({ text: "All good", tone: "ok" });
@@ -53,10 +53,23 @@ describe("healthChecks", () => {
     expect(by({ notifications: false })[0]).toMatchObject({ state: "bad", fix: { id: "notifications", label: "Turn on" } });
     expect(by({ fullScreen: false })[1]).toMatchObject({ state: "bad", fix: { id: "fullScreen", label: "Allow" } });
     expect(by({ dndAccess: false })[2]).toMatchObject({ state: "bad", fix: { id: "dnd", label: "Allow" } });
-    expect(by({ registered: false })[3]).toMatchObject({ state: "bad", fix: { id: "signIn" } });
-    expect(by({ pushToken: false })[4]).toMatchObject({ state: "bad", fix: { id: "push" } });
-    expect(by({ online: false })[5]).toMatchObject({ state: "bad" });
-    expect(by({ online: false })[5]?.fix).toBeUndefined();
+    expect(by({ batteryUnrestricted: false })[3]).toMatchObject({ state: "bad", fix: { id: "battery", label: "Allow" } });
+    expect(by({ registered: false })[4]).toMatchObject({ state: "bad", fix: { id: "signIn" } });
+    expect(by({ pushToken: false })[5]).toMatchObject({ state: "bad", fix: { id: "push" } });
+    expect(by({ online: false })[6]).toMatchObject({ state: "bad" });
+    expect(by({ online: false })[6]?.fix).toBeUndefined();
+  });
+
+  test("restricted battery use is an optional warning: shown, with its fix, but not counted as a problem", () => {
+    const checks = healthChecks({ ...good, batteryUnrestricted: false });
+    const battery = checks.find((check) => check.id === "battery");
+    expect(battery).toMatchObject({ state: "bad", optional: true });
+    expect(battery?.detail).toContain("some alerts may not get through");
+    expect(problemCount(checks)).toBe(0);
+    expect(healthTitle(checks)).toBe("Puck can reach you");
+    expect(healthRowValue({ ...good, batteryUnrestricted: false })).toEqual({ text: "All good", tone: "ok" });
+    // A build that cannot tell says nothing about it.
+    expect(healthChecks({ ...good, batteryUnrestricted: null }).find((check) => check.id === "battery")?.state).toBe("unknown");
   });
 
   test("Do Not Disturb access is only a problem while a bypass setting is on", () => {
@@ -67,7 +80,7 @@ describe("healthChecks", () => {
   });
 
   test("push waits for notifications: no fix button while they are off", () => {
-    const push = healthChecks({ ...good, notifications: false, pushToken: false })[4];
+    const push = healthChecks({ ...good, notifications: false, pushToken: false })[5];
     expect(push?.state).toBe("bad");
     expect(push?.fix).toBeUndefined();
     expect(push?.detail).toContain("notifications");
@@ -203,9 +216,4 @@ describe("about", () => {
     expect(backendName("not a url")).toBe("not a url");
   });
 
-  test("selectedRingChip", () => {
-    expect(selectedRingChip(60)).toBe(60);
-    expect(selectedRingChip(120)).toBe(120);
-    expect(selectedRingChip(45)).toBeNull();
-  });
 });

@@ -1,7 +1,8 @@
 /**
  * Settings that live on the phone, not in Convex (Protocol changes section 6, Q6), and the small
  * pure rules the urgent alert uses: whether it may ring through Do Not Disturb or silent mode,
- * how long it rings, when the screen uses the night look, and how the lock-screen clock reads.
+ * which ringtone each kind of alert plays, how often an unanswered urgent alert reminds, when the
+ * screen uses the night look, and how the lock-screen clock reads.
  *
  * This file holds only what the urgent alert needs today. The Settings screens (a later card)
  * extend it: the shapes below already carry the per-bot overrides and the default ring length.
@@ -17,36 +18,66 @@ export type BypassMode = "off" | "urgent" | "all";
 
 export type AlertPriority = "normal" | "urgent";
 
-/** Q6: a bot can override either global setting, in either direction. */
+/** Q6: a bot can override either global setting, in either direction. It can also set its own reminder interval. */
 export interface BotBypass {
   dnd?: BypassMode;
   silent?: BypassMode;
+  /** Minutes between reminders for this bot's unanswered urgent alerts; 0 is off. */
+  reminderMinutes?: number;
+  /** This bot's own ringtone for normal alerts (a URI; empty is the phone's own). Absent follows the global one. */
+  normalRingtone?: string;
+  /** This bot's own ringtone for urgent alerts. Absent follows the global one. */
+  urgentRingtone?: string;
+  /** Whether this bot's normal alerts repeat their ringtone. Absent follows the global setting. */
+  loopNormal?: boolean;
+  /** The same for urgent alerts. */
+  loopUrgent?: boolean;
 }
 
 export interface LocalSettings {
-  /** The Preferences screen's theme. Default: follow the system. */
+  /** The Appearance setting on Settings. Default: follow the system. */
   theme: ThemePreference;
   /** Allow bots to bypass Do Not Disturb. Default: urgent only. */
   bypassDnd: BypassMode;
   /** Allow bots to bypass silent mode. Default: urgent only. */
   bypassSilent: BypassMode;
-  /** Default ring length in seconds for urgent alerts; an alert's own `ringSeconds` wins (Q3). */
-  ringSeconds: number;
+  /** The ringtone normal alerts play, as a system ringtone URI. Empty: the phone's own ringtone. */
+  normalRingtone: string;
+  /** The ringtone urgent alerts play, as a system ringtone URI. Empty: the phone's own ringtone. */
+  urgentRingtone: string;
+  /** Whether a normal alert's ringtone repeats until it is answered or its ring time is up. Default: it plays once. */
+  loopNormal: boolean;
+  /** The same for urgent alerts. */
+  loopUrgent: boolean;
+  /** Minutes between reminders for an unanswered urgent alert; 0 is off. A bot can override it. */
+  reminderMinutes: number;
   /** Per-bot overrides, keyed by bot id. */
   bots: Record<string, BotBypass>;
 }
 
-/** Q3: urgent alerts ring for 60 seconds unless the alert says otherwise. */
+/**
+ * How long an alert's card and spoken text stay up before the alert settles into a quiet copy in
+ * the shade, unless the alert says otherwise. The ringtone itself plays once, to the end.
+ */
 export const DEFAULT_RING_SECONDS = 60;
 /** Same bounds as `ringSeconds` validation on `POST /alerts` (`@puck/shared`). */
 export const RING_SECONDS_MIN = 5;
 export const RING_SECONDS_MAX = 600;
 
+/** The reminder intervals Alert sounds offers, in minutes. 0 is off. */
+export const REMINDER_CHOICES = [0, 2, 5, 10, 15] as const;
+/** An unanswered urgent alert reminds every 5 minutes unless set otherwise. */
+export const DEFAULT_REMINDER_MINUTES = 5;
+
 export const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
   theme: DEFAULT_THEME_PREFERENCE,
   bypassDnd: "urgent",
   bypassSilent: "urgent",
-  ringSeconds: DEFAULT_RING_SECONDS,
+  normalRingtone: "",
+  urgentRingtone: "",
+  loopNormal: false,
+  loopUrgent: false,
+  reminderMinutes: DEFAULT_REMINDER_MINUTES,
   bots: {},
 };
 
@@ -54,9 +85,25 @@ export function isBypassMode(value: unknown): value is BypassMode {
   return value === "off" || value === "urgent" || value === "all";
 }
 
+export function isReminderMinutes(value: unknown): value is number {
+  return typeof value === "number" && (REMINDER_CHOICES as readonly number[]).includes(value);
+}
+
 export function isRingSeconds(value: unknown): value is number {
   return (
     typeof value === "number" && Number.isInteger(value) && value >= RING_SECONDS_MIN && value <= RING_SECONDS_MAX
+  );
+}
+
+function hasOverride(entry: BotBypass): boolean {
+  return (
+    entry.dnd !== undefined ||
+    entry.silent !== undefined ||
+    entry.reminderMinutes !== undefined ||
+    entry.normalRingtone !== undefined ||
+    entry.urgentRingtone !== undefined ||
+    entry.loopNormal !== undefined ||
+    entry.loopUrgent !== undefined
   );
 }
 
@@ -80,14 +127,23 @@ export function parseLocalSettings(raw: string | null | undefined): LocalSetting
       const entry: BotBypass = {};
       if (isBypassMode(override.dnd)) entry.dnd = override.dnd;
       if (isBypassMode(override.silent)) entry.silent = override.silent;
-      if (entry.dnd !== undefined || entry.silent !== undefined) bots[botId] = entry;
+      if (isReminderMinutes(override.reminderMinutes)) entry.reminderMinutes = override.reminderMinutes;
+      if (typeof override.normalRingtone === "string") entry.normalRingtone = override.normalRingtone;
+      if (typeof override.urgentRingtone === "string") entry.urgentRingtone = override.urgentRingtone;
+      if (typeof override.loopNormal === "boolean") entry.loopNormal = override.loopNormal;
+      if (typeof override.loopUrgent === "boolean") entry.loopUrgent = override.loopUrgent;
+      if (hasOverride(entry)) bots[botId] = entry;
     }
   }
   return {
     theme: isThemePreference(record.theme) ? record.theme : defaults.theme,
     bypassDnd: isBypassMode(record.bypassDnd) ? record.bypassDnd : defaults.bypassDnd,
     bypassSilent: isBypassMode(record.bypassSilent) ? record.bypassSilent : defaults.bypassSilent,
-    ringSeconds: isRingSeconds(record.ringSeconds) ? record.ringSeconds : defaults.ringSeconds,
+    normalRingtone: typeof record.normalRingtone === "string" ? record.normalRingtone : defaults.normalRingtone,
+    urgentRingtone: typeof record.urgentRingtone === "string" ? record.urgentRingtone : defaults.urgentRingtone,
+    loopNormal: typeof record.loopNormal === "boolean" ? record.loopNormal : defaults.loopNormal,
+    loopUrgent: typeof record.loopUrgent === "boolean" ? record.loopUrgent : defaults.loopUrgent,
+    reminderMinutes: isReminderMinutes(record.reminderMinutes) ? record.reminderMinutes : defaults.reminderMinutes,
     bots,
   };
 }
@@ -130,6 +186,13 @@ export async function saveLocalSettings(change: Partial<LocalSettings>): Promise
 export interface BotBypassChange {
   dnd?: BypassMode | null;
   silent?: BypassMode | null;
+  reminderMinutes?: number | null;
+  /** A ringtone URI sets it (empty is the phone's own), `null` follows the global one again. */
+  normalRingtone?: string | null;
+  urgentRingtone?: string | null;
+  /** On or off sets it for this bot, `null` follows the global setting again. */
+  loopNormal?: boolean | null;
+  loopUrgent?: boolean | null;
 }
 
 /**
@@ -143,8 +206,18 @@ export function withBotBypass(settings: LocalSettings, botId: string, change: Bo
   else if (change.dnd !== undefined) next.dnd = change.dnd;
   if (change.silent === null) delete next.silent;
   else if (change.silent !== undefined) next.silent = change.silent;
+  if (change.reminderMinutes === null) delete next.reminderMinutes;
+  else if (change.reminderMinutes !== undefined) next.reminderMinutes = change.reminderMinutes;
+  if (change.normalRingtone === null) delete next.normalRingtone;
+  else if (change.normalRingtone !== undefined) next.normalRingtone = change.normalRingtone;
+  if (change.urgentRingtone === null) delete next.urgentRingtone;
+  else if (change.urgentRingtone !== undefined) next.urgentRingtone = change.urgentRingtone;
+  if (change.loopNormal === null) delete next.loopNormal;
+  else if (change.loopNormal !== undefined) next.loopNormal = change.loopNormal;
+  if (change.loopUrgent === null) delete next.loopUrgent;
+  else if (change.loopUrgent !== undefined) next.loopUrgent = change.loopUrgent;
   const bots = { ...settings.bots };
-  if (next.dnd === undefined && next.silent === undefined) delete bots[botId];
+  if (!hasOverride(next)) delete bots[botId];
   else bots[botId] = next;
   return { ...settings, bots };
 }
@@ -201,20 +274,51 @@ export function bypassDecision(
   };
 }
 
-/** The alert's own `ringSeconds` wins over the default ring length (Q3). */
-export function ringSecondsFor(alertRingSeconds: number | undefined, settings: LocalSettings): number {
-  if (isRingSeconds(alertRingSeconds)) return alertRingSeconds;
-  return isRingSeconds(settings.ringSeconds) ? settings.ringSeconds : DEFAULT_RING_SECONDS;
+/** How long the alert's card and spoken text stay up: the alert's own `ringSeconds`, else the default (Q3). */
+export function ringSecondsFor(alertRingSeconds: number | undefined): number {
+  return isRingSeconds(alertRingSeconds) ? alertRingSeconds : DEFAULT_RING_SECONDS;
+}
+
+/** The ringtone an alert plays: the bot's own for that kind of alert, else the global one. Empty is the phone's own. */
+export function ringtoneFor(settings: LocalSettings, botId: string | undefined, priority: AlertPriority): string {
+  const own = botId === undefined ? undefined : settings.bots[botId];
+  const botChoice = priority === "urgent" ? own?.urgentRingtone : own?.normalRingtone;
+  return botChoice ?? (priority === "urgent" ? settings.urgentRingtone : settings.normalRingtone);
+}
+
+/** Whether an alert's ringtone repeats: the bot's own choice for its kind of alert, else the global one. */
+export function loopsFor(settings: LocalSettings, priority: AlertPriority, botId?: string): boolean {
+  const own = botId === undefined ? undefined : settings.bots[botId];
+  const botChoice = priority === "urgent" ? own?.loopUrgent : own?.loopNormal;
+  return botChoice ?? (priority === "urgent" ? settings.loopUrgent : settings.loopNormal);
+}
+
+/** Every ringtone in use: the global ones and each bot's own, so a channel for any of them is kept. */
+export function ringtonesInUse(settings: LocalSettings): { normal: string[]; urgent: string[] } {
+  const normal = new Set([settings.normalRingtone]);
+  const urgent = new Set([settings.urgentRingtone]);
+  for (const bot of Object.values(settings.bots)) {
+    if (bot.normalRingtone !== undefined) normal.add(bot.normalRingtone);
+    if (bot.urgentRingtone !== undefined) urgent.add(bot.urgentRingtone);
+  }
+  return { normal: [...normal], urgent: [...urgent] };
+}
+
+/** Minutes between reminders for a bot's unanswered urgent alerts: the bot's own setting, else the global one. 0 is off. */
+export function reminderMinutesFor(settings: LocalSettings, botId?: string): number {
+  const own = botId === undefined ? undefined : settings.bots[botId]?.reminderMinutes;
+  return own ?? settings.reminderMinutes;
 }
 
 /* ----------------------------------------------------------------- channels */
 
 /**
  * An Android channel's sound, bypass and audio stream are fixed once it exists, so every
- * combination has its own channel. `plain` keeps the POC's id and sound (`PUSH_URGENT_CHANNEL_ID`).
+ * combination has its own channel, and the ringtone is part of the id (`ringChannelId`). These are
+ * the ids before the ringtone is added.
  */
 export const URGENT_CHANNEL = {
-  /** Notification sound, respects Do Not Disturb and silent mode. The POC's channel. */
+  /** The ring volume: respects Do Not Disturb and silent mode. */
   plain: "puck-urgent",
   /** Rings through Do Not Disturb. */
   dnd: "puck-urgent-dnd",

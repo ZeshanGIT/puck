@@ -9,11 +9,17 @@ import { useConvex, useQuery } from "convex/react";
 import Constants from "expo-constants";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Linking } from "react-native";
-import { openSoundSettings } from "../botSoundSettings";
+import { chooseRingtone } from "../botSoundSettings";
 import { syncClientPushToken } from "../clientAuth";
 import { convexUrl } from "../deployment";
 import { dndBypassActive } from "../homeModel";
-import { DEFAULT_LOCAL_SETTINGS, loadLocalSettings, saveLocalSettings, type LocalSettings } from "../localSettings";
+import {
+  DEFAULT_LOCAL_SETTINGS,
+  loadLocalSettings,
+  saveLocalSettings,
+  subscribeLocalSettings,
+  type LocalSettings,
+} from "../localSettings";
 import { openDndAccessSettings } from "../onboarding/dndAccess";
 import { openFullScreenSettings } from "../onboarding/fullScreenSetup";
 import { canDrawOverlay } from "puck-full-screen";
@@ -69,8 +75,11 @@ export function ConnectedSettingsHost({
     void loadLocalSettings().then((loaded) => {
       if (!cancelled) setSettings(loaded);
     });
+    // Every save (the ringtone picker saves on its own) shows at once.
+    const unsubscribe = subscribeLocalSettings((saved) => setSettings(saved));
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, []);
 
@@ -140,7 +149,7 @@ export function ConnectedSettingsHost({
       removeClient: async (clientToRemove) => {
         await client.mutation(anyApi.clients.remove, { clientId: clientToRemove });
       },
-      openSound: openSoundSettings,
+      pickRingtone: chooseRingtone,
       fix: async (fix) => {
         if (fix === "notifications") {
           if ((await readNotificationRowState()).canAskAgain) await ensureNotificationPermission();
@@ -153,11 +162,13 @@ export function ConnectedSettingsHost({
         } else if (fix === "dnd") {
           await openDndAccessSettings();
           await refresh();
+        } else if (fix === "battery") {
+          // Android keeps battery use on the app's own settings page.
+          await Linking.openSettings();
         } else {
           if (id) await syncClientPushToken(client, id);
         }
       },
-      openBattery: () => Linking.openSettings(),
       overlayCards,
       openOverlay: async () => {
         await openOverlaySettings();

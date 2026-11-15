@@ -29,7 +29,7 @@ import { useTheme } from "../ui/theme";
 import { fontFamily } from "../ui/tokens";
 import { Glyph } from "../ui/AlertFrame";
 import { MAX_FONT_SCALE, NavBar } from "./PairingParts";
-import { Caption, SETTINGS_ICON } from "./SettingsParts";
+import { SETTINGS_ICON } from "./SettingsParts";
 
 export interface S5HealthProps {
   snapshot: HealthSnapshot | undefined;
@@ -38,8 +38,6 @@ export interface S5HealthProps {
   onFix: (id: HealthFixId) => void;
   /** Sends the test page now (0) or after a delay, so the phone can be locked first. */
   onSendTest: (delaySeconds: number) => void;
-  /** Opens the app's settings, where Android's battery usage lives. */
-  onBattery: () => void;
   /** Local time text for the test result ("14:02"). */
   timeText: (at: number) => string;
   onBack: () => void;
@@ -48,7 +46,7 @@ export interface S5HealthProps {
 /** Seconds between tapping the delayed button and the page, so the phone can be locked first. */
 export const TEST_DELAY_SECONDS = 10;
 
-export function S5Health({ snapshot, test, onFix, onSendTest, onBattery, timeText, onBack }: S5HealthProps) {
+export function S5Health({ snapshot, test, onFix, onSendTest, timeText, onBack }: S5HealthProps) {
   const t = useTheme().tokens;
   const checks = useMemo(() => (snapshot ? healthChecks(snapshot) : []), [snapshot]);
   const title = snapshot ? healthTitle(checks) : "Checking…";
@@ -106,22 +104,6 @@ export function S5Health({ snapshot, test, onFix, onSendTest, onBattery, timeTex
           ) : null}
         </View>
 
-        <Caption>
-          Alerts arriving late? Set Puck's battery use to Unrestricted in Android's app settings. Puck can't read that setting, so
-          it isn't checked above.
-        </Caption>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open Puck's app settings"
-          onPress={onBattery}
-          testID="health-battery"
-          hitSlop={8}
-          style={styles.battery}
-        >
-          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.batteryText, { color: t.ink }]}>
-            Open app settings
-          </Text>
-        </Pressable>
       </ScrollView>
     </OnboardingFrame>
   );
@@ -139,7 +121,7 @@ function CheckRow({ check, onFix }: { check: HealthCheck; onFix: (id: HealthFixI
       style={styles.row}
       testID={`health-row-${check.id}`}
       accessible
-      accessibilityLabel={`${check.label}, ${stateWord}${state === "ok" ? "" : `. ${check.detail}`}`}
+      accessibilityLabel={`${check.label}${check.optional ? " (optional)" : ""}, ${stateWord}${state === "ok" ? "" : `. ${check.detail}`}`}
     >
       <View style={[styles.badge, { backgroundColor: bg }]}>
         <Glyph d={icon} size={13} colour={colour} width={state === "ok" ? 3.4 : 2.6} />
@@ -147,6 +129,7 @@ function CheckRow({ check, onFix }: { check: HealthCheck; onFix: (id: HealthFixI
       <View style={styles.main}>
         <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.label, { color: t.ink }]}>
           {check.label}
+          {check.optional ? <Text style={{ color: t.ink3 }}>{"  optional"}</Text> : null}
         </Text>
         {state === "ok" ? null : (
           <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.detail, { color: state === "bad" ? t.warn : t.ink3 }]}>
@@ -185,6 +168,4 @@ const styles = StyleSheet.create({
   /** `padding:20px 20px 0` */
   buttons: { paddingTop: 20, paddingHorizontal: 20, gap: 4 },
   result: { fontFamily: fontFamily.extraBold, fontSize: 14.5, fontWeight: "800", textAlign: "center", paddingTop: 10 },
-  battery: { paddingHorizontal: 22, paddingTop: 8, paddingBottom: 4, alignSelf: "flex-start" },
-  batteryText: { fontFamily: fontFamily.black, fontSize: 14.5, fontWeight: "900", textDecorationLine: "underline" },
 });

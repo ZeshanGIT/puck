@@ -1,4 +1,4 @@
-import { canUseFullScreenIntent, hasDndAccess } from "puck-full-screen";
+import { canUseFullScreenIntent, hasDndAccess, isBatteryUnrestricted } from "puck-full-screen";
 import { useCallback, useEffect, useState } from "react";
 import { AppState } from "react-native";
 import { readNotificationRowState } from "./onboarding/notificationSetup";
@@ -8,6 +8,8 @@ export interface PhoneStates {
   notifications: boolean | null;
   fullScreen: boolean | null;
   dndAccess: boolean | null;
+  /** Puck's battery use is Unrestricted. Optional, but without it some alerts may not get through. */
+  batteryUnrestricted: boolean | null;
 }
 
 /**
@@ -16,7 +18,12 @@ export interface PhoneStates {
  * Android's settings). `refresh` reads them now.
  */
 export function usePhoneStates(): { states: PhoneStates; refresh: () => Promise<PhoneStates> } {
-  const [states, setStates] = useState<PhoneStates>({ notifications: null, fullScreen: null, dndAccess: null });
+  const [states, setStates] = useState<PhoneStates>({
+    notifications: null,
+    fullScreen: null,
+    dndAccess: null,
+    batteryUnrestricted: null,
+  });
 
   const refresh = useCallback(async (): Promise<PhoneStates> => {
     let notifications: boolean | null = null;
@@ -25,7 +32,12 @@ export function usePhoneStates(): { states: PhoneStates; refresh: () => Promise<
     } catch {
       notifications = null;
     }
-    const next: PhoneStates = { notifications, fullScreen: canUseFullScreenIntent(), dndAccess: hasDndAccess() };
+    const next: PhoneStates = {
+      notifications,
+      fullScreen: canUseFullScreenIntent(),
+      dndAccess: hasDndAccess(),
+      batteryUnrestricted: isBatteryUnrestricted(),
+    };
     setStates(next);
     return next;
   }, []);

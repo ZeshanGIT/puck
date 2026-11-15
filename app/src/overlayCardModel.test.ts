@@ -3,25 +3,35 @@ import { darkTokens, lightTokens } from "./ui/tokens";
 import { hex6, overlayBotLook, overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
 import { SAMPLE_BOTS, SHAPES } from "./ui/blobShapes";
 
+const ready = { locked: false, allowed: true, inCall: false, appOpen: false, screenOn: true };
+
 describe("shouldShowOverlayCard", () => {
-  test("an unlocked phone with the permission shows the card", () => {
-    expect(shouldShowOverlayCard({ locked: false, allowed: true, inCall: false })).toBe(true);
+  test("an unlocked phone with the permission, the screen on and another app in front shows the card", () => {
+    expect(shouldShowOverlayCard(ready)).toBe(true);
+  });
+
+  test("Puck already open (or its full-screen alert up): never a card on top of it", () => {
+    expect(shouldShowOverlayCard({ ...ready, appOpen: true })).toBe(false);
+  });
+
+  test("a screen that is off gets the full-screen alert, not the card", () => {
+    expect(shouldShowOverlayCard({ ...ready, screenOn: false })).toBe(false);
   });
 
   test("a locked phone keeps the full-screen alert, not the card", () => {
-    expect(shouldShowOverlayCard({ locked: true, allowed: true, inCall: false })).toBe(false);
+    expect(shouldShowOverlayCard({ ...ready, locked: true })).toBe(false);
   });
 
   test("without the permission there is only the notification", () => {
-    expect(shouldShowOverlayCard({ locked: false, allowed: false, inCall: false })).toBe(false);
+    expect(shouldShowOverlayCard({ ...ready, allowed: false })).toBe(false);
   });
 
   test("during a call the alert waits, as before", () => {
-    expect(shouldShowOverlayCard({ locked: false, allowed: true, inCall: true })).toBe(false);
+    expect(shouldShowOverlayCard({ ...ready, inCall: true })).toBe(false);
   });
 
   test("an unknown lock state never shows the card", () => {
-    expect(shouldShowOverlayCard({ locked: null, allowed: true, inCall: false })).toBe(false);
+    expect(shouldShowOverlayCard({ ...ready, locked: null })).toBe(false);
   });
 });
 

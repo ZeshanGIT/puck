@@ -291,13 +291,32 @@ function DevBots({ name }: { name: string }) {
           else if (change.dnd !== undefined) next.dnd = change.dnd;
           if (change.silent === null) delete next.silent;
           else if (change.silent !== undefined) next.silent = change.silent;
+          if (change.reminderMinutes === null) delete next.reminderMinutes;
+          else if (change.reminderMinutes !== undefined) next.reminderMinutes = change.reminderMinutes;
+          if (change.normalRingtone === null) delete next.normalRingtone;
+          else if (change.normalRingtone !== undefined) next.normalRingtone = change.normalRingtone;
+          if (change.urgentRingtone === null) delete next.urgentRingtone;
+          else if (change.urgentRingtone !== undefined) next.urgentRingtone = change.urgentRingtone;
+          if (change.loopNormal === null) delete next.loopNormal;
+          else if (change.loopNormal !== undefined) next.loopNormal = change.loopNormal;
+          if (change.loopUrgent === null) delete next.loopUrgent;
+          else if (change.loopUrgent !== undefined) next.loopUrgent = change.loopUrgent;
           return { ...all, [botId]: next };
         }),
       remove: async (botId) => setBots((all) => all.filter((bot) => bot.botId !== botId)),
-      openSound: async (kind) => {
-        show(`Would open Android's ${kind} sound settings`);
+      pickRingtone: async (botId, kind) => {
+        show(`Would open the ${kind} ringtone picker`);
+        setBypass((all) => ({ ...all, [botId]: { ...all[botId], [kind === "urgent" ? "urgentRingtone" : "normalRingtone"]: "" } }));
         return true;
       },
+      resetSound: async (botId, kind) =>
+        setBypass((all) => {
+          const next: BotBypass = { ...all[botId] };
+          delete next[kind === "urgent" ? "urgentRingtone" : "normalRingtone"];
+          delete next[kind === "urgent" ? "loopUrgent" : "loopNormal"];
+          return { ...all, [botId]: next };
+        }),
+      appLoop: { normal: false, urgent: false },
     }),
     [bots, bypass, show],
   );
@@ -446,7 +465,7 @@ function DevAlertSample({ name }: { name: string }) {
   );
 }
 
-/** The theme follows the Preferences choice (System unless the person picked Light or Dark). */
+/** The theme follows the Appearance choice (System unless the person picked Light or Dark). */
 export default function App() {
   const preference = useThemePreference();
   return (

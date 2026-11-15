@@ -1,5 +1,5 @@
 /**
- * Applies the Preferences theme (System, Light or Dark) to the whole app. It reads the stored choice
+ * Applies the Appearance theme (System, Light or Dark) to the whole app. It reads the stored choice
  * and follows every save (`subscribeLocalSettings`), so a change shows at once and survives a
  * restart. React Native's appearance is set to match, so the system bars agree with the screens.
  */

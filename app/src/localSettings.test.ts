@@ -5,8 +5,11 @@ import {
   clockText,
   DEFAULT_LOCAL_SETTINGS,
   isNight,
+  loopsFor,
   parseLocalSettings,
   ringSecondsFor,
+  ringtoneFor,
+  ringtonesInUse,
   URGENT_CHANNEL,
   urgentChannelId,
   withBotBypass,
@@ -64,12 +67,11 @@ describe("bypassDecision", () => {
 });
 
 describe("ringSecondsFor", () => {
-  test("the alert wins, then the setting, then 60", () => {
-    expect(ringSecondsFor(300, defaults)).toBe(300);
-    expect(ringSecondsFor(undefined, defaults)).toBe(60);
-    expect(ringSecondsFor(undefined, { ...defaults, ringSeconds: 120 })).toBe(120);
-    expect(ringSecondsFor(1, defaults)).toBe(60);
-    expect(ringSecondsFor(Number.NaN, defaults)).toBe(60);
+  test("the alert wins, otherwise 60", () => {
+    expect(ringSecondsFor(300)).toBe(300);
+    expect(ringSecondsFor(undefined)).toBe(60);
+    expect(ringSecondsFor(1)).toBe(60);
+    expect(ringSecondsFor(Number.NaN)).toBe(60);
   });
 });
 
@@ -78,7 +80,7 @@ describe("parseLocalSettings", () => {
     expect(parseLocalSettings(null)).toEqual(defaults);
     expect(parseLocalSettings("not json")).toEqual(defaults);
     expect(parseLocalSettings("[1]")).toEqual(defaults);
-    expect(parseLocalSettings(JSON.stringify({ bypassDnd: "sometimes", ringSeconds: 99999 }))).toEqual(defaults);
+    expect(parseLocalSettings(JSON.stringify({ bypassDnd: "sometimes", reminderMinutes: 99999 }))).toEqual(defaults);
   });
 
   test("keeps valid fields and drops invalid bot overrides", () => {
@@ -86,16 +88,22 @@ describe("parseLocalSettings", () => {
       JSON.stringify({
         bypassDnd: "off",
         bypassSilent: "all",
-        ringSeconds: 120,
-        bots: { a: { dnd: "all" }, b: { dnd: "nope" }, c: "x" },
+        normalRingtone: "content://media/internal/audio/media/11",
+        urgentRingtone: 7,
+        reminderMinutes: 10,
+        bots: { a: { dnd: "all", reminderMinutes: 2 }, b: { dnd: "nope", reminderMinutes: 3 }, c: "x" },
       }),
     );
     expect(parsed).toEqual({
       theme: "system",
       bypassDnd: "off",
       bypassSilent: "all",
-      ringSeconds: 120,
-      bots: { a: { dnd: "all" } },
+      normalRingtone: "content://media/internal/audio/media/11",
+      urgentRingtone: "",
+      loopNormal: false,
+      loopUrgent: false,
+      reminderMinutes: 10,
+      bots: { a: { dnd: "all", reminderMinutes: 2 } },
     });
   });
 
@@ -217,5 +225,68 @@ describe("per-bot overrides reach the decision and the channel", () => {
     // Through Do Not Disturb but not silent mode: the existing "dnd" channel, whether or not alarm channels work.
     expect(urgentChannelId(decision, true)).toBe(URGENT_CHANNEL.dnd);
     expect(urgentChannelId(decision, false)).toBe(URGENT_CHANNEL.dnd);
+  });
+});
+
+describe("ringtones", () => {
+  const A = "content://media/internal/audio/media/11";
+  const B = "content://media/internal/audio/media/22";
+  const C = "content://media/internal/audio/media/33";
+
+  test("an alert plays the bot's own ringtone for its kind, else the global one", () => {
+    const settings: LocalSettings = {
+      ...defaults,
+      normalRingtone: A,
+      urgentRingtone: B,
+      bots: { chatty: { urgentRingtone: C }, quiet: { normalRingtone: "" } },
+    };
+    expect(ringtoneFor(settings, undefined, "normal")).toBe(A);
+    expect(ringtoneFor(settings, "other", "urgent")).toBe(B);
+    expect(ringtoneFor(settings, "chatty", "urgent")).toBe(C);
+    expect(ringtoneFor(settings, "chatty", "normal")).toBe(A);
+    // An empty choice is the phone's own ringtone, not "follow the global one".
+    expect(ringtoneFor(settings, "quiet", "normal")).toBe("");
+  });
+
+  test("every ringtone in use is listed once, the bots' own included", () => {
+    const settings: LocalSettings = {
+      ...defaults,
+      normalRingtone: A,
+      urgentRingtone: B,
+      bots: { x: { urgentRingtone: C }, y: { urgentRingtone: B }, z: { reminderMinutes: 2 } },
+    };
+    expect(ringtonesInUse(settings)).toEqual({ normal: [A], urgent: [B, C] });
+  });
+
+  test("a bot's ringtones are stored, dropped when invalid, and can be reset", () => {
+    const parsed = parseLocalSettings(
+      JSON.stringify({ bots: { a: { normalRingtone: A, urgentRingtone: 5 }, b: { urgentRingtone: "" } } }),
+    );
+    expect(parsed.bots).toEqual({ a: { normalRingtone: A }, b: { urgentRingtone: "" } });
+    const set = withBotBypass(defaults, "a", { urgentRingtone: B });
+    expect(set.bots.a).toEqual({ urgentRingtone: B });
+    expect(withBotBypass(set, "a", { urgentRingtone: null }).bots).toEqual({});
+  });
+
+  test("repeating the ringtone is off unless it was turned on, for each kind of alert on its own", () => {
+    expect(parseLocalSettings(null)).toMatchObject({ loopNormal: false, loopUrgent: false });
+    const urgentOnly = parseLocalSettings(JSON.stringify({ loopUrgent: true }));
+    expect(urgentOnly).toMatchObject({ loopNormal: false, loopUrgent: true });
+    expect(loopsFor(urgentOnly, "urgent")).toBe(true);
+    expect(loopsFor(urgentOnly, "normal")).toBe(false);
+    expect(parseLocalSettings(JSON.stringify({ loopNormal: "yes" })).loopNormal).toBe(false);
+  });
+
+  test("a bot's own repeat choice beats the global one, for its own kind of alert, and can be reset", () => {
+    const settings: LocalSettings = { ...defaults, loopNormal: true, bots: { chatty: { loopUrgent: true, loopNormal: false } } };
+    expect(loopsFor(settings, "normal", "chatty")).toBe(false);
+    expect(loopsFor(settings, "urgent", "chatty")).toBe(true);
+    expect(loopsFor(settings, "normal", "other")).toBe(true);
+    expect(loopsFor(settings, "urgent")).toBe(false);
+    // Off for a bot is its own choice, not "follow the global one".
+    expect(parseLocalSettings(JSON.stringify({ bots: { a: { loopNormal: false } } })).bots).toEqual({ a: { loopNormal: false } });
+    const reset = withBotBypass(settings, "chatty", { loopNormal: null, loopUrgent: null });
+    expect(reset.bots).toEqual({});
+    expect(loopsFor(reset, "normal", "chatty")).toBe(true);
   });
 });

@@ -1,28 +1,39 @@
 /**
- * S4 Alert sounds: the normal and urgent sound rows (they open Android's own channel settings,
- * where the system sound stays the default), how long an urgent alert rings, and whether bots may
- * bypass Do Not Disturb and silent mode (Off, Urgent only, All alerts). Prototype: `SCREENS.sounds`
- * and `.chips` (`vault/Projects/Puck/mockups/Puck prototype.html`); `App screens.md` S4, Q3, Q6.
+ * S4 Alert sounds: the ringtone for normal alerts and for urgent alerts (each opens the phone's
+ * ringtone picker; a ringtone plays once), how often an unanswered urgent alert reminds, and
+ * whether bots may bypass Do Not Disturb and silent mode (Off, Urgent only, All alerts). Prototype:
+ * `SCREENS.sounds` and `.chips` (`vault/Projects/Puck/mockups/Puck prototype.html`);
+ * `App screens.md` S4, Q6.
  *
- * All of it is stored on the phone (`localSettings.ts`). The next urgent alert reads these fresh
+ * All of it is stored on the phone (`localSettings.ts`). The next alert reads these fresh
  * (`urgentDisplay.ts` loads the settings for every alert), so a change here applies to it.
  */
 import { ScrollView, StyleSheet, View } from "react-native";
 import type { SoundKind } from "../botSoundSettings";
 import type { BypassMode } from "../localSettings";
-import { GLOBAL_BYPASS_CHIPS, RING_CHIPS, selectedRingChip } from "../settingsModel";
+import { REMINDER_CHIPS } from "../reminderChoices";
+import { GLOBAL_BYPASS_CHIPS } from "../settingsModel";
 import { OnboardingFrame } from "../onboarding/parts";
 import { Chip } from "../ui/Chip";
 import { Group } from "../ui/Group";
 import { NavBar } from "./PairingParts";
-import { Caption, ErrorLine, Section, SettingsRow } from "./SettingsParts";
+import { Caption, ErrorLine, Section, SettingsRow, SettingsToggleRow } from "./SettingsParts";
 
 export interface S4SoundsProps {
-  ringSeconds: number;
+  /** The ringtone's name for each kind of alert, as the phone shows it. */
+  normalRingtone: string;
+  urgentRingtone: string;
+  /** The ringtone repeats until the alert is answered or its ring time is up, per kind of alert. */
+  loopNormal: boolean;
+  loopUrgent: boolean;
+  /** Minutes between reminders; 0 is off. */
+  reminderMinutes: number;
   bypassDnd: BypassMode;
   bypassSilent: BypassMode;
   onSound: (kind: SoundKind) => void;
-  onRing: (seconds: number) => void;
+  onLoopNormal: (loop: boolean) => void;
+  onLoopUrgent: (loop: boolean) => void;
+  onReminder: (minutes: number) => void;
   onBypassDnd: (mode: BypassMode) => void;
   onBypassSilent: (mode: BypassMode) => void;
   error?: string | null;
@@ -30,41 +41,62 @@ export interface S4SoundsProps {
 }
 
 export function S4Sounds(props: S4SoundsProps) {
-  const ring = selectedRingChip(props.ringSeconds);
   return (
     <OnboardingFrame>
       <NavBar title="Alert sounds" onBack={props.onBack} backTestID="back" />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        <Section label="Normal alerts" />
         <Group>
           <SettingsRow
             icon="bell"
-            label="Normal alerts"
-            value="System sound"
+            label="Ringtone"
+            value={props.normalRingtone}
             onPress={() => props.onSound("normal")}
             testID="sounds-normal"
           />
-          <SettingsRow
-            icon="bell"
-            label="Urgent alerts"
-            value="System sound"
-            onPress={() => props.onSound("urgent")}
-            testID="sounds-urgent"
+          <SettingsToggleRow
+            icon="sound"
+            label="Repeat the ringtone"
+            value={props.loopNormal}
+            onChange={props.onLoopNormal}
+            testID="sounds-loop-normal"
           />
         </Group>
 
-        <Section label="Urgent rings for" />
+        <Section label="Urgent alerts" />
+        <Group>
+          <SettingsRow
+            icon="bell"
+            label="Ringtone"
+            value={props.urgentRingtone}
+            onPress={() => props.onSound("urgent")}
+            testID="sounds-urgent"
+          />
+          <SettingsToggleRow
+            icon="sound"
+            label="Repeat the ringtone"
+            value={props.loopUrgent}
+            onChange={props.onLoopUrgent}
+            testID="sounds-loop-urgent"
+          />
+        </Group>
+        <Caption>
+          Pick from your phone's ringtones. A ringtone plays once, through to the end. With Repeat on it repeats until you answer or the alert's ring time is up. Each bot can have its own ringtones.
+        </Caption>
+
+        <Section label="Remind me about an urgent alert" />
         <View style={styles.chips}>
-          {RING_CHIPS.map((chip) => (
+          {REMINDER_CHIPS.map((chip) => (
             <Chip
-              key={chip.seconds}
+              key={chip.minutes}
               label={chip.label}
-              selected={chip.seconds === ring}
-              onPress={() => props.onRing(chip.seconds)}
-              testID={`ring-${chip.seconds}`}
+              selected={chip.minutes === props.reminderMinutes}
+              onPress={() => props.onReminder(chip.minutes)}
+              testID={`reminder-${chip.minutes}`}
             />
           ))}
         </View>
-        <Caption>An alert can ask for longer. Alarms ring for up to 5 minutes.</Caption>
+        <Caption>An urgent alert nobody has answered rings again this often, for up to an hour. Each bot can set its own.</Caption>
 
         <Section label="Bots may bypass Do Not Disturb" />
         <View style={styles.chips}>
@@ -91,7 +123,7 @@ export function S4Sounds(props: S4SoundsProps) {
             />
           ))}
         </View>
-        <Caption>Only alerts that ask to bypass. Each bot can override this, and pick its own sound, on its own page.</Caption>
+        <Caption>Only alerts that ask to bypass. Each bot can override this on its own page.</Caption>
         <ErrorLine message={props.error ?? null} />
       </ScrollView>
     </OnboardingFrame>

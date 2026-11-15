@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BackHandler, StyleSheet, View } from "react-native";
+import { ringtoneTitle } from "puck-full-screen";
 import type { SoundKind } from "../botSoundSettings";
 import type { LocalSettings } from "../localSettings";
 import type { ThemePreference } from "../ui/themePreference";
@@ -34,9 +35,8 @@ import { S4Sounds } from "./S4Sounds";
 import { S5Health } from "./S5Health";
 import { S6SignOutSheet } from "./S6SignOutSheet";
 import { S7About } from "./S7About";
-import { S8Preferences } from "./S8Preferences";
 
-export type SettingsRoute = "home" | "this-phone" | "clients" | "sounds" | "health" | "about" | "preferences";
+export type SettingsRoute = "home" | "this-phone" | "clients" | "sounds" | "health" | "about";
 
 /** Where Settings is: the screen, and the test page S5 sent (so its result survives the alert taking over). */
 export interface SettingsNav {
@@ -46,8 +46,13 @@ export interface SettingsNav {
 
 export const SETTINGS_HOME: SettingsNav = { route: "home", testId: null };
 
+/** A ringtone as the phone names it; the phone's own ringtone when the build cannot tell. */
+function ringtoneName(uri: string): string {
+  return ringtoneTitle(uri) ?? "Phone ringtone";
+}
+
 /** The settings the Sounds screen changes. */
-export type SettingsChange = Partial<Pick<LocalSettings, "theme" | "bypassDnd" | "bypassSilent" | "ringSeconds">>;
+export type SettingsChange = Partial<Pick<LocalSettings, "theme" | "bypassDnd" | "bypassSilent" | "reminderMinutes" | "loopNormal" | "loopUrgent">>;
 
 export interface SettingsSource {
   email: string | null;
@@ -55,7 +60,7 @@ export interface SettingsSource {
   clientId: string | null;
   /** The account's clients; undefined while they load. */
   clients: readonly ClientItem[] | undefined;
-  /** The phone's own settings (bypass modes, ring length). */
+  /** The phone's own settings (bypass modes, ringtones, reminders). */
   settings: LocalSettings;
   health: HealthSnapshot | undefined;
   /** "Puck 1.0.0", the build text, the backend name, and extra dev rows. */
@@ -64,12 +69,10 @@ export interface SettingsSource {
   /** Renames this phone. */
   rename: (name: string) => Promise<void>;
   removeClient: (clientId: string) => Promise<void>;
-  /** Opens Android's sound settings; resolves false when it could not. */
-  openSound: (kind: SoundKind) => Promise<boolean>;
+  /** Opens the ringtone picker for this kind of alert and keeps the choice; resolves false when it could not open. */
+  pickRingtone: (kind: SoundKind) => Promise<boolean>;
   /** Turn on or Allow: opens the system screen (or does the fix) for one health check. */
   fix: (id: Exclude<HealthFixId, "signIn">) => Promise<void>;
-  /** Opens the app's settings (battery use). */
-  openBattery: () => Promise<void>;
   /** Whether the compact alert card may draw over other apps; null while it is read. */
   overlayCards: boolean | null;
   /** Opens Android's "Display over other apps" page for Puck. */
@@ -213,16 +216,22 @@ export function SettingsHost({ source, nav, onNav, testStatus, onClose }: Settin
     case "sounds":
       screen = (
         <S4Sounds
-          ringSeconds={settings.ringSeconds}
+          normalRingtone={ringtoneName(settings.normalRingtone)}
+          urgentRingtone={ringtoneName(settings.urgentRingtone)}
+          loopNormal={settings.loopNormal}
+          loopUrgent={settings.loopUrgent}
+          reminderMinutes={settings.reminderMinutes}
           bypassDnd={settings.bypassDnd}
           bypassSilent={settings.bypassSilent}
           error={error}
           onSound={(kind) =>
-            void source.openSound(kind).then((ok) => {
-              if (!ok) toast.show("Couldn't open Android's sound settings");
+            void source.pickRingtone(kind).then((ok) => {
+              if (!ok) toast.show("Couldn't open the ringtone picker");
             })
           }
-          onRing={(ringSeconds) => void run(() => source.setSettings({ ringSeconds }))}
+          onLoopNormal={(loopNormal) => void run(() => source.setSettings({ loopNormal }))}
+          onLoopUrgent={(loopUrgent) => void run(() => source.setSettings({ loopUrgent }))}
+          onReminder={(reminderMinutes) => void run(() => source.setSettings({ reminderMinutes }))}
           onBypassDnd={(bypassDnd) => void run(() => source.setSettings({ bypassDnd }))}
           onBypassSilent={(bypassSilent) => void run(() => source.setSettings({ bypassSilent }))}
           onBack={back}
@@ -240,25 +249,12 @@ export function SettingsHost({ source, nav, onNav, testStatus, onClose }: Settin
             else void run(() => source.fix(id));
           }}
           onSendTest={(delaySeconds) => void sendTest(delaySeconds)}
-          onBattery={() => void source.openBattery()}
           onBack={back}
         />
       );
       break;
     case "about":
       screen = <S7About {...source.about} onBack={back} />;
-      break;
-    case "preferences":
-      screen = (
-        <S8Preferences
-          theme={settings.theme}
-          overlayCards={source.overlayCards}
-          error={error}
-          onTheme={(theme) => void run(() => source.setSettings({ theme }))}
-          onOverlayCards={() => void run(() => source.openOverlay())}
-          onBack={back}
-        />
-      );
       break;
     default:
       screen = (
@@ -268,12 +264,15 @@ export function SettingsHost({ source, nav, onNav, testStatus, onClose }: Settin
           otherClients={otherClientCount(clients, clientId)}
           health={healthRowValue(source.health)}
           version={source.about.title.replace(/^Puck /u, "")}
+          theme={settings.theme}
+          overlayCards={source.overlayCards}
           onThisPhone={() => go("this-phone")}
           onClients={() => go("clients")}
           onSounds={() => go("sounds")}
           onHealth={() => go("health")}
           onAbout={() => go("about")}
-          onPreferences={() => go("preferences")}
+          onTheme={(theme) => void run(() => source.setSettings({ theme }))}
+          onOverlayCards={() => void run(() => source.openOverlay())}
           onSignOut={() => setSigningOut(true)}
           onBack={back}
         />

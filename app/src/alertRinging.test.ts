@@ -10,7 +10,7 @@ const urgentAsking = {
 };
 
 describe("alertRingingPlan", () => {
-  test("normal alerts ring on the shared alerts channel without insistent sound", () => {
+  test("normal alerts ring on the shared alerts channel", () => {
     const plan = alertRingingPlan(
       { priority: "normal", bypassDnd: true, bypassSilent: true },
       { ...DEFAULT_LOCAL_SETTINGS, bypassDnd: "all", bypassSilent: "all" },
@@ -19,8 +19,7 @@ describe("alertRingingPlan", () => {
     );
     expect(plan).toEqual({
       channelId: PUSH_CHANNEL_ID,
-      insistent: false,
-      timeoutMs: 60_000,
+      ringSeconds: 60,
       useAlarmChannel: false,
       bypassDndOnChannel: false,
     });
@@ -29,7 +28,6 @@ describe("alertRingingPlan", () => {
   test("urgent alerts still use urgent bypass channels", () => {
     const plan = alertRingingPlan(urgentAsking, DEFAULT_LOCAL_SETTINGS, undefined, true);
     expect(plan.channelId).toBe(URGENT_CHANNEL.bypass);
-    expect(plan.insistent).toBe(true);
     expect(plan.useAlarmChannel).toBe(true);
   });
 
@@ -41,5 +39,9 @@ describe("alertRingingPlan", () => {
       true,
     );
     expect(plan.channelId).toBe(URGENT_CHANNEL.plain);
+  });
+
+  test("the alert's own ring length is kept for the card and the voice", () => {
+    expect(alertRingingPlan({ ...urgentAsking, ringSeconds: 45 }, DEFAULT_LOCAL_SETTINGS, undefined, true).ringSeconds).toBe(45);
   });
 });

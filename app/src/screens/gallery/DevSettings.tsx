@@ -24,6 +24,7 @@ export function DevSettings({ name }: { name: string }) {
     notifications: sample?.health.notifications ?? null,
     fullScreen: sample?.health.fullScreen ?? null,
     dndAccess: sample?.health.dndAccess ?? null,
+    batteryUnrestricted: sample?.health.batteryUnrestricted ?? null,
     online: sample?.health.online ?? true,
   }));
   const [nav, setNav] = useState<SettingsNav>(() => ({ route: sample?.route ?? "home", testId: null }));
@@ -50,8 +51,8 @@ export function DevSettings({ name }: { name: string }) {
       rename: async (next) =>
         setClients((all) => all.map((client) => (client.id === SAMPLE_THIS_CLIENT_ID ? { ...client, name: next } : client))),
       removeClient: async (id) => setClients((all) => all.filter((client) => client.id !== id)),
-      openSound: async (kind) => {
-        show(`Would open Android's ${kind} sound settings`);
+      pickRingtone: async (kind) => {
+        show(`Would open the ${kind} ringtone picker`);
         return true;
       },
       fix: async (fix) => {
@@ -59,12 +60,12 @@ export function DevSettings({ name }: { name: string }) {
         if (fix === "notifications") setPhone((all) => ({ ...all, notifications: true }));
         else if (fix === "fullScreen") setPhone((all) => ({ ...all, fullScreen: true }));
         else if (fix === "dnd") setPhone((all) => ({ ...all, dndAccess: true }));
+        else if (fix === "battery") setPhone((all) => ({ ...all, batteryUnrestricted: true }));
         else
           setClients((all) =>
             all.map((client) => (client.id === SAMPLE_THIS_CLIENT_ID ? { ...client, hasPushToken: true } : client)),
           );
       },
-      openBattery: async () => show("Would open Puck's app settings"),
       overlayCards: false,
       openOverlay: async () => show("Would open Display over other apps"),
       sendTest: async (delaySeconds) => {
@@ -93,6 +94,7 @@ export function DevSettings({ name }: { name: string }) {
         notifications: fresh.health.notifications,
         fullScreen: fresh.health.fullScreen,
         dndAccess: fresh.health.dndAccess,
+        batteryUnrestricted: fresh.health.batteryUnrestricted,
         online: fresh.health.online,
       });
     }

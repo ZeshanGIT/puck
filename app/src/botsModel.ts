@@ -160,7 +160,7 @@ export function botBlob(bot: Pick<BotListItem, "botId" | "name" | "colour">): Bl
 export type BypassChoice = "default" | BypassMode;
 
 export const BYPASS_CHIPS: readonly { id: BypassChoice; label: string }[] = [
-  { id: "default", label: "Default" },
+  { id: "default", label: "Follow app settings" },
   { id: "off", label: "Off" },
   { id: "urgent", label: "Urgent only" },
   { id: "all", label: "All alerts" },

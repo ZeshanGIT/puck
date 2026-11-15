@@ -7,7 +7,19 @@ type FullScreenNative = {
   hasDndAccess?: () => boolean;
   isLocked?: () => boolean;
   isInCall?: () => boolean;
-  createAlarmChannel?: (id: string, name: string, bypassDnd: boolean, headsUp: boolean) => boolean;
+  createRingChannel?: (
+    id: string,
+    name: string,
+    soundUri: string,
+    stream: string,
+    bypassDnd: boolean,
+    headsUp: boolean,
+  ) => boolean;
+  pickRingtone?: (currentUri: string) => Promise<string | null>;
+  ringtoneTitle?: (soundUri: string) => string | null;
+  isAppInForeground?: () => boolean;
+  isBatteryUnrestricted?: () => boolean;
+  isScreenOn?: () => boolean;
   watchVolumeKeys?: () => boolean;
   requestUnlock?: () => Promise<string>;
   canDrawOverlay?: () => boolean;
@@ -114,26 +126,85 @@ export function isInCall(): boolean {
   }
 }
 
-/** True when this build can create a channel on the alarm audio stream. */
-export function canCreateAlarmChannel(): boolean {
+/** True when this build can create a ringing channel with a chosen ringtone. */
+export function canCreateRingChannel(): boolean {
   try {
-    return typeof nativeModule()?.createAlarmChannel === "function";
+    return typeof nativeModule()?.createRingChannel === "function";
+  } catch {
+    return false;
+  }
+}
+
+/** Which audio stream a ringing channel plays on: the ring volume, or the alarm stream (rings in silent mode). */
+export type RingStream = "ring" | "alarm";
+
+/**
+ * Creates (or finds) a notification channel that plays `soundUri` once (the phone's default
+ * ringtone when it is empty), on the ring stream or on the alarm stream, optionally overriding Do
+ * Not Disturb. `headsUp` false keeps the sound but not the banner over other apps. Settings are
+ * fixed once the channel exists. False when it could not be created.
+ */
+export function createRingChannel(
+  id: string,
+  name: string,
+  soundUri: string,
+  stream: RingStream,
+  bypassDnd: boolean,
+  headsUp: boolean,
+): boolean {
+  try {
+    return nativeModule()?.createRingChannel?.(id, name, soundUri, stream, bypassDnd, headsUp) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Opens the system ringtone picker. Resolves with the chosen ringtone's URI, or null when the person backed out. */
+export async function pickRingtone(currentUri: string): Promise<string | null> {
+  try {
+    return (await nativeModule()?.pickRingtone?.(currentUri)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** A ringtone's name as the system shows it; null when the phone cannot tell. */
+export function ringtoneTitle(soundUri: string): string | null {
+  try {
+    return nativeModule()?.ringtoneTitle?.(soundUri) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** True while a Puck screen is on the display. False when the build cannot tell. */
+export function isAppInForeground(): boolean {
+  try {
+    return nativeModule()?.isAppInForeground?.() === true;
   } catch {
     return false;
   }
 }
 
 /**
- * Creates (or finds) a notification channel that rings on the alarm audio stream, so silent and
- * vibrate mode do not mute it, optionally overriding Do Not Disturb. `headsUp` false keeps the sound
- * but not the banner over other apps. Settings are fixed once the channel exists. False when it
- * could not be created.
+ * True when Puck's battery use is Unrestricted; false when Android may hold alerts back while the
+ * phone is idle. Null when the build cannot tell.
  */
-export function createAlarmChannel(id: string, name: string, bypassDnd: boolean, headsUp: boolean): boolean {
+export function isBatteryUnrestricted(): boolean | null {
   try {
-    return nativeModule()?.createAlarmChannel?.(id, name, bypassDnd, headsUp) === true;
+    const native = nativeModule();
+    return typeof native?.isBatteryUnrestricted === "function" ? native.isBatteryUnrestricted() === true : null;
   } catch {
-    return false;
+    return null;
+  }
+}
+
+/** True while the screen is on. True when the build cannot tell, so nothing is held back for it. */
+export function isScreenOn(): boolean {
+  try {
+    return nativeModule()?.isScreenOn?.() !== false;
+  } catch {
+    return true;
   }
 }
 

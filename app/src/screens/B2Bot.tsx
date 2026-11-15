@@ -1,7 +1,7 @@
 /**
  * B2 Bot detail: one bot's settings. Mute (stored on the backend as `mutedUntil`), whether it may
  * come through Do Not Disturb and silent mode (stored on the phone, Protocol changes section 6),
- * its Sound rows (Android's own settings for the channel), its colour, the details, and Remove with
+ * its own ringtones, how often it reminds about an unanswered urgent alert, its colour, the details, and Remove with
  * tap twice. Prototype: `SCREENS.bot` and the `.chips`, `.swatches`, `.kv` CSS
  * (`vault/Projects/Puck/mockups/Puck prototype.html`); `App screens.md` B2.
  *
@@ -26,17 +26,17 @@ import {
 } from "../botsModel";
 import type { BotBypass, BypassMode } from "../localSettings";
 import type { SoundKind } from "../botSoundSettings";
+import { BOT_REMINDER_CHIPS, reminderChange, reminderChoice, type ReminderChoice } from "../reminderChoices";
 import { fromText } from "../pairingModel";
-import { Glyph, ICON } from "../ui/AlertFrame";
 import { Blob } from "../ui/Blob";
 import { Btn } from "../ui/Btn";
 import { Chip } from "../ui/Chip";
 import { Group } from "../ui/Group";
-import { Row } from "../ui/Row";
 import { useTheme } from "../ui/theme";
 import { fontFamily } from "../ui/tokens";
 import { OnboardingFrame } from "../onboarding/parts";
 import { KvRow, KvText, MAX_FONT_SCALE, NavBar } from "./PairingParts";
+import { SettingsRow, SettingsToggleRow } from "./SettingsParts";
 
 export interface B2BotProps {
   bot: BotListItem;
@@ -44,10 +44,22 @@ export interface B2BotProps {
   /** This bot's local overrides of Do Not Disturb and silent mode. */
   bypass: BotBypass | undefined;
   onMute: (choice: MuteChoice) => void;
-  /** A mode, or null for "Default". */
+  /** A mode, or null to follow app settings. */
   onBypass: (which: "dnd" | "silent", mode: BypassMode | null) => void;
   onColour: (colour: string) => void;
-  onSound: (kind: SoundKind) => void;
+  /** Minutes between reminders, or null to follow app settings. */
+  onReminder: (minutes: number | null) => void;
+  /** This bot's own ringtone for each kind of alert, by name; null when it follows the default. */
+  normalRingtone: string | null;
+  urgentRingtone: string | null;
+  /** Opens the ringtone picker for this bot. */
+  onRingtone: (kind: SoundKind) => void;
+  /** What Alert sounds says about repeating, which this bot follows unless it has its own. */
+  appLoop: { normal: boolean; urgent: boolean };
+  /** Turns repeating on or off for this bot. */
+  onLoop: (kind: SoundKind, loop: boolean) => void;
+  /** Follows Alert sounds again for this kind of alert: the ringtone and repeating. */
+  onResetSound: (kind: SoundKind) => void;
   /** The second tap of Remove. */
   onRemove: () => void;
   onBack: () => void;
@@ -64,7 +76,13 @@ export function B2Bot({
   onMute,
   onBypass,
   onColour,
-  onSound,
+  onReminder,
+  normalRingtone,
+  urgentRingtone,
+  onRingtone,
+  appLoop,
+  onLoop,
+  onResetSound,
   onRemove,
   onBack,
   busy = false,
@@ -117,28 +135,47 @@ export function B2Bot({
           current={bypassChoice(bypass, "silent")}
           onChoose={(choice) => onBypass("silent", bypassChange(choice))}
         />
-        <Caption>Only when {bot.name} asks. Default follows Alert sounds (urgent only).</Caption>
+        <Caption>Only when {bot.name} asks. Follow app settings uses Alert sounds in Settings (urgent only).</Caption>
 
-        <Section label="Sound" />
-        <Group>
-          <Row
-            title="Normal alerts"
-            value="Default"
-            leading={<IconTile d={ICON.sound} />}
-            chevron
-            onPress={() => onSound("normal")}
-            testID="sound-normal"
-          />
-          <Row
-            title="Urgent alerts"
-            value="Default"
-            leading={<IconTile d={ICON.alarm} />}
-            chevron
-            onPress={() => onSound("urgent")}
-            testID="sound-urgent"
-          />
-        </Group>
-        <Caption>Opens Android's sound settings. Every bot shares them for now.</Caption>
+        <SoundSection
+          title="Normal alerts"
+          kind="normal"
+          ringtone={normalRingtone}
+          loop={bypass?.loopNormal ?? appLoop.normal}
+          following={normalRingtone === null && bypass?.loopNormal === undefined}
+          onRingtone={onRingtone}
+          onLoop={onLoop}
+          onReset={onResetSound}
+        />
+        <SoundSection
+          title="Urgent alerts"
+          kind="urgent"
+          ringtone={urgentRingtone}
+          loop={bypass?.loopUrgent ?? appLoop.urgent}
+          following={urgentRingtone === null && bypass?.loopUrgent === undefined}
+          onRingtone={onRingtone}
+          onLoop={onLoop}
+          onReset={onResetSound}
+        />
+        <Caption>
+          These apply to {bot.name} only. Until you change one, it follows app settings.
+        </Caption>
+
+        <Section label="Remind me" />
+        <View style={styles.chips}>
+          {BOT_REMINDER_CHIPS.map((chip) => (
+            <Chip
+              key={String(chip.id)}
+              label={chip.label}
+              selected={chip.id === reminderChoice(bypass)}
+              onPress={() => onReminder(reminderChange(chip.id as ReminderChoice))}
+              testID={`reminder-${chip.id}`}
+            />
+          ))}
+        </View>
+        <Caption>
+          How often an urgent alert from {bot.name} rings again while nobody has answered it. Follow app settings uses Alert sounds in Settings.
+        </Caption>
 
         <Section label="Colour" />
         <View style={styles.swatches}>
@@ -193,6 +230,64 @@ export function B2Bot({
   );
 }
 
+/**
+ * One kind of alert's sound on a bot's page: its ringtone, whether it repeats, and, once either is
+ * the bot's own, a row that puts the bot back on Alert sounds. Built from the same rows as the Alert
+ * sounds screen, so the two read alike.
+ */
+function SoundSection({
+  title,
+  kind,
+  ringtone,
+  loop,
+  following,
+  onRingtone,
+  onLoop,
+  onReset,
+}: {
+  title: string;
+  kind: SoundKind;
+  /** The bot's own ringtone by name; null when it follows app settings. */
+  ringtone: string | null;
+  loop: boolean;
+  /** Nothing here is the bot's own: it follows app settings entirely. */
+  following: boolean;
+  onRingtone: (kind: SoundKind) => void;
+  onLoop: (kind: SoundKind, loop: boolean) => void;
+  onReset: (kind: SoundKind) => void;
+}) {
+  return (
+    <>
+      <Section label={title} />
+      <Group>
+        <SettingsRow
+          icon="bell"
+          label="Ringtone"
+          value={ringtone ?? "Follows app settings"}
+          onPress={() => onRingtone(kind)}
+          testID={`sound-${kind}`}
+        />
+        <SettingsToggleRow
+          icon="sound"
+          label="Repeat the ringtone"
+          value={loop}
+          onChange={(next) => onLoop(kind, next)}
+          testID={`sound-${kind}-loop`}
+        />
+        {following ? null : (
+          <SettingsRow
+            icon="undo"
+            label="Follow app settings"
+            chevron={false}
+            onPress={() => onReset(kind)}
+            testID={`sound-${kind}-reset`}
+          />
+        )}
+      </Group>
+    </>
+  );
+}
+
 function BypassChips({
   which,
   current,
@@ -235,15 +330,6 @@ function Caption({ children, testID }: { children: string | string[]; testID?: s
   );
 }
 
-/** `.gi`: a 34 dp tile with the icon in it. */
-function IconTile({ d }: { d: string }) {
-  const t = useTheme().tokens;
-  return (
-    <View style={[styles.tile, { backgroundColor: t.card }]}>
-      <Glyph d={d} size={18} colour={t.ink} width={2.1} />
-    </View>
-  );
-}
 
 const styles = StyleSheet.create({
   scroll: { paddingBottom: 28 },

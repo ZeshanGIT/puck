@@ -2,6 +2,16 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## Alert sounds and reminders (2026-11-15)
+
+Behaviour is decided in the vault: `Projects/Puck/docs/Alert sounds and reminders.md`. Alerts now play a ringtone from the phone's ringtone collection instead of a notification tone. Normal and urgent have their own choice, a bot can have its own, and each kind of alert has a Repeat switch (off: the ringtone plays once to its end). Ringing channels carry the ringtone in their id, because Android fixes a channel's sound when it is created; `removeStaleRingChannels` deletes the ones no choice uses. An urgent alert that gets past silent mode rings on the alarm stream, at the phone's alarm volume. Puck never changes the phone's volume.
+
+An unanswered urgent alert reminds (Off, 2, 5, 10 or 15 minutes; default 5; per bot) with up to 12 notifications scheduled through Notifee when it rings, so they come with the app closed. Answering, snoozing or dismissing cancels them.
+
+The card no longer shows while Puck is on screen, while the screen is off, or while locked, and it goes away when Puck comes to the front (`Presence` and `isAppInForeground` in the native module). Settings lost its Preferences screen (Appearance and Alert cards over apps are on the home list). Alert health has an optional "Unrestricted battery use" row that warns but does not count as a problem. The "Urgent rings for" setting is gone; an alert's own `ringSeconds` still bounds its card, voice and a repeating ringtone.
+
+Checks: typecheck, 957 tests. Built as a debug build and installed on the Pixel; the sound behaviours still need the owner's checks on the phone (silent, Do Not Disturb, reminders, repeat, per-bot ringtones, battery row).
+
 ## Release trial and card opening (2026-11-11)
 
 The single-choice alert is the acceptance target for the owner's bot trial. A release APK with embedded JavaScript was installed with `adb install -r` on the Pixel, preserving data. All 923 unit tests and workspace typechecks passed; existing app-wide lint failures remain. The normal single-choice question appeared full-screen while locked. The final release was installed at 05:01:58 IST. The unlocked card showed the question, tapping it opened that same question with no Home flash in the captured transition, and tapping Yes twice stored the answer and delivered its webhook on the first attempt. A cold launch can still show Puck’s opening/connecting screen; this is not a guarantee of instant cold startup.

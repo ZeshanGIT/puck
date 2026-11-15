@@ -27,7 +27,7 @@ export interface RowProps {
   detail?: string;
   detailIcon?: ReactNode;
   detailTone?: RowDetailTone;
-  /** `.val`: right-aligned value such as "Default" or "All good". */
+  /** `.val`: right-aligned value such as "Follows app settings" or "All good". */
   value?: string;
   /** Left slot: the bot blob, or a `.gi` icon tile. */
   leading?: ReactNode;

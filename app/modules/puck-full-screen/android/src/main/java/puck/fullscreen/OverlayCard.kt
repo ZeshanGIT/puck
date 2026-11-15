@@ -199,6 +199,12 @@ internal object OverlayCard {
         result?.invoke(false)
         return@post
       }
+      // Puck came to the front (a full-screen alert, or the person opened it) while this card was on
+      // its way: the card is not needed. Counts as handled, so no second ring is posted for it.
+      if (Presence.inFront) {
+        result?.invoke(true)
+        return@post
+      }
       removeView()
       cover?.let { removeCover(it) }
       val root = buildView(app, card)

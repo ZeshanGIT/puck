@@ -8,13 +8,11 @@ import {
 } from "./localSettings";
 
 export interface RingingPlan {
-  /** Android notification channel id for the incoming presentation. */
+  /** Android notification channel id (before the ringtone is added, see `ringChannelId`). */
   channelId: string;
-  /** Urgent alerts repeat sound until timeout; normal plays the channel sound once. */
-  insistent: boolean;
-  /** Android cancels the ringing notification after this many milliseconds. */
-  timeoutMs: number | undefined;
-  /** Whether to create an alarm-style channel (urgent + silent bypass only). */
+  /** How long the card and the spoken text stay up before the alert settles into a quiet copy. The ringtone plays once, to the end. */
+  ringSeconds: number;
+  /** Whether the channel is on the alarm stream, so it rings in silent mode (urgent + silent bypass only). */
   useAlarmChannel: boolean;
   bypassDndOnChannel: boolean;
 }
@@ -22,7 +20,7 @@ export interface RingingPlan {
 /**
  * How a full-screen push should ring on the phone. Normal alerts always use the shared
  * `puck-alerts` channel so they never pick up urgent bypass channels (see bypass QA matrix).
- * Urgent alerts use the existing per-decision urgent channels.
+ * Urgent alerts use the existing per-decision urgent channels. Neither repeats its ringtone.
  */
 export function alertRingingPlan(
   alert: {
@@ -35,24 +33,20 @@ export function alertRingingPlan(
   botId: string | undefined,
   alarmChannelsCapable: boolean,
 ): RingingPlan {
+  const ringSeconds = ringSecondsFor(alert.ringSeconds);
   if (alert.priority === "normal") {
-    const seconds = ringSecondsFor(alert.ringSeconds, settings);
     return {
       channelId: PUSH_CHANNEL_ID,
-      insistent: false,
-      timeoutMs: seconds * 1000,
+      ringSeconds,
       useAlarmChannel: false,
       bypassDndOnChannel: false,
     };
   }
   const decision = bypassDecision(alert, settings, botId);
   const useAlarm = decision.silent && alarmChannelsCapable;
-  const channelId = urgentChannelId(decision, alarmChannelsCapable);
-  const seconds = ringSecondsFor(alert.ringSeconds, settings);
   return {
-    channelId,
-    insistent: true,
-    timeoutMs: seconds * 1000,
+    channelId: urgentChannelId(decision, alarmChannelsCapable),
+    ringSeconds,
     useAlarmChannel: useAlarm,
     bypassDndOnChannel: decision.dnd,
   };

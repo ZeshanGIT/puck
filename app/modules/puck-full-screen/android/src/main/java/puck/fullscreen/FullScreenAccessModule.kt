@@ -6,12 +6,16 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.app.Activity.RESULT_OK
+import android.app.ActivityManager
 import android.content.Intent
 import android.graphics.Color
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.view.KeyEvent
 import android.view.Window
 import java.util.concurrent.atomic.AtomicBoolean
@@ -24,7 +28,10 @@ import expo.modules.kotlin.modules.ModuleDefinition
  * (Do Not Disturb access). Notifee exposes neither.
  *
  * Also the pieces of an urgent alert that Notifee cannot do (card T34):
- * - createAlarmChannel: a channel on the alarm audio stream, so it rings in silent mode.
+ * - createRingChannel: a channel that plays a chosen ringtone, on the ring stream or on the alarm
+ *   stream (so it rings in silent mode).
+ * - pickRingtone / ringtoneTitle: the system ringtone picker, and a ringtone's name.
+ * - isAppInForeground / isScreenOn: whether Puck is already on screen, so the card stays away.
  * - isLocked: the keyguard is showing, so the screen is over the lock screen.
  * - isInCall: the phone is in a call (no permission needed: AudioManager.getMode()).
  * - volume keys: an "onVolumeKey" event when a volume key goes down in the app's window, so a
@@ -142,22 +149,23 @@ class FullScreenAccessModule : Module() {
       }
     }
 
-    // A channel whose sound plays on the alarm stream, so silent and vibrate mode do not mute it.
-    // Optionally also set to override Do Not Disturb (Puck needs Do Not Disturb access for that to
-    // apply). A channel's settings are fixed once it exists, so each combination has its own id.
-    // Without headsUp the channel is DEFAULT importance: it keeps the sound but no heads-up banner,
-    // so the banner cannot cover the compact card.
+    // A channel that plays `soundUri` (the phone's default ringtone when empty), once. `stream` is
+    // "ring" (follows the ring volume, silent mode mutes it) or "alarm" (the alarm audio stream, so
+    // silent and vibrate mode do not mute it). Optionally also set to override Do Not Disturb (Puck
+    // needs Do Not Disturb access for that to apply). A channel's settings are fixed once it exists,
+    // so each combination, ringtone included, has its own id. Without headsUp the channel is DEFAULT
+    // importance: it keeps the sound but no heads-up banner, so the banner cannot cover the card.
     // Returns false when the channel could not be created (Android 7 and older, or an error).
-    Function("createAlarmChannel") { id: String, name: String, bypassDnd: Boolean, headsUp: Boolean ->
+    Function("createRingChannel") { id: String, name: String, soundUri: String, stream: String, bypassDnd: Boolean, headsUp: Boolean ->
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@Function false
       val context = appContext.reactContext ?: return@Function false
       try {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-          ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val sound = ringtoneUri(soundUri)
+        val alarm = stream == "alarm"
         val attributes = AudioAttributes.Builder()
-          .setUsage(AudioAttributes.USAGE_ALARM)
-          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+          .setUsage(if (alarm) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+          .setContentType(if (alarm) AudioAttributes.CONTENT_TYPE_SONIFICATION else AudioAttributes.CONTENT_TYPE_MUSIC)
           .build()
         val importance = if (headsUp) NotificationManager.IMPORTANCE_HIGH else NotificationManager.IMPORTANCE_DEFAULT
         val channel = NotificationChannel(id, name, importance)
@@ -173,6 +181,73 @@ class FullScreenAccessModule : Module() {
       }
     }
 
+    // Opens the system ringtone picker (the ringtone collection, not the notification tones) and
+    // resolves with the chosen ringtone's URI, or null when the person backed out.
+    AsyncFunction("pickRingtone") { currentUri: String, promise: Promise ->
+      val activity = appContext.currentActivity
+      if (activity == null) {
+        promise.resolve(null)
+        return@AsyncFunction
+      }
+      try {
+        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+          putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_RINGTONE)
+          putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+          putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+          putExtra(RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
+          putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, ringtoneUri(currentUri))
+        }
+        pickerPromise?.resolve(null)
+        pickerPromise = promise
+        activity.startActivityForResult(intent, PICK_RINGTONE_REQUEST)
+      } catch (error: Exception) {
+        pickerPromise = null
+        promise.resolve(null)
+      }
+    }
+
+    OnActivityResult { _, payload ->
+      if (payload.requestCode == PICK_RINGTONE_REQUEST) {
+        val promise = pickerPromise
+        pickerPromise = null
+        val picked = if (payload.resultCode == RESULT_OK) pickedUri(payload.data) else null
+        promise?.resolve(picked?.toString())
+      }
+    }
+
+    // The ringtone's name as the system shows it ("Default ringtone (Flutey Phone)" for the default).
+    Function("ringtoneTitle") { soundUri: String ->
+      val context = appContext.reactContext ?: return@Function null
+      try {
+        RingtoneManager.getRingtone(context, ringtoneUri(soundUri))?.getTitle(context)
+      } catch (error: Exception) {
+        null
+      }
+    }
+
+    // True when Puck's battery use is Unrestricted (not subject to battery optimization), which is
+    // what lets an alert through while the phone is idle. Needs no permission.
+    Function("isBatteryUnrestricted") {
+      val context = appContext.reactContext ?: return@Function false
+      val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+      power.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    // True while a Puck screen is on the display. The compact card has no business over Puck itself.
+    Function("isAppInForeground") {
+      if (Presence.inFront) return@Function true
+      // Also asks Android, for an activity that was already on screen before this module started.
+      val info = ActivityManager.RunningAppProcessInfo()
+      ActivityManager.getMyMemoryState(info)
+      info.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+    }
+
+    // True while the screen is on. A screen that is off is woken by the full-screen alert instead.
+    Function("isScreenOn") {
+      val context = appContext.reactContext ?: return@Function true
+      (context.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive
+    }
+
     // Starts reporting volume key presses in the current window. Also done each time the app
     // comes to the front, because an alert can open a new activity (and a new window).
     Function("watchVolumeKeys") {
@@ -181,7 +256,14 @@ class FullScreenAccessModule : Module() {
     }
 
     OnActivityEntersForeground {
+      Presence.inFront = true
+      // Puck is on screen now (the person opened it, or a full-screen alert did): the card is not needed.
+      OverlayCard.hide(null)
       appContext.currentActivity?.let { watchVolumeKeys(it) }
+    }
+
+    OnActivityEntersBackground {
+      Presence.inFront = false
     }
 
     // A tap on the compact card while the app is already running: JavaScript opens that alert.
@@ -304,6 +386,19 @@ class FullScreenAccessModule : Module() {
     }
   }
 
+  private var pickerPromise: Promise? = null
+
+  private fun ringtoneUri(value: String): Uri =
+    if (value.isBlank()) RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE) else Uri.parse(value)
+
+  @Suppress("DEPRECATION")
+  private fun pickedUri(data: Intent?): Uri? =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+    } else {
+      data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+    }
+
   private fun watchVolumeKeys(activity: Activity) {
     activity.runOnUiThread {
       val window = activity.window
@@ -330,4 +425,11 @@ private class VolumeKeyCallback(
     if (volumeKey && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) onVolumeKey()
     return original.dispatchKeyEvent(event)
   }
+}
+
+private const val PICK_RINGTONE_REQUEST = 7301
+
+/** Whether a Puck screen is on the display, kept by the activity events so a background alert can read it. */
+internal object Presence {
+  @Volatile var inFront: Boolean = false
 }

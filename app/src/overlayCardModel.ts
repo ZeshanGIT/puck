@@ -15,14 +15,19 @@ export interface OverlayCardInput {
   allowed: boolean;
   /** A phone call is running: the alert waits for it to end, as before. */
   inCall: boolean;
+  /** A Puck screen is already on the display (the app is open, or a full-screen alert is up). */
+  appOpen: boolean;
+  /** The screen is on. When it is off, the full-screen alert wakes it and covers it. */
+  screenOn: boolean;
 }
 
 /**
- * A locked phone keeps the full-screen alert (it covers the lock screen), so the card is only for
- * an unlocked phone, and only when the person has allowed it.
+ * The card is only for an unlocked phone, with the screen on, while the person is in another app,
+ * and only when they have allowed it. A locked phone, a screen that is off, or Puck already open
+ * all show the full-screen alert instead, and the card must not appear on top of it.
  */
 export function shouldShowOverlayCard(input: OverlayCardInput): boolean {
-  return input.locked === false && input.allowed && !input.inCall;
+  return input.locked === false && input.allowed && !input.inCall && !input.appOpen && input.screenOn;
 }
 
 export interface OverlayCardText {

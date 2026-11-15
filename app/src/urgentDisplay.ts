@@ -1,14 +1,23 @@
-import notifee, { AndroidImportance, AndroidVisibility, EventType, type Event } from "@notifee/react-native";
+import notifee, {
+  AlarmType,
+  AndroidImportance,
+  AndroidVisibility,
+  EventType,
+  TriggerType,
+  type Event,
+} from "@notifee/react-native";
 import { PUSH_CHANNEL_ID } from "@puck/shared";
 import { alertRingingPlan } from "./alertRinging";
 import {
-  canCreateAlarmChannel,
+  canCreateRingChannel,
   canDrawOverlay,
-  createAlarmChannel,
+  createRingChannel,
   hideOverlayCard,
   hasDndAccess,
+  isAppInForeground,
   isInCall,
   isLocked,
+  isScreenOn,
   showOverlayCard,
 } from "puck-full-screen";
 import { useEffect, useState } from "react";
@@ -18,13 +27,17 @@ import {
   cardChannelId,
   isNight,
   loadLocalSettings,
-  ringSecondsFor,
+  loopsFor,
+  reminderMinutesFor,
+  ringtoneFor,
   URGENT_CHANNEL,
   urgentChannelId,
   type BypassDecision,
   type LocalSettings,
 } from "./localSettings";
 import { handleLivePush } from "./liveNotification";
+import { allReminderIds, reminderId, reminderTimes } from "./reminders";
+import { ringChannelId } from "./ringChannels";
 import { systemIsDark } from "./overlayCard";
 import { overlayBotLook, overlayCardText, overlayPalette, shouldShowOverlayCard } from "./overlayCardModel";
 import { botLook } from "./ui/botLook";
@@ -36,20 +49,24 @@ import { speechText, startSpeaking } from "./speak";
 import { themeIsDark } from "./ui/themePreference";
 
 /**
- * A full-screen alert on the phone (A4). Urgent alerts ring insistently; normal alerts use the
- * standard alerts channel with one sound. Both may request full-screen presentation via Notifee's
- * `loopSound` sets Android's FLAG_INSISTENT, which repeats the channel's sound and vibration until
- * the notification is cancelled, and `timeoutAfter` makes Android cancel it after `ringSeconds`
- * even when no JavaScript is running. Answering, swiping it away or a volume key stops it sooner.
- * When the ring ends (or is silenced) a quiet copy takes its place in the shade, and the alert
- * screen itself stays up.
+ * A full-screen alert on the phone (A4). Normal and urgent alerts each play the ringtone the person
+ * chose for them (a bot can have its own), through to its end: the channel plays it, on the ring
+ * volume, or on the alarm stream for an urgent alert that bypasses silent mode. It plays once
+ * unless the person turned on repeating for that kind of alert, which loops it until the ring time is up. Answering,
+ * swiping it away or a volume key stops it sooner. After `ringSeconds` (or when it is silenced) a
+ * quiet copy takes its place in the shade, and the alert screen itself stays up.
+ *
+ * An urgent alert that nobody answers reminds: it rings again every few minutes (`reminders.ts`,
+ * the person's choice, per bot), as notifications scheduled with Android, so they come even when
+ * the app is closed. Answering, snoozing or dismissing the alert cancels them.
  *
  * Which channel it rings on follows the alert's flags and the local settings (Q6, `bypassDecision`):
- * a channel's sound and Do Not Disturb setting are fixed once created, so each decision has one.
+ * a channel's sound and Do Not Disturb setting are fixed once created, so each decision and each
+ * ringtone has one (`ringChannels.ts`).
  * During a phone call there is only a short vibration; the alert rings when the call ends (Q18).
  */
 
-/** Android cancels the ringing notification at `ringSeconds`; ours is replaced a moment later. */
+/** After `ringSeconds` the ringing notification is replaced by the quiet copy, a moment after the card and voice stop. */
 const QUIET_DELAY_MS = 1500;
 /** How often an alert that met a phone call checks whether the call is over. */
 const CALL_POLL_MS = 2000;
@@ -88,16 +105,25 @@ function serialize(id: string, work: () => Promise<void>): Promise<void> {
  * notification is posted: a card means a quiet-banner channel, so no heads-up covers the card.
  */
 function overlayCardWanted(): boolean {
-  return shouldShowOverlayCard({ locked: isLocked(), allowed: canDrawOverlay(), inCall: false });
+  return shouldShowOverlayCard({
+    locked: isLocked(),
+    allowed: canDrawOverlay(),
+    inCall: false,
+    appOpen: isAppInForeground(),
+    screenOn: isScreenOn(),
+  });
 }
 
-/** Normal full-screen alerts always use the shared `puck-alerts` channel (not urgent bypass). */
-async function ensureNormalChannel(card: boolean): Promise<string> {
-  const id = card ? cardChannelId(PUSH_CHANNEL_ID) : PUSH_CHANNEL_ID;
+/** Normal full-screen alerts always use the shared `puck-alerts` channel (not urgent bypass), with the normal ringtone. */
+async function ensureNormalChannel(card: boolean, ringtone: string): Promise<string> {
+  const id = ringChannelId(card ? cardChannelId(PUSH_CHANNEL_ID) : PUSH_CHANNEL_ID, ringtone);
+  const name = card ? "Alerts on the card" : "Alerts";
+  if (canCreateRingChannel() && createRingChannel(id, name, ringtone, "ring", false, !card)) return id;
   await notifee.createChannel({
     id,
-    name: card ? "Alerts on the card" : "Alerts",
+    name,
     importance: card ? AndroidImportance.DEFAULT : AndroidImportance.HIGH,
+    // Notifee is silent unless this is set. "default" is the system notification sound.
     sound: "default",
     vibration: true,
     visibility: AndroidVisibility.PUBLIC,
@@ -106,21 +132,28 @@ async function ensureNormalChannel(card: boolean): Promise<string> {
   return id;
 }
 
-async function ensureChannel(decision: BypassDecision, card: boolean): Promise<string> {
-  const alarm = decision.silent && canCreateAlarmChannel();
-  const id = urgentChannelId(decision, alarm, card);
+async function ensureChannel(decision: BypassDecision, card: boolean, ringtone: string): Promise<string> {
+  const alarm = decision.silent && canCreateRingChannel();
+  const id = ringChannelId(urgentChannelId(decision, alarm, card), ringtone);
   const label = decision.dnd ? "Urgent alerts (Do Not Disturb)" : "Urgent alerts";
-  if (alarm) {
-    const name = decision.dnd ? "Urgent alerts (alarm, Do Not Disturb)" : "Urgent alerts (alarm)";
-    if (createAlarmChannel(id, card ? `${name}, on the card` : name, decision.dnd, !card)) return id;
-    // The native channel failed: ring on the notification stream instead.
-    return ensureChannel({ ...decision, silent: false }, card);
+  const name = alarm
+    ? decision.dnd
+      ? "Urgent alerts (alarm, Do Not Disturb)"
+      : "Urgent alerts (alarm)"
+    : label;
+  const channelName = card ? `${name}, on the card` : name;
+  if (
+    canCreateRingChannel() &&
+    createRingChannel(id, channelName, ringtone, alarm ? "alarm" : "ring", decision.dnd, !card)
+  ) {
+    return id;
   }
+  // The native channel failed: ring on the notification stream instead.
+  if (alarm) return ensureChannel({ ...decision, silent: false }, card, ringtone);
   await notifee.createChannel({
     id,
-    name: card ? `${label}, on the card` : label,
+    name: channelName,
     importance: card ? AndroidImportance.DEFAULT : AndroidImportance.HIGH,
-    // Notifee is silent unless this is set. "default" is the system ringtone.
     sound: "default",
     vibration: true,
     visibility: AndroidVisibility.PUBLIC,
@@ -156,11 +189,12 @@ async function ensureWaitingChannel(): Promise<string> {
 
 /* ------------------------------------------------------------ notifications */
 
-async function postRinging(
-  alert: FullScreenAlert,
-  channelId: string,
-  plan: { insistent: boolean; timeoutMs: number | undefined },
-): Promise<void> {
+/**
+ * `loopMs` is set when the person asked for the ringtone to repeat: Android then repeats the
+ * channel's sound until the notification is cancelled, and it cancels it after `loopMs`, even with
+ * no JavaScript running. Without it the ringtone plays once.
+ */
+async function postRinging(alert: FullScreenAlert, channelId: string, loopMs: number | null): Promise<void> {
   await notifee.displayNotification({
     id: alert.questionId,
     title: alert.botName,
@@ -172,10 +206,65 @@ async function postRinging(
       fullScreenAction: { id: "default" },
       visibility: AndroidVisibility.PUBLIC,
       tag: alert.questionId,
-      ...(plan.insistent ? { loopSound: true } : {}),
-      ...(plan.timeoutMs !== undefined ? { timeoutAfter: plan.timeoutMs } : {}),
+      ...(loopMs !== null ? { loopSound: true, timeoutAfter: loopMs } : {}),
     },
   });
+}
+
+/* ---------------------------------------------------------------- reminders */
+
+/** Cancels every reminder an alert has, scheduled or already showing. */
+async function cancelReminders(questionId: string): Promise<void> {
+  await Promise.all(
+    allReminderIds(questionId).map(async (id) => {
+      try {
+        await notifee.cancelNotification(id);
+      } catch {
+        // Not scheduled, or already gone.
+      }
+    }),
+  );
+}
+
+/**
+ * Schedules the reminders for an urgent alert that is ringing now. They are Android's own scheduled
+ * notifications (so they come with the app closed), each on the alert's ringing channel with no
+ * full screen, and each clears itself when the next arrives.
+ */
+async function scheduleReminders(
+  alert: FullScreenAlert,
+  settings: LocalSettings,
+  decision: BypassDecision,
+  ringtone: string,
+): Promise<void> {
+  await cancelReminders(alert.questionId);
+  const minutes = reminderMinutesFor(settings, alert.botId);
+  const times = reminderTimes(Date.now(), minutes);
+  if (times.length === 0) return;
+  const channelId = await ensureChannel(decision, false, ringtone);
+  for (const [index, timestamp] of times.entries()) {
+    await notifee.createTriggerNotification(
+      {
+        id: reminderId(alert.questionId, index + 1),
+        title: alert.botName,
+        subtitle: "Still waiting",
+        body: alert.question,
+        data: { questionId: alert.questionId },
+        android: {
+          channelId,
+          pressAction: { id: "default" },
+          visibility: AndroidVisibility.PUBLIC,
+          timeoutAfter: minutes * 60_000,
+        },
+      },
+      {
+        type: TriggerType.TIMESTAMP,
+        timestamp,
+        // Inexact, so it needs no special permission, and it still comes while the phone dozes.
+        alarmManager: { type: AlarmType.SET_AND_ALLOW_WHILE_IDLE },
+      },
+    );
+  }
 }
 
 /** The same alert without sound or the full screen. Replaces whatever is in the shade for it. */
@@ -236,20 +325,21 @@ function settle(questionId: string): Promise<void> {
 }
 
 async function startRinging(alert: FullScreenAlert, settings: LocalSettings, version: number): Promise<void> {
-  const plan = alertRingingPlan(alert, settings, alert.botId, canCreateAlarmChannel());
-  const seconds =
-    plan.timeoutMs !== undefined ? Math.max(1, Math.round(plan.timeoutMs / 1000)) : ringSecondsFor(alert.ringSeconds, settings);
+  const plan = alertRingingPlan(alert, settings, alert.botId, canCreateRingChannel());
+  const seconds = plan.ringSeconds;
+  const ringtone = ringtoneFor(settings, alert.botId, alert.priority);
   const card = overlayCardWanted();
   let channelId: string;
+  let decision: BypassDecision | null = null;
   if (alert.priority === "urgent") {
     // Do Not Disturb access is what lets the channel override it; without it the alert rings normally.
-    const decision = {
+    decision = {
       dnd: plan.bypassDndOnChannel && hasDndAccess() === true,
       silent: plan.useAlarmChannel,
     };
-    channelId = await ensureChannel(decision, card);
+    channelId = await ensureChannel(decision, card, ringtone);
   } else {
-    channelId = await ensureNormalChannel(card);
+    channelId = await ensureNormalChannel(card, ringtone);
   }
   if (revision(alert.questionId) !== version) return;
   forget(alert.questionId);
@@ -269,13 +359,21 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings, ver
         : null,
   };
   rings.set(alert.questionId, ring);
-  await postRinging(alert, channelId, plan);
+  await postRinging(alert, channelId, loopsFor(settings, alert.priority, alert.botId) ? seconds * 1000 : null);
+  if (decision !== null && revision(alert.questionId) === version) {
+    try {
+      await scheduleReminders(alert, settings, decision, ringtone);
+    } catch {
+      // The alert has rung. Missing reminders are not worth failing it for.
+    }
+  }
   if (card && revision(alert.questionId) === version) await showCard(alert, settings, version);
 }
 
 /** On an unlocked phone the alert also shows as a compact card over other apps (when allowed). */
 async function showCard(alert: FullScreenAlert, settings: LocalSettings, version: number): Promise<void> {
   const dark = themeIsDark(settings.theme, await systemIsDark());
+  const plan = alertRingingPlan(alert, settings, alert.botId, canCreateRingChannel());
   if (revision(alert.questionId) !== version) return;
   const bot = botLook({ botId: alert.botId ?? alert.botName, botName: alert.botName });
   const shown = await showOverlayCard({
@@ -287,17 +385,20 @@ async function showCard(alert: FullScreenAlert, settings: LocalSettings, version
   // A refused card leaves only the notification, which is hard to tell from "no card was tried".
   if (!shown && revision(alert.questionId) === version) {
     // A denied or refused overlay must retain a visible heads-up fallback.
+    const ringtone = ringtoneFor(settings, alert.botId, alert.priority);
     const fallback = alert.priority === "normal"
-      ? await ensureNormalChannel(false)
-      : await ensureChannel({ dnd: false, silent: false }, false);
+      ? await ensureNormalChannel(false, ringtone)
+      : await ensureChannel({ dnd: false, silent: false }, false, ringtone);
     if (revision(alert.questionId) === version) {
-      await postRinging(alert, fallback, alertRingingPlan(alert, settings, alert.botId, canCreateAlarmChannel()));
+      await postRinging(alert, fallback, loopsFor(settings, alert.priority, alert.botId) ? plan.ringSeconds * 1000 : null);
     }
   }
 }
 
 /** The card was dismissed or snoozed: stop this alert's voice and quiet its ring, keeping it in the shade. */
 export function silenceCardAlert(questionId: string): Promise<void> {
+  // Dismissing or snoozing from the card ends the reminders too.
+  void cancelReminders(questionId);
   return settle(questionId);
 }
 
@@ -386,6 +487,7 @@ export function clearDisplayedAlert(questionId: string): Promise<void> {
     forget(questionId);
     afterCall.delete(questionId);
     try { await notifee.cancelNotification(questionId, questionId); } catch { /* already gone */ }
+    await cancelReminders(questionId);
   });
 }
 
@@ -398,6 +500,8 @@ export async function handleNotifeeEvent(event: Event): Promise<void> {
   if (event.type === EventType.DISMISSED) {
     forget(questionId);
     afterCall.delete(questionId);
+    // Swiping the alert (or a reminder) away ends the reminders.
+    await cancelReminders(questionId);
   } else if (event.type === EventType.PRESS) {
     const ring = rings.get(questionId);
     // Tapping cancels the notification and so the loop. The voice carries on until the ring time.
