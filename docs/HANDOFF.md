@@ -2,6 +2,10 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## Card or full screen while in use (2026-11-15)
+
+`fullScreenNormal` and `fullScreenUrgent` in local settings (default false, the card), with per-bot overrides read by `fullScreenFor`. `inUsePresentation` picks card, full screen or neither from the card's conditions; full screen calls native `openAlertFullScreen` (`OverlayCard.openFullScreen`, the card tap's opening without the card), falling back to the card if refused. The ring uses the quiet-banner channel either way. `openApp` waits two frames after adding a new cover before starting Puck. Switches: Alert sounds (S4) and the bot page (B2) sound sections. Owner check on the phone pending.
+
 ## Card shadow, edge, font and pull-down (2026-11-15)
 
 The pull-down used to drop the card by a status bar's height and show the reply field in its place, then snap back on cancel. Causes: the full-screen sheet window that draws the pull was fitted below the status bar (Android 11+ fits windows to system bars unless `fitInsetsTypes = 0`; `FLAG_LAYOUT_IN_SCREEN` no longer does it), while the card copy was placed by screen position; and the reply area stayed visible behind the card after a right swipe sprang back. `fullScreenParams()` now opts the sheet and the opening cover out of insets and cutouts, the copy is placed relative to the sheet's measured position (logged once per pull under the `PuckCard` tag), the copy follows the finger as it grows and eases back on cancel, and under-card layers are shown only by their own gesture. The shadow was clipped by the root view's `clipToPadding`; it is now off, with 20 dp room, 10 dp elevation and a 1.5 dp edge (`overlayPalette().edge`, `#AARRGGBB`). The card uses Nunito from `modules/puck-full-screen/android/src/main/assets/puck-fonts/` (Bold, ExtraBold, Black; OFL), falling back to the system font. Dev build installed on the Pixel; owner check on the phone pending. The upward swipe still resizes the card window mid-drag (`setRoom`).
