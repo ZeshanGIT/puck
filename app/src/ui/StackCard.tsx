@@ -65,6 +65,7 @@ import { useBotTheme, useOnWash, useTheme } from "./theme";
 import { fontFamily, radii } from "./tokens";
 import { haptics, TapTwiceGroup } from "./useTapTwice";
 import { snoozeOf } from "../alertExpiry";
+import { answerFor, isNotice, shownOptions } from "../noticeAnswer";
 
 /** What he answered, as the answered block shows it. */
 export interface StackAnswer {
@@ -348,7 +349,8 @@ type ControlsProps = StackCardProps & {
 function Controls(props: ControlsProps) {
   const { alert } = props;
   if (alert.presentation === "swipe") return <SwipeControls {...props} />;
-  if (alert.selectionMode === "multi") return <MultiControls {...props} />;
+  // A notice is one "Got it" button whatever its selectionMode said.
+  if (alert.selectionMode === "multi" && !isNotice(alert)) return <MultiControls {...props} />;
   return (
     <TapTwiceGroup>
       <SingleControls {...props} />
@@ -378,7 +380,7 @@ function SingleControls({ alert, bot, blob, onLook, expired, status, onAnswer, o
     return () => clearTimeout(id);
   }, []);
 
-  const options = alert.options;
+  const options = shownOptions(alert.options);
   const fyi = options.length === 1;
 
   const onArmedChange = useCallback(
@@ -399,7 +401,8 @@ function SingleControls({ alert, bot, blob, onLook, expired, status, onAnswer, o
       answeredOnce = true;
       armedIds.current.clear();
       onLook(null);
-      onAnswer([optionId]);
+      const answer = answerFor(optionId);
+      onAnswer(answer.optionIds, answer.customReply);
     });
   }
 

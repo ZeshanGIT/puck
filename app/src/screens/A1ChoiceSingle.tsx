@@ -33,6 +33,7 @@ import { Toast, useToast } from "../ui/Toast";
 import { fontFamily } from "../ui/tokens";
 import { haptics, TapTwiceGroup } from "../ui/useTapTwice";
 import { snoozeOf } from "../alertExpiry";
+import { answerFor, shownOptions } from "../noticeAnswer";
 
 export interface A1ChoiceSingleProps {
   alert: PendingAlert;
@@ -130,7 +131,8 @@ function A1Body({ alert, waiting, onAnswer, onReply, onSnooze, night, readingAlo
     setPhase("sending");
     blob.current?.leap();
     try {
-      await onAnswer([optionId]);
+      const answer = answerFor(optionId);
+      await onAnswer(answer.optionIds, answer.customReply);
       if (alive.current) setPhase("sent");
     } catch (caught) {
       if (!alive.current) return;
@@ -152,7 +154,7 @@ function A1Body({ alert, waiting, onAnswer, onReply, onSnooze, night, readingAlo
   }
 
   const comingLater = () => toast.show("Coming in a later step");
-  const options = alert.options;
+  const options = shownOptions(alert.options);
   const fyi = options.length === 1;
   const expired = expiry?.expired === true;
   // `size = ... (a.options.some(o=>o.desc) ? (a.options.length>3 ? 84 : 112) : 156)`

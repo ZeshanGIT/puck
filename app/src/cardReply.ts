@@ -5,6 +5,7 @@
  * queue is sent. Dependencies are injected so the logic runs without a device or the Convex client.
  */
 import { enqueueAnswer, flushAnswerQueue, isAnswerQueued, type QueueStorage, type QueuedAnswer } from "./answerQueue";
+import { NOTICE_OPTION_ID, NOTICE_REPLY } from "./noticeAnswer";
 
 /** How long one send may take before the reply stays queued (the client waits for sign-in first). */
 export const CARD_REPLY_TIMEOUT_MS = 20_000;
@@ -25,8 +26,11 @@ export interface CardReplyDeps {
 }
 
 /** The queue item for a card answer: the chosen options and/or typed text. Neither gives null. */
-export function cardReplyItem(questionId: string, text: string, queuedAt: number, optionIds: readonly string[] = []): QueuedAnswer | null {
-  const customReply = text.trim();
+export function cardReplyItem(questionId: string, text: string, queuedAt: number, picked: readonly string[] = []): QueuedAnswer | null {
+  // "Got it" on a notice is no option at all: it goes back as the reply text.
+  const notice = picked.includes(NOTICE_OPTION_ID);
+  const optionIds = picked.filter((id) => id !== NOTICE_OPTION_ID);
+  const customReply = text.trim() || (notice ? NOTICE_REPLY : "");
   if (!customReply && optionIds.length === 0) return null;
   return { questionId, optionIds: [...optionIds], ...(customReply ? { customReply } : {}), queuedAt };
 }

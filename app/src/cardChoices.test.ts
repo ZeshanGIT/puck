@@ -17,11 +17,11 @@ describe("cardChoices", () => {
     expect(choices[3]!.open).toBe(true);
   });
 
-  test("pick several, or no options at all: one way into the alert", () => {
+  test("pick several: one way into the alert; no options: Got it", () => {
     expect(cardChoices({ selectionMode: "multi", options: [option("a"), option("b")] })).toEqual([
       { id: "__open", label: "Pick several…", desc: "", rec: false, risky: false, open: true },
     ]);
-    expect(cardChoices({ selectionMode: "single", options: [] })[0]!.label).toBe("Open");
+    expect(cardChoices({ selectionMode: "single", options: [] })[0]!.label).toBe("Got it");
   });
 });
 

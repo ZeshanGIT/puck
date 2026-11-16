@@ -4,6 +4,8 @@
  * it offers a way into the alert. Pure, so it can be unit-tested.
  */
 
+import { NOTICE_OPTION_ID, NOTICE_REPLY } from "./noticeAnswer";
+
 /** One answer on the card. `open` opens the alert instead of answering. */
 export interface CardChoice {
   id: string;
@@ -48,8 +50,11 @@ export function plainText(markdown: string): string {
 }
 
 export function cardChoices(alert: CardChoiceInput): CardChoice[] {
+  // A notice: one "Got it", which goes back as a reply (`cardReplyItem`), whatever selectionMode said.
+  if (alert.options.length === 0) {
+    return [{ id: NOTICE_OPTION_ID, label: NOTICE_REPLY, desc: "", rec: false, risky: false, open: false }];
+  }
   if (alert.selectionMode === "multi") return [openChoice("Pick several…")];
-  if (alert.options.length === 0) return [openChoice("Open")];
   const answers = alert.options.map((option) => ({
     id: option.id,
     label: option.label,

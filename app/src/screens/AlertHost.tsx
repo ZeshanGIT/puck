@@ -49,6 +49,7 @@ import { A7Receipt, useAnswerReceipt } from "./A7Receipt";
 import { A9Gone, useAlertGone, type AlertGoneState } from "./A9Gone";
 import { A11Snooze } from "./A11Snooze";
 import { pickDeckAlert } from "../alertLaunchRouting";
+import { isNotice } from "../noticeAnswer";
 
 export type AnswerHandler = (optionIds: string[], customReply?: string, attachments?: UploadedAttachment[]) => Promise<void>;
 
@@ -624,7 +625,8 @@ function AlertBody({
   const night = look.night || (__DEV__ && themeNight);
   const readingAloud = useReadingAloud(alert.questionId);
   const frame = { night, clock: look.clock, readingAloud, receipt, gone };
-  if (alert.selectionMode === "single" && alert.presentation === "choice") {
+  // A notice (no options) is A1 with one "Got it" button, whatever its selectionMode said.
+  if ((alert.selectionMode === "single" || isNotice(alert)) && alert.presentation === "choice") {
     return <A1ChoiceSingle alert={alert} waiting={waiting} onAnswer={onAnswer} onReply={onReply} onSnooze={onSnooze} {...frame} />;
   }
   if (alert.selectionMode === "multi" && alert.presentation === "choice") {
