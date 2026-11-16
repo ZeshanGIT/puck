@@ -28,19 +28,24 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.PathParser
+import org.json.JSONObject
 import kotlin.math.hypot
 import kotlin.math.min
 
 /**
  * A bot's live task floating over other apps, for bots the person turned it on for. It sits as a
- * small pill at the screen edge (the bot's avatar inside a ring that fills as the steps go by); a
- * tap opens it into a card with the task, the step and the note, and a tap again folds it back.
- * Dragging moves it (it snaps to the nearest side); dragging it onto the target at the bottom, or
- * the card's ×, hides it until the task moves to another step or ends. A failure always shows. A
- * finished task shows briefly and goes. The shade notification is separate and always stays.
+ * small bubble at the screen edge (the bot's avatar inside a ring that fills as the steps go by); a
+ * tap opens a card beside it with the task, the step and the note, and a tap again folds it back.
+ *
+ * The bubble and the card are two windows, so dragging moves only the bubble, at once: the card
+ * just goes. The bubble snaps to the nearest side and remembers it. While dragging, two targets
+ * appear at the bottom: "Hide" (for the rest of this task) and "Until next step". The card has the
+ * same two buttons. Hidden until the next step, it comes back when the task moves on or ends;
+ * hidden for the task, it stays away until the person brings it back from the shade notification
+ * (`restore`). A finished task shows briefly and goes. The notification itself always stays.
  *
  * JavaScript decides when to call `show` (the bot's setting, the overlay permission); this keeps
- * where the pill sits and what was dismissed, so a headless start knows too.
+ * where the bubble sits, what was hidden and the last update, so a headless start knows them too.
  */
 object LiveFloat {
   data class Spec(
@@ -52,7 +57,7 @@ object LiveFloat {
     val note: String?,
     /** running, done, failed or stale. */
     val state: String,
-    /** Changes when the task moves to another step: a dismissal lasts until then. */
+    /** Changes when the task moves to another step: "until next step" lasts until then. */
     val stepKey: String,
     /** 0 to 1 along the steps; null for a task with no steps. */
     val progress: Float?,
@@ -70,227 +75,198 @@ object LiveFloat {
 
   private const val PREFS = "puck.liveFloat"
   private const val PILL_DP = 60
+  private const val SHADOW_DP = 8
   private const val BLOB_DP = 38
-  private const val CARD_DP = 236
+  private const val CARD_DP = 248
   private const val DONE_SHOW_MS = 6_000L
-  private const val TARGET_DP = 64
+  private const val TARGET_DP = 60
+  private const val TARGET_GAP_DP = 70
+  private const val TARGET_BOTTOM_DP = 56
+
+  /** How the person hid it: for the rest of the task, or until it moves to another step. */
+  private const val HIDE_TASK = "task"
+  private const val HIDE_STEP = "step"
 
   private val main = Handler(Looper.getMainLooper())
-  private var root: LinearLayout? = null
-  private var params: WindowManager.LayoutParams? = null
+  private var pill: FrameLayout? = null
+  private var pillParams: WindowManager.LayoutParams? = null
+  private var card: LinearLayout? = null
+  private var cardShown = false
   private var current: Spec? = null
-  private var expanded = false
   private var onRight = true
-  private var target: View? = null
   private var ring: RingView? = null
   private var blob: BlobView? = null
-  private var card: LinearLayout? = null
+  private var snapAnim: ValueAnimator? = null
+  private var targets: List<Target> = emptyList()
   private val autoHide = Runnable { hideNow() }
+
+  private class Target(val mode: String, val view: LinearLayout, val circle: TextView, val centreX: Float, val centreY: Float)
 
   fun canDraw(context: Context): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
 
-  /** Shows or updates the pill for this update, unless it was dismissed for this step. */
+  /** Shows or updates the bubble for this update, unless the person hid it. */
   fun show(context: Context, spec: Spec) {
     val app = context.applicationContext
     main.post {
       if (!canDraw(app)) return@post
       val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-      val dismissedId = prefs.getString("dismissedActivity", null)
-      val dismissedKey = prefs.getString("dismissedStep", null)
-      val dismissedHere = dismissedId == spec.activityId
-      when (spec.state) {
-        "failed" -> prefs.edit().remove("dismissedActivity").remove("dismissedStep").apply()
-        "running" -> if (dismissedHere && dismissedKey == spec.stepKey) { hideNow(); return@post }
-        else -> if (dismissedHere) { hideNow(); return@post }
+      prefs.edit().putString("lastSpec", toJson(spec).toString()).apply()
+      val hiddenId = prefs.getString("dismissedActivity", null)
+      if (hiddenId != null && hiddenId != spec.activityId) clearHidden(app)
+      if (hiddenId == spec.activityId) {
+        val mode = prefs.getString("dismissedMode", HIDE_STEP)
+        val sameStep = prefs.getString("dismissedStep", null) == spec.stepKey
+        val stillHidden = mode == HIDE_TASK || (spec.state == "running" && sameStep)
+        if (stillHidden) {
+          hideNow()
+          return@post
+        }
+        clearHidden(app)
       }
-      main.removeCallbacks(autoHide)
-      val sameTask = current?.activityId == spec.activityId && root != null
-      current = spec
-      if (sameTask) update(spec) else attach(app, spec)
-      if (spec.state == "done" || spec.state == "stale") main.postDelayed(autoHide, DONE_SHOW_MS)
+      present(app, spec)
     }
   }
 
-  /** Takes the pill away (the task was replaced, or the person turned it off). */
+  /** From the notification's "Show floating card": shows the last update again, whatever was hidden. */
+  fun restore(context: Context, activityId: String?) {
+    val app = context.applicationContext
+    main.post {
+      if (!canDraw(app)) return@post
+      val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      val spec = prefs.getString("lastSpec", null)?.let { fromJson(it) } ?: return@post
+      if (activityId != null && spec.activityId != activityId) return@post
+      clearHidden(app)
+      present(app, spec)
+    }
+  }
+
+  /** Takes the bubble away (the person turned it off). */
   fun hide(activityId: String?) {
     main.post { if (activityId == null || current?.activityId == activityId) hideNow() }
   }
 
+  private fun present(app: Context, spec: Spec) {
+    main.removeCallbacks(autoHide)
+    val sameTask = current?.activityId == spec.activityId && pill != null
+    current = spec
+    if (sameTask) update(app, spec) else attach(app, spec)
+    if (spec.state == "done" || spec.state == "stale") main.postDelayed(autoHide, DONE_SHOW_MS)
+  }
+
+  private fun clearHidden(context: Context) {
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+      .remove("dismissedActivity").remove("dismissedMode").remove("dismissedStep").apply()
+  }
+
+  private fun wm(context: Context) = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
   private fun hideNow() {
     main.removeCallbacks(autoHide)
-    val wm = root?.context?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-    root?.let { view -> try { wm?.removeView(view) } catch (_: RuntimeException) {} }
-    removeTarget()
-    root = null
-    params = null
+    snapAnim?.cancel()
+    snapAnim = null
+    val context = pill?.context ?: card?.context
+    if (context != null) {
+      closeCard(context)
+      pill?.let { view -> try { wm(context).removeView(view) } catch (_: RuntimeException) {} }
+    }
+    removeTargets()
+    pill = null
+    pillParams = null
+    card = null
     current = null
     ring = null
     blob = null
-    card = null
-    expanded = false
   }
 
-  private fun dismiss(context: Context) {
+  private fun dismiss(context: Context, mode: String) {
     val spec = current ?: return
     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
       .putString("dismissedActivity", spec.activityId)
+      .putString("dismissedMode", mode)
       .putString("dismissedStep", spec.stepKey)
       .apply()
     hideNow()
   }
+
+  /* ------------------------------------------------------------------ the bubble */
+
+  private fun pillWindowPx(context: Context) = dp(context, PILL_DP + 2 * SHADOW_DP)
 
   private fun attach(context: Context, spec: Spec) {
     hideNow()
     current = spec
     val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     onRight = prefs.getBoolean("onRight", true)
-    val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     val metrics = context.resources.displayMetrics
-    val view = LinearLayout(context).apply {
-      orientation = LinearLayout.HORIZONTAL
-      gravity = Gravity.CENTER_VERTICAL
+    val frame = FrameLayout(context).apply {
       clipChildren = false
       clipToPadding = false
-      setPadding(dp(context, 8), dp(context, 8), dp(context, 8), dp(context, 8))
+      setPadding(dp(context, SHADOW_DP), dp(context, SHADOW_DP), dp(context, SHADOW_DP), dp(context, SHADOW_DP))
     }
-    val pill = FrameLayout(context).apply {
+    val bubble = FrameLayout(context).apply {
       background = GradientDrawable().apply {
         shape = GradientDrawable.OVAL
         setColor(spec.background)
         setStroke(dp(context, 1), ColorUtils.setAlphaComponent(spec.ink, 0x2E))
       }
-      elevation = dpF(context, 8f)
-      contentDescription = "${spec.botName}: ${spec.title}"
+      elevation = dpF(context, 6f)
     }
     val ringView = RingView(context)
-    pill.addView(ringView, FrameLayout.LayoutParams(dp(context, PILL_DP), dp(context, PILL_DP)))
+    bubble.addView(ringView, FrameLayout.LayoutParams(dp(context, PILL_DP), dp(context, PILL_DP)))
     val blobView = BlobView(context)
-    pill.addView(blobView, FrameLayout.LayoutParams(dp(context, BLOB_DP), dp(context, BLOB_DP), Gravity.CENTER))
-    val cardView = buildCard(context)
-    view.addView(pill, LinearLayout.LayoutParams(dp(context, PILL_DP), dp(context, PILL_DP)))
+    bubble.addView(blobView, FrameLayout.LayoutParams(dp(context, BLOB_DP), dp(context, BLOB_DP), Gravity.CENTER))
+    frame.addView(bubble, FrameLayout.LayoutParams(dp(context, PILL_DP), dp(context, PILL_DP)))
     ring = ringView
     blob = blobView
-    card = cardView
-    root = view
-    placeCard(context)
-    update(spec)
-
+    val size = pillWindowPx(context)
     val layoutParams = WindowManager.LayoutParams(
-      WindowManager.LayoutParams.WRAP_CONTENT,
-      WindowManager.LayoutParams.WRAP_CONTENT,
+      size,
+      size,
       overlayType(),
-      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
       PixelFormat.TRANSLUCENT,
     ).apply {
       gravity = Gravity.TOP or Gravity.START
-      val width = dp(context, PILL_DP + 16)
-      x = if (onRight) metrics.widthPixels - width else 0
+      x = if (onRight) metrics.widthPixels - size else 0
       y = prefs.getInt("y", (metrics.heightPixels * 0.32f).toInt())
     }
-    params = layoutParams
-    attachTouch(context, pill, view, wm)
+    pill = frame
+    pillParams = layoutParams
+    attachTouch(context, bubble)
     try {
-      wm.addView(view, layoutParams)
+      wm(context).addView(frame, layoutParams)
     } catch (_: RuntimeException) {
-      root = null
-      params = null
+      pill = null
+      pillParams = null
+      return
     }
+    update(context, spec)
   }
 
-  private fun buildCard(context: Context): LinearLayout = LinearLayout(context).apply {
-    orientation = LinearLayout.VERTICAL
-    elevation = dpF(context, 8f)
-    setPadding(dp(context, 16), dp(context, 12), dp(context, 10), dp(context, 14))
-    visibility = View.GONE
-    setOnClickListener { openPuck(context) }
-  }
-
-  /** The card's contents for this update: the bot, a ×, the task, the step line and the note. */
-  private fun fillCard(context: Context, spec: Spec) {
-    val view = card ?: return
-    view.removeAllViews()
-    view.background = GradientDrawable().apply {
-      cornerRadius = dpF(context, 20f)
-      setColor(spec.background)
-      setStroke(dp(context, 1), ColorUtils.setAlphaComponent(spec.ink, 0x2E))
-    }
-    val head = LinearLayout(context).apply {
-      orientation = LinearLayout.HORIZONTAL
-      gravity = Gravity.CENTER_VERTICAL
-    }
-    head.addView(text(context, spec.botName, spec.ink2, 12.5f, font(context, "Nunito_800ExtraBold.ttf")), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-    val close = text(context, "×", spec.ink2, 20f, font(context, "Nunito_800ExtraBold.ttf")).apply {
-      setPadding(dp(context, 10), 0, dp(context, 4), 0)
-      contentDescription = "Hide until the next step"
-      setOnClickListener { performHapticFeedback(HapticFeedbackConstants.CONFIRM); dismiss(context) }
-    }
-    head.addView(close)
-    view.addView(head)
-    view.addView(text(context, spec.title, spec.ink, 16f, font(context, "Nunito_900Black.ttf"), 2).apply { setPadding(0, dp(context, 2), 0, 0) })
-    val stepColour = when (spec.state) {
-      "done" -> spec.ok
-      "failed" -> spec.danger
-      else -> spec.botColour
-    }
-    view.addView(text(context, spec.stepLine, stepColour, 13.5f, font(context, "Nunito_800ExtraBold.ttf")).apply { setPadding(0, dp(context, 4), 0, 0) })
-    if (!spec.note.isNullOrBlank()) {
-      view.addView(text(context, spec.note, spec.ink2, 13.5f, font(context, "Nunito_700Bold.ttf"), 3).apply { setPadding(0, dp(context, 3), 0, 0) })
-    }
-  }
-
-  private fun update(spec: Spec) {
-    val view = root ?: return
+  private fun update(context: Context, spec: Spec) {
     ring?.set(spec)
     blob?.set(spec)
-    fillCard(view.context, spec)
+    pill?.contentDescription = "${spec.botName}: ${spec.title}. ${spec.stepLine}"
+    if (cardShown) fillCard(context, spec)
     // A failure opens the card by itself: that is when the person most wants to know.
-    if (spec.state == "failed" && !expanded) toggle(view.context)
-    view.contentDescription = "${spec.botName}: ${spec.title}. ${spec.stepLine}"
+    if (spec.state == "failed" && !cardShown) openCard(context)
   }
 
-  private fun placeCard(context: Context) {
-    val view = root ?: return
-    val cardView = card ?: return
-    val pill = (0 until view.childCount).map { view.getChildAt(it) }.firstOrNull { it !== cardView } ?: return
-    view.removeAllViews()
-    val cardParams = LinearLayout.LayoutParams(dp(context, CARD_DP), LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-      if (onRight) rightMargin = dp(context, 8) else leftMargin = dp(context, 8)
-    }
-    if (onRight) {
-      view.addView(cardView, cardParams)
-      view.addView(pill)
-    } else {
-      view.addView(pill)
-      view.addView(cardView, cardParams)
-    }
-  }
-
-  private fun toggle(context: Context) {
-    val view = root ?: return
-    val cardView = card ?: return
-    val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    val layoutParams = params ?: return
-    val metrics = context.resources.displayMetrics
-    expanded = !expanded
-    cardView.visibility = if (expanded) View.VISIBLE else View.GONE
-    // On the right edge the window grows to the left, so the pill stays where it was.
-    val width = dp(context, PILL_DP + 16) + if (expanded) dp(context, CARD_DP + 8) else 0
-    if (onRight) layoutParams.x = metrics.widthPixels - width
-    try { wm.updateViewLayout(view, layoutParams) } catch (_: RuntimeException) {}
-  }
-
-  private fun attachTouch(context: Context, pill: View, view: View, wm: WindowManager) {
+  private fun attachTouch(context: Context, bubble: View) {
     val slop = ViewConfiguration.get(context).scaledTouchSlop
     var downX = 0f
     var downY = 0f
     var startX = 0
     var startY = 0
     var dragging = false
-    pill.setOnTouchListener { touched, event ->
-      val layoutParams = params ?: return@setOnTouchListener false
+    bubble.setOnTouchListener { touched, event ->
+      val layoutParams = pillParams ?: return@setOnTouchListener false
+      val window = pill ?: return@setOnTouchListener false
       when (event.actionMasked) {
         MotionEvent.ACTION_DOWN -> {
+          snapAnim?.cancel()
+          snapAnim = null
           downX = event.rawX
           downY = event.rawY
           startX = layoutParams.x
@@ -303,19 +279,15 @@ object LiveFloat {
           val dy = event.rawY - downY
           if (!dragging && hypot(dx, dy) > slop) {
             dragging = true
-            if (expanded) {
-              // Folding the card moves the window's origin (on the right edge it shrinks to the
-              // pill). Measure the drag from there, so the pill stays under the finger.
-              toggle(context)
-              startX = layoutParams.x - dx.toInt()
-            }
-            showTarget(context)
+            // The card is its own window: it just goes, and the bubble follows the finger at once.
+            closeCard(context)
+            showTargets(context)
           }
           if (dragging) {
             layoutParams.x = (startX + dx).toInt()
             layoutParams.y = (startY + dy).toInt()
-            try { wm.updateViewLayout(view, layoutParams) } catch (_: RuntimeException) {}
-            highlightTarget(context, overTarget(context, event.rawX, event.rawY))
+            try { wm(context).updateViewLayout(window, layoutParams) } catch (_: RuntimeException) {}
+            highlightTargets(targetUnder(event.rawX, event.rawY))
           }
           true
         }
@@ -323,15 +295,17 @@ object LiveFloat {
           if (!dragging) {
             if (event.actionMasked == MotionEvent.ACTION_UP) {
               touched.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-              toggle(context)
+              if (cardShown) closeCard(context) else openCard(context)
             }
-          } else if (overTarget(context, event.rawX, event.rawY)) {
-            touched.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-            removeTarget()
-            dismiss(context)
           } else {
-            removeTarget()
-            snap(context, view, wm, event.rawX)
+            val hit = if (event.actionMasked == MotionEvent.ACTION_UP) targetUnder(event.rawX, event.rawY) else null
+            removeTargets()
+            if (hit != null) {
+              touched.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+              dismiss(context, hit.mode)
+            } else {
+              snap(context)
+            }
           }
           dragging = false
           true
@@ -341,86 +315,256 @@ object LiveFloat {
     }
   }
 
-  /** Back to the nearest side, and remembered there. */
-  private fun snap(context: Context, view: View, wm: WindowManager, rawX: Float) {
-    val layoutParams = params ?: return
+  /** To the side the bubble's centre is nearest, and remembered there. */
+  private fun snap(context: Context) {
+    val layoutParams = pillParams ?: return
+    val window = pill ?: return
     val metrics = context.resources.displayMetrics
-    val wasRight = onRight
-    onRight = rawX > metrics.widthPixels / 2f
-    if (wasRight != onRight) placeCard(context)
-    val width = dp(context, PILL_DP + 16)
-    val toX = if (onRight) metrics.widthPixels - width else 0
+    val size = pillWindowPx(context)
+    onRight = layoutParams.x + size / 2f > metrics.widthPixels / 2f
+    val toX = if (onRight) metrics.widthPixels - size else 0
     val fromX = layoutParams.x
-    layoutParams.y = layoutParams.y.coerceIn(dp(context, 24), metrics.heightPixels - dp(context, PILL_DP + 80))
+    layoutParams.y = layoutParams.y.coerceIn(dp(context, 24), metrics.heightPixels - size - dp(context, 72))
     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
       .putBoolean("onRight", onRight)
       .putInt("y", layoutParams.y)
       .apply()
-    ValueAnimator.ofFloat(0f, 1f).apply {
-      duration = 220L
+    snapAnim?.cancel()
+    snapAnim = ValueAnimator.ofFloat(0f, 1f).apply {
+      duration = if (motionOn()) 220L else 0L
       interpolator = DecelerateInterpolator()
       addUpdateListener {
         layoutParams.x = (fromX + (toX - fromX) * (it.animatedValue as Float)).toInt()
-        try { wm.updateViewLayout(view, layoutParams) } catch (_: RuntimeException) {}
+        try { wm(context).updateViewLayout(window, layoutParams) } catch (_: RuntimeException) {}
       }
       start()
     }
   }
 
-  /* --------------------------------------------------------------- dismiss target */
+  /* -------------------------------------------------------------------- the card */
 
-  private fun showTarget(context: Context) {
-    if (target != null) return
-    val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+  private fun openCard(context: Context) {
     val spec = current ?: return
-    val view = TextView(context).apply {
-      text = "×"
-      gravity = Gravity.CENTER
-      setTextColor(Color.WHITE)
-      setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f)
-      typeface = font(context, "Nunito_800ExtraBold.ttf")
-      background = GradientDrawable().apply {
-        shape = GradientDrawable.OVAL
-        setColor(ColorUtils.setAlphaComponent(spec.ink, 0x99))
-      }
-      contentDescription = "Drop here to hide"
-    }
-    val layoutParams = WindowManager.LayoutParams(
-      dp(context, TARGET_DP),
-      dp(context, TARGET_DP),
+    val layoutParams = pillParams ?: return
+    if (cardShown) return
+    val view = card ?: LinearLayout(context).apply {
+      orientation = LinearLayout.VERTICAL
+      setPadding(dp(context, SHADOW_DP), dp(context, SHADOW_DP), dp(context, SHADOW_DP), dp(context, SHADOW_DP))
+      clipToPadding = false
+    }.also { card = it }
+    fillCard(context, spec)
+    val metrics = context.resources.displayMetrics
+    val width = dp(context, CARD_DP + 2 * SHADOW_DP)
+    val overlap = dp(context, SHADOW_DP)
+    val params = WindowManager.LayoutParams(
+      width,
+      WindowManager.LayoutParams.WRAP_CONTENT,
       overlayType(),
-      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
       PixelFormat.TRANSLUCENT,
     ).apply {
-      gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-      y = dp(context, 56)
+      gravity = Gravity.TOP or Gravity.START
+      x = if (onRight) layoutParams.x - width + overlap else layoutParams.x + pillWindowPx(context) - overlap
+      x = x.coerceIn(0, metrics.widthPixels - width)
+      y = layoutParams.y
     }
     try {
-      wm.addView(view, layoutParams)
-      target = view
+      wm(context).addView(view, params)
+      cardShown = true
     } catch (_: RuntimeException) {}
   }
 
-  private fun highlightTarget(context: Context, over: Boolean) {
-    val view = target ?: return
+  private fun closeCard(context: Context) {
+    if (!cardShown) return
+    card?.let { view -> try { wm(context).removeViewImmediate(view) } catch (_: RuntimeException) {} }
+    cardShown = false
+  }
+
+  /** The card's contents: the bot, the task, the step line, the note, and the two ways to hide it. */
+  private fun fillCard(context: Context, spec: Spec) {
+    val outer = card ?: return
+    outer.removeAllViews()
+    val body = LinearLayout(context).apply {
+      orientation = LinearLayout.VERTICAL
+      elevation = dpF(context, 6f)
+      setPadding(dp(context, 16), dp(context, 12), dp(context, 14), dp(context, 12))
+      background = GradientDrawable().apply {
+        cornerRadius = dpF(context, 20f)
+        setColor(spec.background)
+        setStroke(dp(context, 1), ColorUtils.setAlphaComponent(spec.ink, 0x2E))
+      }
+      setOnClickListener { openPuck(context) }
+    }
+    body.addView(text(context, spec.botName, spec.ink2, 12.5f, font(context, "Nunito_800ExtraBold.ttf")))
+    body.addView(text(context, spec.title, spec.ink, 16f, font(context, "Nunito_900Black.ttf"), 2).apply { setPadding(0, dp(context, 2), 0, 0) })
+    val stepColour = when (spec.state) {
+      "done" -> spec.ok
+      "failed" -> spec.danger
+      else -> spec.botColour
+    }
+    body.addView(text(context, spec.stepLine, stepColour, 13.5f, font(context, "Nunito_800ExtraBold.ttf")).apply { setPadding(0, dp(context, 4), 0, 0) })
+    if (!spec.note.isNullOrBlank()) {
+      body.addView(text(context, spec.note, spec.ink2, 13.5f, font(context, "Nunito_700Bold.ttf"), 3).apply { setPadding(0, dp(context, 3), 0, 0) })
+    }
+    val buttons = LinearLayout(context).apply {
+      orientation = LinearLayout.HORIZONTAL
+      setPadding(0, dp(context, 12), 0, 0)
+    }
+    buttons.addView(button(context, spec, "Hide") { dismiss(context, HIDE_TASK) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+    buttons.addView(View(context), LinearLayout.LayoutParams(dp(context, 8), 1))
+    buttons.addView(button(context, spec, "Until next step") { dismiss(context, HIDE_STEP) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.35f))
+    body.addView(buttons)
+    outer.addView(body)
+  }
+
+  private fun button(context: Context, spec: Spec, label: String, onPress: () -> Unit): TextView =
+    text(context, label, spec.ink, 13f, font(context, "Nunito_800ExtraBold.ttf")).apply {
+      gravity = Gravity.CENTER
+      setPadding(dp(context, 8), dp(context, 9), dp(context, 8), dp(context, 9))
+      background = GradientDrawable().apply {
+        cornerRadius = dpF(context, 999f)
+        setColor(ColorUtils.setAlphaComponent(spec.ink, 0x14))
+      }
+      contentDescription = if (label == "Hide") "Hide for the rest of this task" else "Hide until the next step"
+      setOnClickListener {
+        performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+        onPress()
+      }
+    }
+
+  /* --------------------------------------------------------------- hide targets */
+
+  private fun showTargets(context: Context) {
+    if (targets.isNotEmpty()) return
     val spec = current ?: return
-    (view.background as? GradientDrawable)?.setColor(if (over) spec.danger else ColorUtils.setAlphaComponent(spec.ink, 0x99))
-    view.scaleX = if (over) 1.18f else 1f
-    view.scaleY = if (over) 1.18f else 1f
-  }
-
-  private fun overTarget(context: Context, rawX: Float, rawY: Float): Boolean {
     val metrics = context.resources.displayMetrics
-    val cx = metrics.widthPixels / 2f
-    val cy = metrics.heightPixels - dpF(context, 56f + TARGET_DP / 2f)
-    return hypot(rawX - cx, rawY - cy) < dpF(context, 72f)
+    val made = mutableListOf<Target>()
+    for ((index, entry) in listOf(HIDE_TASK to ("×" to "Hide"), HIDE_STEP to ("»" to "Until next step")).withIndex()) {
+      val (mode, labels) = entry
+      val circle = TextView(context).apply {
+        text = labels.first
+        gravity = Gravity.CENTER
+        setTextColor(Color.WHITE)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
+        typeface = font(context, "Nunito_800ExtraBold.ttf")
+        includeFontPadding = false
+        background = GradientDrawable().apply {
+          shape = GradientDrawable.OVAL
+          setColor(ColorUtils.setAlphaComponent(spec.ink, 0x99))
+        }
+      }
+      val label = text(context, labels.second, Color.WHITE, 12.5f, font(context, "Nunito_800ExtraBold.ttf")).apply {
+        gravity = Gravity.CENTER
+        setShadowLayer(dpF(context, 3f), 0f, 0f, 0xCC000000.toInt())
+        setPadding(0, 0, 0, dp(context, 6))
+      }
+      val view = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        addView(label, LinearLayout.LayoutParams(dp(context, 120), LinearLayout.LayoutParams.WRAP_CONTENT))
+        addView(circle, LinearLayout.LayoutParams(dp(context, TARGET_DP), dp(context, TARGET_DP)))
+      }
+      val offset = if (index == 0) -TARGET_GAP_DP else TARGET_GAP_DP
+      val params = WindowManager.LayoutParams(
+        dp(context, 120),
+        WindowManager.LayoutParams.WRAP_CONTENT,
+        overlayType(),
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+        PixelFormat.TRANSLUCENT,
+      ).apply {
+        gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        x = dp(context, offset)
+        y = dp(context, TARGET_BOTTOM_DP)
+      }
+      try {
+        wm(context).addView(view, params)
+        made += Target(
+          mode,
+          view,
+          circle,
+          metrics.widthPixels / 2f + dpF(context, offset.toFloat()),
+          metrics.heightPixels - dpF(context, TARGET_BOTTOM_DP + TARGET_DP / 2f),
+        )
+      } catch (_: RuntimeException) {}
+    }
+    targets = made
   }
 
-  private fun removeTarget() {
-    val view = target ?: return
-    val wm = view.context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-    try { wm?.removeView(view) } catch (_: RuntimeException) {}
-    target = null
+  /** The target the finger is over, if any (within a thumb's reach of its centre). */
+  private fun targetUnder(rawX: Float, rawY: Float): Target? {
+    val context = pill?.context ?: return null
+    return targets.minByOrNull { hypot(rawX - it.centreX, rawY - it.centreY) }
+      ?.takeIf { hypot(rawX - it.centreX, rawY - it.centreY) < dpF(context, 56f) }
+  }
+
+  private fun highlightTargets(over: Target?) {
+    val spec = current ?: return
+    for (target in targets) {
+      val hot = target === over
+      (target.circle.background as? GradientDrawable)?.setColor(
+        if (hot) (if (target.mode == HIDE_TASK) spec.danger else spec.botColour) else ColorUtils.setAlphaComponent(spec.ink, 0x99),
+      )
+      target.circle.scaleX = if (hot) 1.18f else 1f
+      target.circle.scaleY = if (hot) 1.18f else 1f
+    }
+  }
+
+  private fun removeTargets() {
+    for (target in targets) {
+      try { wm(target.view.context).removeView(target.view) } catch (_: RuntimeException) {}
+    }
+    targets = emptyList()
+  }
+
+  /* --------------------------------------------------------------- saved update */
+
+  private fun toJson(spec: Spec): JSONObject = JSONObject().apply {
+    put("activityId", spec.activityId)
+    put("botName", spec.botName)
+    put("title", spec.title)
+    put("stepLine", spec.stepLine)
+    put("note", spec.note ?: "")
+    put("state", spec.state)
+    put("stepKey", spec.stepKey)
+    put("progress", spec.progress?.toDouble() ?: -1.0)
+    put("background", spec.background)
+    put("ink", spec.ink)
+    put("ink2", spec.ink2)
+    put("botColour", spec.botColour)
+    put("blobFill", spec.blobFill)
+    put("blobRim", spec.blobRim ?: 0)
+    put("hasRim", spec.blobRim != null)
+    put("blobPath", spec.blobPath)
+    put("blobTilt", spec.blobTilt.toDouble())
+    put("ok", spec.ok)
+    put("danger", spec.danger)
+  }
+
+  private fun fromJson(raw: String): Spec? = try {
+    val json = JSONObject(raw)
+    val progress = json.getDouble("progress")
+    Spec(
+      activityId = json.getString("activityId"),
+      botName = json.getString("botName"),
+      title = json.getString("title"),
+      stepLine = json.getString("stepLine"),
+      note = json.optString("note").takeIf { it.isNotBlank() },
+      state = json.getString("state"),
+      stepKey = json.getString("stepKey"),
+      progress = if (progress < 0) null else progress.toFloat(),
+      background = json.getInt("background"),
+      ink = json.getInt("ink"),
+      ink2 = json.getInt("ink2"),
+      botColour = json.getInt("botColour"),
+      blobFill = json.getInt("blobFill"),
+      blobRim = if (json.optBoolean("hasRim")) json.getInt("blobRim") else null,
+      blobPath = json.getString("blobPath"),
+      blobTilt = json.getDouble("blobTilt").toFloat(),
+      ok = json.getInt("ok"),
+      danger = json.getInt("danger"),
+    )
+  } catch (_: org.json.JSONException) {
+    null
   }
 
   /* ------------------------------------------------------------------------ views */

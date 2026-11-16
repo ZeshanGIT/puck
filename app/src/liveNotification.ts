@@ -1,6 +1,6 @@
 import notifee, { AndroidImportance, AndroidVisibility } from "@notifee/react-native";
 import type { LivePush } from "./livePayload";
-import { floatLive } from "./liveFloat";
+import { floatLive, offersFloat, SHOW_FLOAT_ACTION } from "./liveFloat";
 import { decideLive, liveNotificationSpec, NOTHING_SEEN, type LiveSeen } from "./liveNotificationModel";
 
 /**
@@ -49,6 +49,8 @@ export async function handleLivePush(push: LivePush): Promise<void> {
   }
   const spec = liveNotificationSpec(push);
   const channelId = await ensureLiveChannel();
+  // While it runs, a bot whose tasks float gets a button to bring the card back after hiding it.
+  const showFloat = spec.ongoing && (await offersFloat(push.botId));
   await notifee.displayNotification({
     id: spec.id,
     title: spec.title,
@@ -62,6 +64,7 @@ export async function handleLivePush(push: LivePush): Promise<void> {
       autoCancel: !spec.ongoing,
       onlyAlertOnce: true,
       pressAction: { id: "default" },
+      ...(showFloat ? { actions: [{ title: "Show floating card", pressAction: { id: SHOW_FLOAT_ACTION } }] } : {}),
       visibility: AndroidVisibility.PUBLIC,
       ...(spec.colour === null ? {} : { color: spec.colour }),
       ...(spec.progress === null ? {} : { progress: { max: spec.progress.max, current: spec.progress.current } }),

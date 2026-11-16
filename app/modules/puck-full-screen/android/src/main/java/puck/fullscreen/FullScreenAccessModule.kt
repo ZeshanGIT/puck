@@ -317,6 +317,13 @@ class FullScreenAccessModule : Module() {
       }
     }
 
+    // The notification's "Show floating card": the last update again, whatever was hidden.
+    Function("restoreLiveFloat") { activityId: String? ->
+      val context = appContext.reactContext ?: return@Function null
+      LiveFloat.restore(context, activityId)
+      null
+    }
+
     Function("hideLiveFloat") { activityId: String? ->
       val context = appContext.reactContext ?: return@Function null
       LiveFloat.hide(activityId)

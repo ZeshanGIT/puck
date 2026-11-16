@@ -88,6 +88,7 @@ mock.module("puck-full-screen", () => ({
   setOverlayChoices: () => true,
   showLiveFloat: () => true,
   hideLiveFloat: () => {},
+  restoreLiveFloat: () => {},
   canCreateRingChannel: () => overlay.nativeRing,
   createRingChannel: (
     id: string,

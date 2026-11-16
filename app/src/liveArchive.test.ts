@@ -121,3 +121,20 @@ describe("notes in the Archive", () => {
     expect(liveTimeline(item).map((entry) => entry.label)).toEqual(["Started", "0 of 10 files", "10 of 10 files", "Done"]);
   });
 });
+
+describe("archiveFirstView", () => {
+  test("today's entries, at most ten; anything else waits behind Show earlier", async () => {
+    const { archiveFirstView } = await import("./liveArchive");
+    const now = T0 + 3_600_000;
+    const entry = (id: string, at: number) => ({ kind: "live" as const, item: done, row: { ...liveArchiveRow(done), activityId: id, at } });
+    const today = Array.from({ length: 12 }, (_, i) => entry(`t${i}`, now - i * 1000));
+    const many = archiveFirstView([{ label: "Today", entries: today }, { label: "Yesterday", entries: [entry("y", now - 86_400_000)] }], now);
+    expect(many.groups[0]!.entries).toHaveLength(10);
+    expect(many.hidden).toBe(true);
+    const few = archiveFirstView([{ label: "Today", entries: today.slice(0, 3) }], now);
+    expect(few).toMatchObject({ hidden: false });
+    expect(few.groups[0]!.entries).toHaveLength(3);
+    const none = archiveFirstView([{ label: "Yesterday", entries: [entry("y", now - 86_400_000)] }], now);
+    expect(none).toEqual({ groups: [], hidden: true });
+  });
+});

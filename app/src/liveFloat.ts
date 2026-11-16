@@ -4,7 +4,8 @@
  * or takes it away when the setting is off. The card itself (`LiveFloat` in the native module)
  * remembers where it sits and what the person hid.
  */
-import { canDrawOverlay, hideLiveFloat, showLiveFloat } from "puck-full-screen";
+import type { Event } from "@notifee/react-native";
+import { canDrawOverlay, hideLiveFloat, restoreLiveFloat, showLiveFloat } from "puck-full-screen";
 import { liveFloatSpec } from "./liveFloatModel";
 import { liveFloatFor, loadLocalSettings } from "./localSettings";
 import type { LivePush } from "./livePayload";
@@ -30,4 +31,24 @@ export async function floatLive(push: LivePush): Promise<void> {
   } catch {
     // The notification still shows the task.
   }
+}
+
+/** The live notification's button that brings the floating card back after it was hidden. */
+export const SHOW_FLOAT_ACTION = "live-float-show";
+
+/** Whether this bot's live notification carries the "Show floating card" button. */
+export async function offersFloat(botId: string): Promise<boolean> {
+  try {
+    return liveFloatFor(await loadLocalSettings(), botId) && canDrawOverlay();
+  } catch {
+    return false;
+  }
+}
+
+/** Handles a tap on "Show floating card"; true when the event was that. */
+export function handleFloatAction(event: Pick<Event, "detail">, pressId: string | undefined): boolean {
+  if (pressId !== SHOW_FLOAT_ACTION) return false;
+  const activityId = event.detail.notification?.data?.activityId;
+  restoreLiveFloat(typeof activityId === "string" ? activityId : null);
+  return true;
 }

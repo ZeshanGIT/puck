@@ -166,3 +166,21 @@ export function archiveGroups(
   }
   return groups;
 }
+
+/** What the Archive opens on: today's entries, at most this many. "Show earlier" shows the rest. */
+export const ARCHIVE_FIRST_VIEW = 10;
+
+/**
+ * The Archive's first view: the most recent entries from today, at most ten (fewer when today had
+ * fewer). `hidden` says whether anything was left out, so the screen offers "Show earlier".
+ */
+export function archiveFirstView(
+  groups: readonly { label: string; entries: ArchiveEntry[] }[],
+  now: number,
+  max = ARCHIVE_FIRST_VIEW,
+): { groups: { label: string; entries: ArchiveEntry[] }[]; hidden: boolean } {
+  const today = groups.find((group) => group.label === dayLabel(now, now));
+  const shown = today ? today.entries.slice(0, max) : [];
+  const total = groups.reduce((sum, group) => sum + group.entries.length, 0);
+  return { groups: shown.length > 0 ? [{ label: today!.label, entries: shown }] : [], hidden: total > shown.length };
+}

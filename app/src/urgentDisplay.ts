@@ -63,6 +63,7 @@ import { displayPairing } from "./pairingDisplay";
 import { pairingPush } from "./pairingPayload";
 import { speechText, startSpeaking } from "./speak";
 import { themeIsDark } from "./ui/themePreference";
+import { handleFloatAction } from "./liveFloat";
 
 /**
  * A full-screen alert on the phone (A4). Normal and urgent alerts each play the ringtone the person
@@ -571,6 +572,8 @@ export function clearDisplayedAlert(questionId: string): Promise<void> {
 export async function handleNotifeeEvent(event: Event): Promise<void> {
   // A tap on a pairing request (N7) opens B4 for it (`pairingOpen.ts`).
   if (event.type === EventType.PRESS && openPairingFromNotificationData(event.detail.notification?.data)) return;
+  // "Show floating card" on a live task's notification.
+  if (event.type === EventType.ACTION_PRESS && handleFloatAction(event, event.detail.pressAction?.id)) return;
   const questionId = event.detail.notification?.data?.questionId;
   if (typeof questionId !== "string") return;
   if (event.type === EventType.DISMISSED) {

@@ -32,6 +32,7 @@ type FullScreenNative = {
   hideOverlayCard?: (questionId: string) => boolean;
   showLiveFloat?: (spec: LiveFloatSpec) => boolean;
   hideLiveFloat?: (activityId: string | null) => void;
+  restoreLiveFloat?: (activityId: string | null) => void;
   setOverlayChoices?: (questionId: string, json: string) => boolean;
   openAlertFullScreen?: (questionId: string) => boolean;
   startRing?: (questionId: string, sound: string, alarm: boolean, loopMs: number, title: string) => boolean;
@@ -338,6 +339,15 @@ export function showLiveFloat(spec: LiveFloatSpec): boolean {
     return nativeModule()?.showLiveFloat?.(spec) === true;
   } catch {
     return false;
+  }
+}
+
+/** Shows the floating card again with the task's last update, even if the person hid it. */
+export function restoreLiveFloat(activityId: string | null): void {
+  try {
+    nativeModule()?.restoreLiveFloat?.(activityId);
+  } catch {
+    // Nothing to bring back.
   }
 }
 

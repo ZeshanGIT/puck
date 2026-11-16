@@ -16,7 +16,8 @@ import { useEffect, useMemo, useState } from "react";
 import { BackHandler, ScrollView, StyleSheet, View } from "react-native";
 import { flockBots } from "../botsModel";
 import { knownBots, type HistoryItem, type KnownBot } from "../homeModel";
-import { archiveGroups, type ArchivedLive, type LiveArchiveRowModel } from "../liveArchive";
+import { archiveFirstView, archiveGroups, type ArchivedLive, type LiveArchiveRowModel } from "../liveArchive";
+import { Text } from "../ui/Text";
 import { Blob } from "../ui/Blob";
 import { Glyph, ICON } from "../ui/AlertFrame";
 import { Row } from "../ui/Row";
@@ -47,7 +48,13 @@ export interface ArchiveProps {
 
 export function Archive({ history, historyStatus, onLoadMore, live, bots, now, onOpenAlert, onBack }: ArchiveProps) {
   const moreAlerts = historyStatus === "canLoadMore" || historyStatus === "loadingMore";
-  const groups = useMemo(() => archiveGroups(history ?? [], live ?? [], moreAlerts, now), [history, live, moreAlerts, now]);
+  const allGroups = useMemo(() => archiveGroups(history ?? [], live ?? [], moreAlerts, now), [history, live, moreAlerts, now]);
+  // It opens on today's last ten at most; "Show earlier" shows everything (and "Load more" after).
+  const [showAll, setShowAll] = useState(false);
+  const firstView = useMemo(() => archiveFirstView(allGroups, now), [allGroups, now]);
+  const groups = showAll ? allGroups : firstView.groups;
+  const earlier = !showAll && (firstView.hidden || moreAlerts);
+  const t = useTheme().tokens;
   const idByName = useMemo(() => new Map(bots.map((bot) => [bot.botName, bot.botId])), [bots]);
   const [openTask, setOpenTask] = useState<ArchivedLive | null>(null);
 
@@ -76,7 +83,17 @@ export function Archive({ history, historyStatus, onLoadMore, live, bots, now, o
           </View>
         ))}
 
-        {historyStatus === "canLoadMore" || historyStatus === "loadingMore" ? (
+        {!showAll && groups.length === 0 && history !== undefined ? (
+          <Text style={[styles.empty, { color: t.ink3 }]} testID="archive-nothing-today">
+            Nothing today yet.
+          </Text>
+        ) : null}
+
+        {earlier ? (
+          <View style={styles.more}>
+            <Btn label="Show earlier" variant="line" onPress={() => setShowAll(true)} testID="archive-show-earlier" />
+          </View>
+        ) : showAll && (historyStatus === "canLoadMore" || historyStatus === "loadingMore") ? (
           <View style={styles.more}>
             <Btn
               label={historyStatus === "loadingMore" ? "Loading…" : "Load more"}
@@ -174,4 +191,5 @@ function useNow(): number {
 const styles = StyleSheet.create({
   scroll: { paddingBottom: 28 },
   more: { paddingTop: 16, paddingHorizontal: 16 },
+  empty: { fontSize: 15, textAlign: "center", paddingTop: 32, paddingHorizontal: 24 },
 });
