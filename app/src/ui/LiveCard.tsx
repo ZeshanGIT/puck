@@ -95,6 +95,11 @@ export function LiveCard({ activity, now, onPress }: LiveCardProps) {
       <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.title, { color: t.ink }]}>
         {activity.title}
       </Text>
+      {activity.note ? (
+        <Text maxFontSizeMultiplier={MAX_FONT_SCALE} numberOfLines={2} style={[styles.note, { color: onWash.ink2 }]}>
+          {activity.note}
+        </Text>
+      ) : null}
 
       {hasTrack(activity) ? (
         <Track activity={activity} testID={botTestId("live-track", activity.botName)} />
@@ -234,6 +239,7 @@ const styles = StyleSheet.create({
   /** `.ldone{margin-left:auto; 24px}` */
   tick: { marginLeft: "auto", width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   title: { fontFamily: fontFamily.black, fontSize: 17, fontWeight: "900", marginTop: 10 },
+  note: { fontFamily: fontFamily.semiBold, fontSize: 14, fontWeight: "600", marginTop: 3 },
   /** `.ltrack{height:36px; margin:12px 15px 0}` */
   track: { height: 36, marginTop: 12, marginHorizontal: 15 },
   rail: { position: "absolute", left: 0, right: 0, top: 16, height: 4, borderRadius: 2 },

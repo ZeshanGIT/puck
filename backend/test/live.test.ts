@@ -12,6 +12,7 @@ const base = {
   colour: "indigo",
   title: "Fix the build",
   currentStep: "Running the tests",
+  note: null as string | null,
   state: "running",
   stepIndex: 2,
   stepCount: 4,
@@ -51,6 +52,11 @@ describe("fcmLiveMessage", () => {
   test("has no title, message or body key, which expo-notifications would show as its own notification", () => {
     const data = fcmLiveMessage(base).message.data;
     for (const key of ["title", "message", "body"]) expect(key in data).toBe(false);
+  });
+
+  test("carries the note when there is one", () => {
+    expect(fcmLiveMessage({ ...base, note: "312 passed" }).message.data.note).toBe("312 passed");
+    expect("note" in fcmLiveMessage(base).message.data).toBe(false);
   });
 
   test("never carries a secret or a webhook", () => {

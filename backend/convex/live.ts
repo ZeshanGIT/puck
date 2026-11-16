@@ -10,7 +10,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireClient } from "./lib/clientAuth";
-import { applyStep, applySteps, effectiveState, liveSendMode, recordStep, startTrack, type Track } from "./lib/liveRules";
+import { applyStep, applySteps, currentNote, effectiveState, liveSendMode, recordStep, startTrack, type Track } from "./lib/liveRules";
 import { selectPushTargets } from "./lib/pushTargets";
 import { alertLink, liveState } from "./schema";
 
@@ -64,6 +64,7 @@ export const start = internalMutationGeneric({
     title: v.string(),
     steps: v.union(v.array(v.string()), v.null()),
     link: v.union(v.string(), v.null()),
+    note: v.optional(v.union(v.string(), v.null())),
   },
   returns: v.object({ activityId: v.string() }),
   handler: async (ctx, args) => {
@@ -77,7 +78,8 @@ export const start = internalMutationGeneric({
       ...(bot.userId === undefined ? {} : { userId: bot.userId }),
       title: args.title,
       ...trackFields(track),
-      history: recordStep([], track.currentStep, now),
+      history: recordStep([], track.currentStep, now, args.note ?? null),
+      ...(args.note ? { note: args.note } : {}),
       state: "running",
       ...(args.link === null ? {} : { link: { label: "Open", url: args.link } }),
       startedAt: now,
@@ -90,14 +92,20 @@ export const start = internalMutationGeneric({
 
 /** `step`: move to a step (adding it midway if new). Needs a running activity. */
 export const step = internalMutationGeneric({
-  args: { botDocId: v.id("bots"), step: v.string() },
+  args: { botDocId: v.id("bots"), step: v.string(), note: v.optional(v.union(v.string(), v.null())) },
   returns: v.null(),
   handler: async (ctx, args) => {
     const row = running(await runningOf(ctx, args.botDocId));
     if (!row) throw new Error("no running activity");
     const track = applyStep(trackOf(row), args.step);
     const now = Date.now();
-    await ctx.db.patch(row._id, { ...trackFields(track), history: recordStep(row.history ?? [], track.currentStep, now), updatedAt: now });
+    const note = args.note ?? null;
+    await ctx.db.patch(row._id, {
+      ...trackFields(track),
+      history: recordStep(row.history ?? [], track.currentStep, now, note),
+      note: currentNote(row.note, note, track.currentStep !== row.currentStep),
+      updatedAt: now,
+    });
     await announce(ctx, row._id, now);
     return null;
   },
@@ -118,15 +126,43 @@ export const steps = internalMutationGeneric({
   },
 });
 
-/** `end`: done or failed. The row stays: the card shows it until the bot starts again, the Archive after. */
-export const end = internalMutationGeneric({
-  args: { botDocId: v.id("bots"), state: v.union(v.literal("done"), v.literal("failed")) },
+/** `note`: what is happening now, on the current step (or the task, with no steps). Needs a running activity. */
+export const note = internalMutationGeneric({
+  args: { botDocId: v.id("bots"), note: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
     const row = running(await runningOf(ctx, args.botDocId));
     if (!row) throw new Error("no running activity");
     const now = Date.now();
-    await ctx.db.patch(row._id, { state: args.state, endedAt: now, updatedAt: now });
+    await ctx.db.patch(row._id, {
+      note: args.note,
+      history: recordStep(row.history ?? [], row.currentStep, now, args.note),
+      updatedAt: now,
+    });
+    await announce(ctx, row._id, now);
+    return null;
+  },
+});
+
+/** `end`: done or failed. The row stays: the card shows it until the bot starts again, the Archive after. */
+export const end = internalMutationGeneric({
+  args: {
+    botDocId: v.id("bots"),
+    state: v.union(v.literal("done"), v.literal("failed")),
+    note: v.optional(v.union(v.string(), v.null())),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = running(await runningOf(ctx, args.botDocId));
+    if (!row) throw new Error("no running activity");
+    const now = Date.now();
+    const note = args.note ?? null;
+    await ctx.db.patch(row._id, {
+      state: args.state,
+      endedAt: now,
+      updatedAt: now,
+      ...(note === null ? {} : { note, history: recordStep(row.history ?? [], row.currentStep, now, note) }),
+    });
     await announce(ctx, row._id, now);
     return null;
   },
@@ -159,6 +195,7 @@ const pushPayload = v.object({
   colour: v.union(v.string(), v.null()),
   title: v.string(),
   currentStep: v.string(),
+  note: v.union(v.string(), v.null()),
   state: liveState,
   stepIndex: v.union(v.number(), v.null()),
   stepCount: v.union(v.number(), v.null()),
@@ -202,6 +239,7 @@ export const loadPush = internalQueryGeneric({
       colour: bot.colour ?? null,
       title: row.title,
       currentStep: row.currentStep,
+      note: row.note ?? null,
       state: row.state,
       stepIndex: row.stepIndex ?? null,
       stepCount: row.steps?.length ?? null,
@@ -220,6 +258,7 @@ const liveView = v.object({
   steps: v.union(v.array(v.string()), v.null()),
   stepIndex: v.union(v.number(), v.null()),
   currentStep: v.string(),
+  note: v.union(v.string(), v.null()),
   log: v.array(v.string()),
   state: liveState,
   link: v.union(alertLink, v.null()),
@@ -238,6 +277,7 @@ async function viewOf(ctx: QueryCtx | MutationCtx, row: Doc<"liveActivities">, n
     steps: row.steps ?? null,
     stepIndex: row.stepIndex ?? null,
     currentStep: row.currentStep,
+    note: row.note ?? null,
     log: row.log,
     state: effectiveState(row, now) as LiveState,
     link: row.link ?? null,
@@ -300,7 +340,9 @@ const archivedView = v.object({
   state: liveState,
   startedAt: v.number(),
   endedAt: v.number(),
-  history: v.array(v.object({ step: v.string(), at: v.number() })),
+  /** The note it ended with (or the last one given). */
+  note: v.union(v.string(), v.null()),
+  history: v.array(v.object({ step: v.string(), at: v.number(), note: v.optional(v.string()) })),
 });
 
 const ARCHIVE_MAX = 100;
@@ -339,6 +381,7 @@ export const archive = queryGeneric({
         state: effectiveState(row, now) as LiveState,
         startedAt: row.startedAt,
         endedAt: row.endedAt ?? row.updatedAt,
+        note: row.note ?? null,
         history,
       });
     }

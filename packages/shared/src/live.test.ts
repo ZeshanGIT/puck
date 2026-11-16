@@ -19,20 +19,32 @@ describe("validateLiveCommand", () => {
       title: "Fix the build",
       steps: null,
       link: null,
+      note: null,
     });
     expect(
       validateLiveCommand({ action: "start", title: "Fix", steps: ["Read", "Test"], link: "https://example.com/pr/1" }),
-    ).toEqual({ action: "start", title: "Fix", steps: ["Read", "Test"], link: "https://example.com/pr/1" });
+    ).toEqual({ action: "start", title: "Fix", steps: ["Read", "Test"], link: "https://example.com/pr/1", note: null });
   });
 
   test("step and steps take text, and end defaults to done", () => {
     expect(validateLiveCommand({ action: "step", step: "Running the tests" })).toEqual({
       action: "step",
       step: "Running the tests",
+      note: null,
     });
     expect(validateLiveCommand({ action: "steps", steps: ["A", "B"] })).toEqual({ action: "steps", steps: ["A", "B"] });
-    expect(validateLiveCommand({ action: "end" })).toEqual({ action: "end", state: "done" });
-    expect(validateLiveCommand({ action: "end", state: "failed" })).toEqual({ action: "end", state: "failed" });
+    expect(validateLiveCommand({ action: "end" })).toEqual({ action: "end", state: "done", note: null });
+    expect(validateLiveCommand({ action: "end", state: "failed" })).toEqual({ action: "end", state: "failed", note: null });
+  });
+
+  test("a note goes with start, step or end, or on its own; one line, at most 200 characters", () => {
+    expect(validateLiveCommand({ action: "note", note: " 312 passed " })).toEqual({ action: "note", note: "312 passed" });
+    expect(validateLiveCommand({ action: "step", step: "Test", note: "running" })).toMatchObject({ note: "running" });
+    expect(validateLiveCommand({ action: "start", title: "Sync", note: "0 of 10" })).toMatchObject({ steps: null, note: "0 of 10" });
+    expect(validateLiveCommand({ action: "end", state: "failed", note: "disk full" })).toMatchObject({ note: "disk full" });
+    expect(refused({ action: "note" })).toMatch(/note must be a string/);
+    expect(refused({ action: "note", note: "x".repeat(201) })).toMatch(/note is too long/);
+    expect(refused({ action: "note", note: "a\nb" })).toMatch(/one line/);
   });
 
   test("refuses a missing or unknown action", () => {

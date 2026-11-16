@@ -1,6 +1,7 @@
 /**
  * A finished live activity, opened from the Archive: the bot and the task, how it ended, and every
- * step it went through with the time it started and how long it ran. Steps it was given but never
+ * step it went through with the time it started and how long it ran, with the bot's notes (smaller,
+ * under their step, each with its time). Steps it was given but never
  * reached (a failed or stopped task) are listed after. Back returns to the Archive.
  */
 import { useEffect, useMemo } from "react";
@@ -52,11 +53,22 @@ export function LiveTimeline({ item, onBack }: { item: ArchivedLive; onBack: () 
 
         <Section label="Steps" />
         <View style={[styles.box, { backgroundColor: t.fill }]} testID="live-timeline-steps">
-          {entries.map((entry, index) => (
-            <KvRow key={`${entry.kind}-${index}`} label={entry.label} first={index === 0}>
-              <KvText>{entry.took === null ? entry.time : `${entry.time} · ${entry.took}`}</KvText>
-            </KvRow>
-          ))}
+          {entries.map((entry, index) =>
+            entry.kind === "note" ? (
+              <View key={`note-${index}`} style={styles.note}>
+                <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.noteText, { color: t.ink2 }]}>
+                  {entry.label}
+                </Text>
+                <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.noteTime, { color: t.ink3 }]}>
+                  {entry.time}
+                </Text>
+              </View>
+            ) : (
+              <KvRow key={`${entry.kind}-${index}`} label={entry.label} first={index === 0}>
+                <KvText>{entry.took === null ? entry.time : `${entry.time} · ${entry.took}`}</KvText>
+              </KvRow>
+            ),
+          )}
         </View>
 
         {missed.length > 0 ? (
@@ -83,4 +95,7 @@ const styles = StyleSheet.create({
   title: { fontFamily: fontFamily.black, fontSize: 24, fontWeight: "900", textAlign: "center", marginTop: 4 },
   summary: { fontFamily: fontFamily.extraBold, fontSize: 15, fontWeight: "800", marginTop: 6 },
   box: { marginTop: 4, marginHorizontal: 16, borderRadius: 18, overflow: "hidden" },
+  note: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingLeft: 30, paddingRight: 16, paddingBottom: 10, marginTop: -4 },
+  noteText: { flex: 1, fontFamily: fontFamily.semiBold, fontSize: 14, fontWeight: "600" },
+  noteTime: { fontFamily: fontFamily.semiBold, fontSize: 12.5, fontWeight: "600", marginTop: 1 },
 });

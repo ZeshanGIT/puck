@@ -266,6 +266,7 @@ export interface LivePushInput {
   colour: string | null;
   title: string;
   currentStep: string;
+  note: string | null;
   state: string;
   stepIndex: number | null;
   stepCount: number | null;
@@ -295,6 +296,7 @@ export function fcmLiveMessage(input: LivePushInput) {
     updatedAt: String(input.updatedAt),
   };
   if (input.colour !== null) data.colour = input.colour;
+  if (input.note !== null) data.note = input.note;
   if (input.stepIndex !== null) data.stepIndex = String(input.stepIndex);
   if (input.stepCount !== null) data.stepCount = String(input.stepCount);
   return {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AlertValidationError, LIVE_MAX_STEPS, LIVE_LOG_MAX, LIVE_STALE_MS } from "@puck/shared";
-import { applyStep, applySteps, effectiveState, isStale, LIVE_HISTORY_MAX, recordStep, startTrack } from "../convex/lib/liveRules";
+import { applyStep, applySteps, currentNote, effectiveState, isStale, LIVE_HISTORY_MAX, recordStep, startTrack } from "../convex/lib/liveRules";
 
 describe("startTrack", () => {
   test("with steps, the first one is current; without, there is no current text yet", () => {
@@ -96,5 +96,30 @@ describe("recordStep", () => {
     for (let i = 0; i < LIVE_HISTORY_MAX + 5; i++) history = recordStep(history, `s${i}`, i);
     expect(history).toHaveLength(LIVE_HISTORY_MAX);
     expect(history[0]!.step).toBe("s5");
+  });
+});
+
+describe("notes", () => {
+  test("every note is kept with its time, several on one step, or with no step at all", () => {
+    let history = recordStep([], "Test", 1, "starting");
+    history = recordStep(history, "Test", 2, "120 of 312");
+    history = recordStep(history, "Test", 3, "312 passed");
+    history = recordStep(history, "Upload", 4);
+    expect(history).toEqual([
+      { step: "Test", at: 1, note: "starting" },
+      { step: "Test", at: 2, note: "120 of 312" },
+      { step: "Test", at: 3, note: "312 passed" },
+      { step: "Upload", at: 4 },
+    ]);
+    expect(recordStep(recordStep([], "", 1, "0 of 10 files"), "", 2, "10 of 10 files")).toEqual([
+      { step: "", at: 1, note: "0 of 10 files" },
+      { step: "", at: 2, note: "10 of 10 files" },
+    ]);
+  });
+
+  test("the current note: a new one replaces it, a new step without one clears it", () => {
+    expect(currentNote("old", "new", false)).toBe("new");
+    expect(currentNote("old", null, true)).toBeUndefined();
+    expect(currentNote("old", null, false)).toBe("old");
   });
 });

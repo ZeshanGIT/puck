@@ -80,7 +80,7 @@ describe("puck status", () => {
       );
       expect(text).toBe("started\n");
       expect(posted).toEqual([
-        { action: "start", title: "Fix the build", steps: ["Read", "Test", "Ship"], link: "https://example.com/pr/1" },
+        { action: "start", title: "Fix the build", steps: ["Read", "Test", "Ship"], link: "https://example.com/pr/1", note: null },
       ]);
     });
   });
@@ -95,7 +95,7 @@ describe("puck status", () => {
         "steps: 4\n",
       );
       expect(posted).toEqual([
-        { action: "step", step: "Running the tests" },
+        { action: "step", step: "Running the tests", note: null },
         { action: "steps", steps: ["A", "B", "X", "C"] },
       ]);
     });
@@ -109,8 +109,8 @@ describe("puck status", () => {
         "ended: failed\n",
       );
       expect(posted).toEqual([
-        { action: "end", state: "done" },
-        { action: "end", state: "failed" },
+        { action: "end", state: "done", note: null },
+        { action: "end", state: "failed", note: null },
       ]);
       await expect(
         statusCommand({ action: "end", bot: "sheldon-23648", ok: true, failed: true }, runtime(dir, fake([]))),
@@ -138,20 +138,42 @@ describe("puck status", () => {
     });
   });
 
-  test("the program parses the four subcommands into the same calls", async () => {
+  test("the program parses the five subcommands into the same calls", async () => {
     await withBot(async (dir) => {
       const posted: LiveCommand[] = [];
       const program = createProgram(runtime(dir, fake(posted)));
       await program.parseAsync(["node", "puck", "status", "start", "--title", "Fix", "--steps", "A|B", "--bot", "sheldon-23648"]);
       await program.parseAsync(["node", "puck", "status", "step", "Running the tests", "--bot", "sheldon-23648"]);
       await program.parseAsync(["node", "puck", "status", "steps", "A|X|B", "--bot", "sheldon-23648"]);
-      await program.parseAsync(["node", "puck", "status", "end", "--failed", "--bot", "sheldon-23648"]);
+      await program.parseAsync(["node", "puck", "status", "note", "120 of 312", "--bot", "sheldon-23648"]);
+      await program.parseAsync(["node", "puck", "status", "end", "--failed", "--note", "2 failed", "--bot", "sheldon-23648"]);
       expect(posted).toEqual([
-        { action: "start", title: "Fix", steps: ["A", "B"], link: null },
-        { action: "step", step: "Running the tests" },
+        { action: "start", title: "Fix", steps: ["A", "B"], link: null, note: null },
+        { action: "step", step: "Running the tests", note: null },
         { action: "steps", steps: ["A", "X", "B"] },
-        { action: "end", state: "failed" },
+        { action: "note", note: "120 of 312" },
+        { action: "end", state: "failed", note: "2 failed" },
       ]);
+    });
+  });
+});
+
+describe("notes", () => {
+  test("note on its own, and --note with start, step and end", async () => {
+    await withBot(async (dir) => {
+      const posted: LiveCommand[] = [];
+      const r = runtime(dir, fake(posted));
+      expect(await statusCommand({ action: "start", bot: "sheldon-23648", title: "Sync", note: "0 of 10" }, r)).toBe("started\n");
+      expect(await statusCommand({ action: "note", bot: "sheldon-23648", note: "4 of 10" }, r)).toBe("note: 4 of 10\n");
+      await statusCommand({ action: "step", bot: "sheldon-23648", text: "Verify", note: "checking hashes" }, r);
+      await statusCommand({ action: "end", bot: "sheldon-23648", failed: true, note: "hash mismatch" }, r);
+      expect(posted).toEqual([
+        { action: "start", title: "Sync", steps: null, link: null, note: "0 of 10" },
+        { action: "note", note: "4 of 10" },
+        { action: "step", step: "Verify", note: "checking hashes" },
+        { action: "end", state: "failed", note: "hash mismatch" },
+      ]);
+      await expect(statusCommand({ action: "note", bot: "sheldon-23648", note: " " }, r)).rejects.toThrow(/note is required/);
     });
   });
 });

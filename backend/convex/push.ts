@@ -262,6 +262,7 @@ export const sendLive = internalActionGeneric({
               colour: target.colour,
               title: target.title,
               currentStep: target.currentStep,
+              note: target.note,
               state: target.state,
               stepIndex: target.stepIndex,
               stepCount: target.stepCount,

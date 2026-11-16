@@ -205,7 +205,9 @@ export default defineSchema({
     updatedAt: v.number(),
     endedAt: v.optional(v.number()),
     // Each step the task moved to, with when (for the Archive). Absent on rows from before 2026-11-16.
-    history: v.optional(v.array(v.object({ step: v.string(), at: v.number() }))),
+    history: v.optional(v.array(v.object({ step: v.string(), at: v.number(), note: v.optional(v.string()) }))),
+    // What is happening now, in a line (`puck status note`); cleared when the step moves on without one.
+    note: v.optional(v.string()),
   })
     .index("by_bot", ["botId"])
     .index("by_bot_state", ["botId", "state"])

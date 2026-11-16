@@ -19,6 +19,8 @@ export interface LiveActivity {
   steps: string[] | null;
   stepIndex: number | null;
   currentStep: string;
+  /** What is happening now (`puck status note`), or null. Absent from an older backend. */
+  note?: string | null;
   /** The last finished steps, oldest first (a task without a track). */
   log: string[];
   state: LiveState;

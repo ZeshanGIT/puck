@@ -82,3 +82,42 @@ describe("archiveGroups", () => {
     expect(order(archiveGroups(history, live, false, now))).toEqual(["q_new", "t_mid", "q_old", "t_older"]);
   });
 });
+
+describe("notes in the Archive", () => {
+  test("notes sit under their step with their own time; steps still count once and time to the next step", () => {
+    const item: ArchivedLive = {
+      ...done,
+      steps: ["Test", "Upload"],
+      endedAt: T0 + 40_000,
+      history: [
+        { step: "Test", at: T0, note: "starting" },
+        { step: "Test", at: T0 + 10_000, note: "120 of 312" },
+        { step: "Test", at: T0 + 20_000, note: "312 passed" },
+        { step: "Upload", at: T0 + 30_000 },
+      ],
+    };
+    expect(liveArchiveRow(item).detail).toBe("Done · 2 steps · 40 s");
+    expect(liveTimeline(item).map((entry) => [entry.kind, entry.label, entry.took])).toEqual([
+      ["start", "Started", null],
+      ["step", "Test", "30 s"],
+      ["note", "starting", null],
+      ["note", "120 of 312", null],
+      ["note", "312 passed", null],
+      ["step", "Upload", "10 s"],
+      ["end", "Done", null],
+    ]);
+  });
+
+  test("a task with no steps: its title and every note, in order", () => {
+    const item: ArchivedLive = {
+      ...done,
+      steps: null,
+      history: [
+        { step: "", at: T0, note: "0 of 10 files" },
+        { step: "", at: T0 + 20_000, note: "10 of 10 files" },
+      ],
+    };
+    expect(liveArchiveRow(item).detail).toBe("Done · 45 s");
+    expect(liveTimeline(item).map((entry) => entry.label)).toEqual(["Started", "0 of 10 files", "10 of 10 files", "Done"]);
+  });
+});

@@ -236,17 +236,21 @@ http.route({
             title: command.title,
             steps: command.steps,
             link: command.link,
+            note: command.note,
           });
           return json({ ok: true, activityId: started.activityId }, 200);
         }
         case "step":
-          await ctx.runMutation(internal.live.step, { botDocId: auth.botDocId, step: command.step });
+          await ctx.runMutation(internal.live.step, { botDocId: auth.botDocId, step: command.step, note: command.note });
           return json({ ok: true }, 200);
         case "steps":
           await ctx.runMutation(internal.live.steps, { botDocId: auth.botDocId, steps: command.steps });
           return json({ ok: true }, 200);
+        case "note":
+          await ctx.runMutation(internal.live.note, { botDocId: auth.botDocId, note: command.note });
+          return json({ ok: true }, 200);
         case "end":
-          await ctx.runMutation(internal.live.end, { botDocId: auth.botDocId, state: command.state });
+          await ctx.runMutation(internal.live.end, { botDocId: auth.botDocId, state: command.state, note: command.note });
           return json({ ok: true }, 200);
       }
     } catch (error) {

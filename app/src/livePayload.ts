@@ -10,6 +10,8 @@ export interface LivePush {
   botName: string;
   title: string;
   currentStep: string;
+  /** What is happening now (`puck status note`), or null. */
+  note: string | null;
   state: LiveState;
   /** Epoch ms the task started: the chronometer counts from here. */
   startedAt: number;
@@ -60,6 +62,7 @@ export function livePush(payload: unknown): LivePush | null {
     botName,
     title,
     currentStep: typeof currentStep === "string" ? currentStep : "",
+    note: typeof data.note === "string" && data.note.trim() !== "" ? data.note : null,
     state,
     startedAt,
     updatedAt,

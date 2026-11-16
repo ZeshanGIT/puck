@@ -30,6 +30,7 @@ describe("livePush", () => {
       botName: "Sheldon",
       title: "Fixing the swipe arm bug",
       currentStep: "Running the tests",
+      note: null,
       state: "running",
       startedAt: 1731000000000,
       updatedAt: 1731000120000,
@@ -67,5 +68,13 @@ describe("livePush", () => {
     expect(livePush({ ...PUSH, updatedAt: undefined })).toBeNull();
     expect(livePush({ data: { dataString: "{not json" } })).toBeNull();
     expect(livePush(null)).toBeNull();
+  });
+});
+
+describe("the note", () => {
+  test("is read when there is one, and null when blank or missing", () => {
+    expect(livePush({ ...PUSH, note: "120 of 312" })?.note).toBe("120 of 312");
+    expect(livePush({ ...PUSH, note: " " })?.note).toBeNull();
+    expect(livePush(PUSH)?.note).toBeNull();
   });
 });

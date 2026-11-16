@@ -19,8 +19,23 @@ export interface ArchivedLive {
   state: LiveState;
   startedAt: number;
   endedAt: number;
-  /** Each step it moved to, oldest first, with when. */
-  history: { step: string; at: number }[];
+  /** The note it ended with (or the last one given); absent from an older backend. */
+  note?: string | null;
+  /** Each step it moved to and each note it gave, oldest first, with when. */
+  history: { step: string; at: number; note?: string }[];
+}
+
+/** The marks where the task moved to a new step (not the note-only updates). */
+function stepChanges(history: ArchivedLive["history"]): number[] {
+  const indices: number[] = [];
+  let current = "";
+  history.forEach((mark, index) => {
+    if (mark.step !== "" && mark.step !== current) {
+      indices.push(index);
+      current = mark.step;
+    }
+  });
+  return indices;
 }
 
 /** "45 s", "3 min", "1 h 5 min". */
@@ -66,7 +81,7 @@ export interface LiveArchiveRowModel {
 
 export function liveArchiveRow(item: ArchivedLive): LiveArchiveRowModel {
   const end = ending(item.state);
-  const count = item.history.length;
+  const count = stepChanges(item.history).length;
   const parts = [end.word];
   if (count > 0) parts.push(count === 1 ? "1 step" : `${count} steps`);
   parts.push(durationLabel(item.endedAt - item.startedAt));
@@ -87,23 +102,30 @@ export interface TimelineEntry {
   label: string;
   /** "9:12:05". */
   time: string;
-  /** How long the step ran, up to the next one or the end; null on the closing line. */
+  /** How long the step ran, up to the next step or the end; null on other lines. */
   took: string | null;
-  kind: "start" | "step" | "end";
+  /** A note is drawn under its step, smaller. */
+  kind: "start" | "step" | "note" | "end";
   tone: "ok" | "bad" | "neutral";
 }
 
 /**
- * The detail's timeline: Started, each step with its time and how long it ran, and how it ended.
- * A step recorded at the very start shares the "Started" moment.
+ * The detail's timeline: Started, each step with its time and how long it ran, every note the bot
+ * gave (under its step, or on their own for a task with no steps) with its time, and how it ended.
  */
 export function liveTimeline(item: ArchivedLive): TimelineEntry[] {
   const entries: TimelineEntry[] = [
     { label: "Started", time: clockWithSeconds(item.startedAt), took: null, kind: "start", tone: "neutral" },
   ];
+  const changes = stepChanges(item.history);
   item.history.forEach((mark, index) => {
-    const next = item.history[index + 1]?.at ?? item.endedAt;
-    entries.push({ label: mark.step, time: clockWithSeconds(mark.at), took: durationLabel(next - mark.at), kind: "step", tone: "neutral" });
+    const changeAt = changes.indexOf(index);
+    if (changeAt >= 0) {
+      const nextIndex = changes[changeAt + 1];
+      const next = nextIndex === undefined ? item.endedAt : item.history[nextIndex]!.at;
+      entries.push({ label: mark.step, time: clockWithSeconds(mark.at), took: durationLabel(next - mark.at), kind: "step", tone: "neutral" });
+    }
+    if (mark.note) entries.push({ label: mark.note, time: clockWithSeconds(mark.at), took: null, kind: "note", tone: "neutral" });
   });
   const end = ending(item.state);
   entries.push({ label: end.word, time: clockWithSeconds(item.endedAt), took: null, kind: "end", tone: end.tone });

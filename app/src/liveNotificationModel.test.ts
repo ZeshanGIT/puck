@@ -116,3 +116,15 @@ describe("which pushes to apply", () => {
     expect(NOTHING_SEEN.byActivity.size).toBe(0);
   });
 });
+
+describe("the note in the notification", () => {
+  test("follows the step, and the closing line", async () => {
+    const { liveNotificationSpec } = await import("./liveNotificationModel");
+    const push = {
+      activityId: "k1", botId: "mac-79521", botName: "mac", title: "Sync", currentStep: "Test", note: "120 of 312",
+      state: "running" as const, startedAt: 1, updatedAt: 2, colour: null, stepIndex: null, stepCount: null,
+    };
+    expect(liveNotificationSpec(push).body).toBe("Test — 120 of 312");
+    expect(liveNotificationSpec({ ...push, state: "failed", note: "disk full" }).body).toBe("Didn't finish — disk full");
+  });
+});

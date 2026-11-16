@@ -13,6 +13,8 @@ export const LIVE_STALE_MS = 30 * 60 * 1000;
 
 export const LIVE_TITLE_MAX = 80;
 export const LIVE_STEP_MAX = 80;
+/** A note: what is happening right now, in a line ("312 passed, 2 skipped"). */
+export const LIVE_NOTE_MAX = 200;
 export const LIVE_MAX_STEPS = 12;
 /** The last finished steps kept for an activity without a track. */
 export const LIVE_LOG_MAX = 10;
@@ -23,10 +25,15 @@ export const LIVE_KIND = "live";
 
 /** One `POST /status` body, after validation. */
 export type LiveCommand =
-  | { action: "start"; title: string; steps: string[] | null; link: string | null }
-  | { action: "step"; step: string }
+  | { action: "start"; title: string; steps: string[] | null; link: string | null; note: string | null }
+  | { action: "step"; step: string; note: string | null }
   | { action: "steps"; steps: string[] }
-  | { action: "end"; state: "done" | "failed" };
+  | { action: "note"; note: string }
+  | { action: "end"; state: "done" | "failed"; note: string | null };
+
+function optionalNote(value: unknown): string | null {
+  return value === undefined || value === null || value === "" ? null : line(value, "note", LIVE_NOTE_MAX);
+}
 
 const CONTROL_CHARS = /[\u0000-\u001F\u007F]/;
 
@@ -73,10 +80,13 @@ export function validateLiveCommand(body: unknown): LiveCommand {
     const title = line(record.title, "title", LIVE_TITLE_MAX);
     const steps = record.steps === undefined || record.steps === null ? null : stepList(record.steps, "steps");
     const link = record.link === undefined || record.link === null ? null : linkUrl(record.link);
-    return { action, title, steps, link };
+    return { action, title, steps, link, note: optionalNote(record.note) };
   }
   if (action === "step") {
-    return { action, step: line(record.step, "step", LIVE_STEP_MAX) };
+    return { action, step: line(record.step, "step", LIVE_STEP_MAX), note: optionalNote(record.note) };
+  }
+  if (action === "note") {
+    return { action, note: line(record.note, "note", LIVE_NOTE_MAX) };
   }
   if (action === "steps") {
     return { action, steps: stepList(record.steps, "steps") };
@@ -84,7 +94,7 @@ export function validateLiveCommand(body: unknown): LiveCommand {
   if (action === "end") {
     const state = record.state === undefined || record.state === null ? "done" : record.state;
     if (state !== "done" && state !== "failed") fail("state must be done or failed");
-    return { action, state };
+    return { action, state, note: optionalNote(record.note) };
   }
-  fail("action must be start, step, steps or end");
+  fail("action must be start, step, steps, note or end");
 }

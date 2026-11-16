@@ -78,6 +78,7 @@ export {
   LIVE_STALE_MS,
   LIVE_STATES,
   LIVE_STEP_MAX,
+  LIVE_NOTE_MAX,
   LIVE_TITLE_MAX,
   validateLiveCommand,
 } from "./live";

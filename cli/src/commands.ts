@@ -399,7 +399,9 @@ function formatLocal(epochMs: number): string {
 
 /** The `puck status` input, as the program parses it. */
 export interface StatusInput {
-  action: "start" | "step" | "steps" | "end";
+  action: "start" | "step" | "steps" | "note" | "end";
+  /** What is happening now: on its own (note), or with start, step or end. */
+  note?: string;
   bot?: string;
   title?: string;
   /** Steps separated by `|`, for start and steps. */
@@ -429,17 +431,21 @@ export async function statusCommand(input: StatusInput, runtime: Runtime): Promi
         title: input.title ?? "",
         ...(input.steps === undefined ? {} : { steps: parseSteps(input.steps) }),
         ...(input.link === undefined ? {} : { link: input.link }),
+        ...(input.note === undefined ? {} : { note: input.note }),
       };
       break;
     case "step":
-      raw = { action: "step", step: input.text ?? "" };
+      raw = { action: "step", step: input.text ?? "", ...(input.note === undefined ? {} : { note: input.note }) };
+      break;
+    case "note":
+      raw = { action: "note", note: input.note ?? "" };
       break;
     case "steps":
       raw = { action: "steps", steps: parseSteps(input.steps ?? "") };
       break;
     case "end":
       if (input.ok && input.failed) throw new CliError("pass --ok or --failed, not both");
-      raw = { action: "end", state: input.failed ? "failed" : "done" };
+      raw = { action: "end", state: input.failed ? "failed" : "done", ...(input.note === undefined ? {} : { note: input.note }) };
       break;
   }
   let command: LiveCommand;
@@ -458,6 +464,8 @@ export async function statusCommand(input: StatusInput, runtime: Runtime): Promi
       return `step: ${command.step}\n`;
     case "steps":
       return `steps: ${command.steps.length}\n`;
+    case "note":
+      return `note: ${command.note}\n`;
     case "end":
       return `ended: ${command.state}\n`;
   }

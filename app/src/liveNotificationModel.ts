@@ -35,7 +35,7 @@ export interface LiveNotificationSpec {
   id: string;
   /** The task. */
   title: string;
-  /** The current step, and how many are to go. */
+  /** The current step, how many are to go, and the note. */
   body: string;
   /** The bot's name, where Android shows a notification's sub text. */
   subtitle: string;
@@ -48,6 +48,11 @@ export interface LiveNotificationSpec {
   timeoutAfter: number | null;
   /** The bot's base colour, for the notification's accent. */
   colour: string | null;
+}
+
+/** "Test · 3 to go — 120 of 312 passed": the note after the step, when there is one. */
+function withNote(line: string, note: string | null | undefined): string {
+  return note ? `${line} — ${note}` : line;
 }
 
 /** The closing line for an ended activity. */
@@ -79,7 +84,7 @@ export function liveNotificationSpec(push: LivePush): LiveNotificationSpec {
   if (isEnded(push.state)) {
     return {
       ...common,
-      body: closingLine(push.state),
+      body: withNote(closingLine(push.state), push.note),
       progress: push.state === "done" ? liveProgress(push) : null,
       chronometerFrom: null,
       ongoing: false,
@@ -90,7 +95,7 @@ export function liveNotificationSpec(push: LivePush): LiveNotificationSpec {
   const step = push.currentStep.trim() === "" ? "Working" : push.currentStep;
   return {
     ...common,
-    body: toGo === null ? step : `${step} · ${toGo === 0 ? "last step" : `${toGo} to go`}`,
+    body: withNote(toGo === null ? step : `${step} · ${toGo === 0 ? "last step" : `${toGo} to go`}`, push.note),
     progress: liveProgress(push),
     chronometerFrom: push.startedAt,
     ongoing: true,

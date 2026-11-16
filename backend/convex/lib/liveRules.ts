@@ -54,18 +54,31 @@ export function applySteps(track: Track, steps: string[]): Track {
 export const LIVE_HISTORY_MAX = 100;
 
 export interface StepMark {
+  /** The step current at that moment; "" for a task with no steps. */
   step: string;
-  /** Epoch ms the step became current. */
+  /** Epoch ms of the change. */
   at: number;
+  /** The note the bot gave with it, if any. */
+  note?: string;
 }
 
 /**
- * The Archive's record of a task: each step it moved to, with the time. A step equal to the one
- * already current (a repeated update) or empty (a task with no steps yet) adds nothing.
+ * The Archive's record of a task: each step it moved to, and each note it gave (several per step,
+ * or with no step at all), with the time. A repeated step with no note adds nothing.
  */
-export function recordStep(history: readonly StepMark[], step: string, at: number): StepMark[] {
-  if (step === "" || history[history.length - 1]?.step === step) return [...history];
-  return [...history, { step, at }].slice(-LIVE_HISTORY_MAX);
+export function recordStep(history: readonly StepMark[], step: string, at: number, note: string | null = null): StepMark[] {
+  const moved = step !== "" && history[history.length - 1]?.step !== step;
+  if (!moved && note === null) return [...history];
+  return [...history, { step, at, ...(note === null ? {} : { note }) }].slice(-LIVE_HISTORY_MAX);
+}
+
+/**
+ * The note to show now: a new one replaces it; moving to another step without one clears it (a
+ * note is about its step); otherwise it stays.
+ */
+export function currentNote(previous: string | undefined, note: string | null, stepChanged: boolean): string | undefined {
+  if (note !== null) return note;
+  return stepChanged ? undefined : previous;
 }
 
 /** Running with no update for LIVE_STALE_MS or more. The scheduled check does the same; this covers a missed one. */
