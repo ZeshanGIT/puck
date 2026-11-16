@@ -2,6 +2,10 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## Bot avatar shape and colour (2026-11-16)
+
+`puck add --shape round|squircle|hex|bean|cloud` (with `--colour`), checked before the webhook prompts. `BOT_SHAPES` in `@puck/shared`; the backend stores `bots.shape`, returns it from `bots.list` and `pairingRequests`, sends it in the pairing push, and `bots.update` changes it (Convex dev pushed 2026-11-16). B2 has a Shape row above Colour. Alerts carry only the bot id, so `ui/botLookStore.ts` remembers each bot's colour and shape from `bots.list` (Inbox), saves them in SecureStore for a headless card (`loadBotLooks` in `showCard`), and `botLook` uses them after explicit values; `useBotLook` redraws on change. Before this, alerts, Home, the stack and the card ignored the chosen colour. Release installed 09:42 IST; owner check pending.
+
 ## Bottom card with an answer picker (2026-11-15)
 
 `OverlayCard` shows at the bottom (gravity BOTTOM, above the navigation bar). Swipe up opens `Picker`, a full-screen touchable window with the answers above the card; `hover(rawY)` picks the one under the finger, risky ones need `HOLD_MS`, letting go calls `pickAnswer` (ring stops, "Sent to" with Undo for `UNDO_MS`, then `submitReply` with `optionIds`). Swipe down sends `ACTION_LATER` (`laterCardAlert`: settle, reminders kept). Answers come from `cardChoices` via `fetchCardChoices` (`alerts.get`) after the card shows, handed over with `setOverlayChoices`; the push has no options. `ensureBackgroundAuth` signs Convex in from the stored account when the app has not, so card answers send with Puck closed. `setRoom` and the pull-down-to-open are gone. Owner check on the phone pending.
