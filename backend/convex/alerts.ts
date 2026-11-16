@@ -20,6 +20,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { answerReceipt, buildTimeline, historyOutcome, isWaiting } from "./lib/alertHistory";
+import { payloadAttachment } from "./lib/attachments";
 import { alertPushMode } from "./lib/botSettings";
 import { getOrCreateBuiltInBot } from "./bots";
 import { requireDevice } from "./device";
@@ -524,6 +525,10 @@ const answerView = v.object({
   deliveryStatus,
   deliveryAttempts: v.number(),
   lastError: v.union(v.string(), v.null()),
+  // Files attached to the reply, each with a fresh download URL (the same as the webhook's).
+  attachments: v.array(
+    v.object({ type: attachmentType, name: v.string(), mime: v.string(), size: v.number(), url: v.string() }),
+  ),
 });
 
 export const getStatus = internalQueryGeneric({
@@ -540,6 +545,8 @@ export const getStatus = internalQueryGeneric({
       options: v.array(option),
       status: alertStatus,
       scheduledFor: v.union(v.number(), v.null()),
+      // While snoozed: when it comes back (epoch ms), or null for "until I'm back". Null otherwise.
+      snoozedUntil: v.union(v.number(), v.null()),
       ...alertExtraFields,
       createdAt: v.number(),
       answer: v.union(answerView, v.null()),
@@ -557,6 +564,11 @@ export const getStatus = internalQueryGeneric({
       .query("answers")
       .withIndex("by_questionId", (q) => q.eq("questionId", alert.questionId))
       .unique();
+    const attachments = [];
+    for (const item of answer?.attachments ?? []) {
+      const url = await ctx.storage.getUrl(item.storageId);
+      if (url) attachments.push(payloadAttachment(item, url));
+    }
     return {
       questionId: alert.questionId,
       question: alert.question,
@@ -567,6 +579,7 @@ export const getStatus = internalQueryGeneric({
       options: alert.options,
       status: alert.status,
       scheduledFor: alert.scheduledFor ?? null,
+      snoozedUntil: alert.status === "snoozed" ? (alert.snoozedUntil ?? null) : null,
       ...pickAlertExtras(alert),
       createdAt: alert.createdAt,
       answer: answer
@@ -578,6 +591,7 @@ export const getStatus = internalQueryGeneric({
             deliveryStatus: answer.deliveryStatus,
             deliveryAttempts: answer.deliveryAttempts,
             lastError: answer.lastError ?? null,
+            attachments,
           }
         : null,
     };

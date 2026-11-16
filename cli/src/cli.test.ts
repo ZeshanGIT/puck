@@ -369,6 +369,7 @@ function view(overrides: Partial<AlertStatusView>): AlertStatusView {
     presentation: "choice",
     options: [{ id: "yes", label: "Yes" }],
     scheduledFor: null,
+    snoozedUntil: null,
     createdAt: 1,
     answer: null,
     ...overrides,
@@ -412,6 +413,7 @@ describe("puck answer", () => {
           deliveryStatus: "delivered",
           deliveryAttempts: 1,
           lastError: null,
+          attachments: [{ type: "photo", name: "screen.png", mime: "image/png", size: 2048, url: "https://files.example/screen.png" }],
         },
       });
       const text = await getAnswer("q_01HV7K3M2ZABCDEF", "sheldon-23648", await answerRuntime(dir, alert, seen));
@@ -420,6 +422,7 @@ describe("puck answer", () => {
           "q_01HV7K3M2ZABCDEF  answered  Ship it?",
           "answer: Yes (yes)",
           "reply: go ahead",
+          "attachment: screen.png (photo, 2048 bytes) https://files.example/screen.png",
           "answered: 2026-11-09 14:05",
           "delivery: delivered (1 attempt)",
           "",
@@ -445,6 +448,7 @@ describe("puck answer", () => {
           deliveryStatus: "failed",
           deliveryAttempts: 4,
           lastError: "HTTP 401",
+          attachments: [],
         },
       });
       const text = await getAnswer("q_01HV7K3M2ZABCDEF", "sheldon-23648", await answerRuntime(dir, alert));
@@ -463,7 +467,11 @@ describe("puck answer", () => {
       const id = "q_01HV7K3M2ZABCDEF";
       expect(await getAnswer(id, "sheldon-23648", await answerRuntime(dir, view({})))).toBe(`${id}  pending  Ship it?\nno answer yet\n`);
       expect(await getAnswer(id, "sheldon-23648", await answerRuntime(dir, view({ status: "snoozed" })))).toBe(
-        `${id}  snoozed  Ship it?\nsnoozed, no answer yet\n`,
+        `${id}  snoozed  Ship it?\nsnoozed until they're back, no answer yet\n`,
+      );
+      const until = new Date(2026, 10, 9, 15, 30).toISOString();
+      expect(await getAnswer(id, "sheldon-23648", await answerRuntime(dir, view({ status: "snoozed", snoozedUntil: until })))).toBe(
+        `${id}  snoozed  Ship it?\nsnoozed until 2026-11-09 15:30, no answer yet\n`,
       );
       expect(await getAnswer(id, "sheldon-23648", await answerRuntime(dir, view({ status: "cancelled" })))).toBe(
         `${id}  cancelled  Ship it?\ncancelled\n`,

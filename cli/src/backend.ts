@@ -49,6 +49,16 @@ export interface AlertAnswerView {
   deliveryStatus: "pending" | "sent" | "delivered" | "failed";
   deliveryAttempts: number;
   lastError: string | null;
+  /** Files attached to the reply, each with a download URL that works for a limited time. */
+  attachments: AlertAttachmentView[];
+}
+
+export interface AlertAttachmentView {
+  type: "photo" | "file";
+  name: string;
+  mime: string;
+  size: number;
+  url: string;
 }
 
 /** One alert and its answer (null until the person replies), from `GET /alerts/<id>`. */
@@ -62,6 +72,8 @@ export interface AlertStatusView {
   presentation: "choice" | "swipe";
   options: Array<{ id: string; label: string }>;
   scheduledFor: number | null;
+  /** While snoozed: when it comes back (ISO UTC), or null for "until I'm back". Null otherwise. */
+  snoozedUntil: string | null;
   createdAt: number;
   answer: AlertAnswerView | null;
 }
@@ -302,6 +314,7 @@ export function parseAlertStatus(value: unknown): AlertStatusView {
       deliveryStatus: raw.deliveryStatus as AlertAnswerView["deliveryStatus"],
       deliveryAttempts: raw.deliveryAttempts,
       lastError: typeof raw.lastError === "string" ? raw.lastError : null,
+      attachments: parseAttachments(raw.attachments),
     };
   }
   return {
@@ -314,9 +327,29 @@ export function parseAlertStatus(value: unknown): AlertStatusView {
     presentation: value.presentation,
     options,
     scheduledFor: value.scheduledFor as number | null,
+    snoozedUntil: typeof value.snoozedUntil === "number" ? new Date(value.snoozedUntil).toISOString() : null,
     createdAt: value.createdAt,
     answer,
   };
+}
+
+/** The reply's files; an older server sends none, and a malformed entry is skipped. */
+function parseAttachments(value: unknown): AlertAttachmentView[] {
+  if (!Array.isArray(value)) return [];
+  const files: AlertAttachmentView[] = [];
+  for (const item of value) {
+    if (
+      isRecord(item) &&
+      (item.type === "photo" || item.type === "file") &&
+      typeof item.name === "string" &&
+      typeof item.mime === "string" &&
+      typeof item.size === "number" &&
+      typeof item.url === "string"
+    ) {
+      files.push({ type: item.type, name: item.name, mime: item.mime, size: item.size, url: item.url });
+    }
+  }
+  return files;
 }
 
 async function botRequest(siteUrl: string, path: string, method: "GET" | "POST", botId: string, secret: string): Promise<unknown> {

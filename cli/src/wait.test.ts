@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AlertStatusView, Backend } from "./backend";
+import { parseAlertStatus, type AlertStatusView, type Backend } from "./backend";
 import { WAIT_EXIT, waitForAnswer, type Runtime } from "./commands";
 import { createProgram } from "./program";
 import { parseDuration } from "./time";
@@ -21,6 +21,7 @@ function view(status: AlertStatusView["status"], answered = false): AlertStatusV
     presentation: "choice",
     options: [{ id: "yes", label: "Yes" }],
     scheduledFor: null,
+    snoozedUntil: null,
     createdAt: 1,
     answer: answered
       ? {
@@ -31,6 +32,7 @@ function view(status: AlertStatusView["status"], answered = false): AlertStatusV
           deliveryStatus: "delivered",
           deliveryAttempts: 1,
           lastError: null,
+          attachments: [],
         }
       : null,
   };
@@ -196,5 +198,42 @@ describe("parseDuration", () => {
     expect(() => parseDuration("0")).toThrow(/between/);
     expect(() => parseDuration("8d")).toThrow(/look like/);
     expect(() => parseDuration("200h")).toThrow(/between/);
+  });
+});
+
+describe("parseAlertStatus", () => {
+  const base = {
+    questionId: ID,
+    question: "Ship it?",
+    botId: "sheldon-23648",
+    status: "answered",
+    priority: "normal",
+    selectionMode: "single",
+    presentation: "choice",
+    options: [{ id: "yes", label: "Yes" }],
+    scheduledFor: null,
+    createdAt: 1,
+  };
+  const answer = {
+    answers: [{ id: "yes", label: "Yes" }],
+    customReply: null,
+    answeredAt: "2026-11-16T10:00:00.000Z",
+    source: "app",
+    deliveryStatus: "delivered",
+    deliveryAttempts: 1,
+    lastError: null,
+  };
+
+  test("keeps the reply's files and the snooze end as ISO time", () => {
+    const file = { type: "photo" as const, name: "a.png", mime: "image/png", size: 10, url: "https://files.example/a" };
+    const parsed = parseAlertStatus({ ...base, snoozedUntil: Date.UTC(2026, 10, 16, 11), answer: { ...answer, attachments: [file, { type: "x" }] } });
+    expect(parsed.answer?.attachments).toEqual([file]);
+    expect(parsed.snoozedUntil).toBe("2026-11-16T11:00:00.000Z");
+  });
+
+  test("an older server without them reads as no files and no snooze end", () => {
+    const parsed = parseAlertStatus({ ...base, answer });
+    expect(parsed.answer?.attachments).toEqual([]);
+    expect(parsed.snoozedUntil).toBeNull();
   });
 });

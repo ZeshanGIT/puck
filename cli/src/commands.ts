@@ -321,13 +321,14 @@ export function formatAnswer(view: AlertStatusView): string {
       lines.push(`answer: ${answer.answers.map((choice) => (choice.label === choice.id ? choice.id : `${choice.label} (${choice.id})`)).join(", ")}`);
     }
     if (answer.customReply !== null && answer.customReply !== "") lines.push(`reply: ${answer.customReply}`);
+    for (const file of answer.attachments) lines.push(`attachment: ${file.name} (${file.type}, ${file.size} bytes) ${file.url}`);
     lines.push(`answered: ${formatLocal(Date.parse(answer.answeredAt))}`);
     lines.push(`delivery: ${answer.deliveryStatus} (${answer.deliveryAttempts} attempt${answer.deliveryAttempts === 1 ? "" : "s"})`);
     if (answer.lastError) lines.push(`error: ${answer.lastError}`);
   } else if (view.status === "cancelled") {
     lines.push("cancelled");
   } else if (view.status === "snoozed") {
-    lines.push("snoozed, no answer yet");
+    lines.push(view.snoozedUntil === null ? "snoozed until they're back, no answer yet" : `snoozed until ${formatLocal(Date.parse(view.snoozedUntil))}, no answer yet`);
   } else {
     lines.push("no answer yet");
   }
