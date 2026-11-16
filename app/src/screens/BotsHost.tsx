@@ -173,6 +173,7 @@ export function BotsHost({ source, start = { kind: "list" }, pairings, onOpenPai
             source.setBypass(bot.botId, kind === "urgent" ? { fullScreenUrgent: fullScreen } : { fullScreenNormal: fullScreen }),
           )
         }
+        onLiveFloat={(on) => void run(() => source.setBypass(bot.botId, { liveFloat: on ? true : null }))}
         onLoop={(kind, loop) =>
           void run(() => source.setBypass(bot.botId, kind === "urgent" ? { loopUrgent: loop } : { loopNormal: loop }))
         }

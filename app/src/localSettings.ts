@@ -42,6 +42,8 @@ export interface BotBypass {
   fullScreenNormal?: boolean;
   /** The same for urgent alerts. */
   fullScreenUrgent?: boolean;
+  /** Show this bot's live tasks as a floating card over other apps. Off when absent. */
+  liveFloat?: boolean;
 }
 
 export interface LocalSettings {
@@ -129,7 +131,8 @@ function hasOverride(entry: BotBypass): boolean {
     entry.loopNormal !== undefined ||
     entry.loopUrgent !== undefined ||
     entry.fullScreenNormal !== undefined ||
-    entry.fullScreenUrgent !== undefined
+    entry.fullScreenUrgent !== undefined ||
+    entry.liveFloat !== undefined
   );
 }
 
@@ -161,6 +164,7 @@ export function parseLocalSettings(raw: string | null | undefined): LocalSetting
       if (typeof override.loopUrgent === "boolean") entry.loopUrgent = override.loopUrgent;
       if (typeof override.fullScreenNormal === "boolean") entry.fullScreenNormal = override.fullScreenNormal;
       if (typeof override.fullScreenUrgent === "boolean") entry.fullScreenUrgent = override.fullScreenUrgent;
+      if (typeof override.liveFloat === "boolean") entry.liveFloat = override.liveFloat;
       if (hasOverride(entry)) bots[botId] = entry;
     }
   }
@@ -231,6 +235,8 @@ export interface BotBypassChange {
   /** Full screen or card while the phone is in use, for this bot; `null` follows the global setting again. */
   fullScreenNormal?: boolean | null;
   fullScreenUrgent?: boolean | null;
+  /** The floating card for live tasks: on, or `null` (off). */
+  liveFloat?: boolean | null;
 }
 
 /**
@@ -260,6 +266,8 @@ export function withBotBypass(settings: LocalSettings, botId: string, change: Bo
   else if (change.fullScreenNormal !== undefined) next.fullScreenNormal = change.fullScreenNormal;
   if (change.fullScreenUrgent === null) delete next.fullScreenUrgent;
   else if (change.fullScreenUrgent !== undefined) next.fullScreenUrgent = change.fullScreenUrgent;
+  if (change.liveFloat === null || change.liveFloat === false) delete next.liveFloat;
+  else if (change.liveFloat !== undefined) next.liveFloat = change.liveFloat;
   const bots = { ...settings.bots };
   if (!hasOverride(next)) delete bots[botId];
   else bots[botId] = next;
@@ -483,4 +491,9 @@ export function clockText(date: Date): string {
 /** The prototype's lock date ("Saturday, 7 November"). */
 export function clockDateText(date: Date): string {
   return `${WEEKDAYS[date.getDay()]}, ${date.getDate()} ${MONTHS[date.getMonth()]}`;
+}
+
+/** Whether this bot's live tasks float over other apps (its page in Bots). Off unless turned on. */
+export function liveFloatFor(settings: Pick<LocalSettings, "bots">, botId: string): boolean {
+  return settings.bots[botId]?.liveFloat === true;
 }

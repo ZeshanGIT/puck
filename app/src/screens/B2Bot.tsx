@@ -66,6 +66,8 @@ export interface B2BotProps {
   appFullScreen: { normal: boolean; urgent: boolean };
   /** Full screen (true) or the card (false) for this bot's alerts while the phone is in use. */
   onFullScreen: (kind: SoundKind, fullScreen: boolean) => void;
+  /** The floating card for this bot's live tasks, on or off. */
+  onLiveFloat?: (on: boolean) => void;
   /** Follows Alert sounds again for this kind of alert: the ringtone, repeating, and full screen. */
   onResetSound: (kind: SoundKind) => void;
   /** The second tap of Remove. */
@@ -93,6 +95,7 @@ export function B2Bot({
   onLoop,
   appFullScreen,
   onFullScreen,
+  onLiveFloat,
   appBypass,
   appReminder,
   onResetSound,
@@ -180,6 +183,20 @@ export function B2Bot({
         })}
         <Caption>
           These apply to {bot.name} only. Until you change one, it follows Alerts in Settings. Do Not Disturb and silent mode are bypassed only when {bot.name} asks.
+        </Caption>
+
+        <Section label="Live tasks" />
+        <Group>
+          <SettingsToggleRow
+            icon="phone"
+            label="Float over other apps"
+            value={bypass?.liveFloat === true}
+            onChange={(next) => onLiveFloat?.(next)}
+            testID="live-float"
+          />
+        </Group>
+        <Caption testID="live-float-caption">
+          {`While ${bot.name} works on something, a small bubble with its progress floats at the edge of the screen. Tap it to see the step and note; drag it to the × to hide it until the next step. It still shows in the notification shade.`}
         </Caption>
 
         <Section label="Shape" />

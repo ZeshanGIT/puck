@@ -86,6 +86,8 @@ mock.module("@notifee/react-native", () => ({
 mock.module("./cardAnswerBackend", () => ({ fetchCardChoices: async () => null }));
 mock.module("puck-full-screen", () => ({
   setOverlayChoices: () => true,
+  showLiveFloat: () => true,
+  hideLiveFloat: () => {},
   canCreateRingChannel: () => overlay.nativeRing,
   createRingChannel: (
     id: string,

@@ -282,6 +282,47 @@ class FullScreenAccessModule : Module() {
     }
 
     // True when Puck may draw the compact alert card over other apps (the person grants it).
+    // A bot's live task floating over other apps (LiveFloat). JavaScript checks the bot's setting.
+    Function("showLiveFloat") { spec: Map<String, Any?> ->
+      val context = appContext.reactContext ?: return@Function false
+      fun text(key: String): String = spec[key] as? String ?: throw IllegalArgumentException(key)
+      fun colour(key: String): Int = Color.parseColor(text(key))
+      try {
+        LiveFloat.show(
+          context,
+          LiveFloat.Spec(
+            activityId = text("activityId"),
+            botName = text("botName"),
+            title = text("title"),
+            stepLine = text("stepLine"),
+            note = (spec["note"] as? String)?.takeIf { it.isNotBlank() },
+            state = text("state"),
+            stepKey = text("stepKey"),
+            progress = (spec["progress"] as? Number)?.toFloat(),
+            background = colour("background"),
+            ink = colour("ink"),
+            ink2 = colour("ink2"),
+            botColour = colour("botColour"),
+            blobFill = colour("blobFill"),
+            blobRim = (spec["blobRim"] as? String)?.takeIf { it.isNotEmpty() }?.let { Color.parseColor(it) },
+            blobPath = text("blobPath"),
+            blobTilt = (spec["blobTilt"] as? Number)?.toFloat() ?: 0f,
+            ok = colour("ok"),
+            danger = colour("danger"),
+          ),
+        )
+        true
+      } catch (error: IllegalArgumentException) {
+        false
+      }
+    }
+
+    Function("hideLiveFloat") { activityId: String? ->
+      val context = appContext.reactContext ?: return@Function null
+      LiveFloat.hide(activityId)
+      null
+    }
+
     Function("canDrawOverlay") {
       val context = appContext.reactContext ?: return@Function false
       OverlayCard.canDraw(context)

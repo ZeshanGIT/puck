@@ -30,6 +30,8 @@ type FullScreenNative = {
   reportAlertBlob?: (x: number, y: number, size: number) => boolean;
   takeOverlayBlobFlight?: () => boolean;
   hideOverlayCard?: (questionId: string) => boolean;
+  showLiveFloat?: (spec: LiveFloatSpec) => boolean;
+  hideLiveFloat?: (activityId: string | null) => void;
   setOverlayChoices?: (questionId: string, json: string) => boolean;
   openAlertFullScreen?: (questionId: string) => boolean;
   startRing?: (questionId: string, sound: string, alarm: boolean, loopMs: number, title: string) => boolean;
@@ -303,6 +305,51 @@ export async function showOverlayCard(card: OverlayCardContent): Promise<boolean
 }
 
 /** Removes the card when it is showing this alert. Never throws. */
+/**
+ * A bot's live task floating over other apps: a pill with its avatar in a progress ring, opening
+ * into a card. Colours are `#rrggbb` (or `#AARRGGBB`). `stepKey` changes when the task moves to
+ * another step: the person's "hide" lasts until then.
+ */
+export interface LiveFloatSpec {
+  activityId: string;
+  botName: string;
+  title: string;
+  stepLine: string;
+  note: string | null;
+  state: "running" | "done" | "failed" | "stale";
+  stepKey: string;
+  /** 0 to 1 along the steps; null for a task with no steps. */
+  progress: number | null;
+  background: string;
+  ink: string;
+  ink2: string;
+  botColour: string;
+  blobFill: string;
+  blobRim: string;
+  blobPath: string;
+  blobTilt: number;
+  ok: string;
+  danger: string;
+}
+
+/** Shows or updates the floating card. False when it cannot be drawn (no permission, older build). */
+export function showLiveFloat(spec: LiveFloatSpec): boolean {
+  try {
+    return nativeModule()?.showLiveFloat?.(spec) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Takes the floating card away: for this task, or (null) whatever is showing. */
+export function hideLiveFloat(activityId: string | null): void {
+  try {
+    nativeModule()?.hideLiveFloat?.(activityId);
+  } catch {
+    // Nothing is floating.
+  }
+}
+
 export function hideOverlayCard(questionId: string): void {
   try {
     nativeModule()?.hideOverlayCard?.(questionId);

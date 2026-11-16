@@ -1,5 +1,6 @@
 import notifee, { AndroidImportance, AndroidVisibility } from "@notifee/react-native";
 import type { LivePush } from "./livePayload";
+import { floatLive } from "./liveFloat";
 import { decideLive, liveNotificationSpec, NOTHING_SEEN, type LiveSeen } from "./liveNotificationModel";
 
 /**
@@ -70,4 +71,6 @@ export async function handleLivePush(push: LivePush): Promise<void> {
       ...(spec.timeoutAfter === null ? {} : { timeoutAfter: spec.timeoutAfter }),
     },
   });
+  // The floating card, for bots it is turned on for. The notification above always stays.
+  await floatLive(push);
 }
