@@ -501,7 +501,8 @@ describe("puck answer", () => {
 });
 
 describe("argument parsing", () => {
-  test("drops webhook and timeout", async () => {
+  // Waiting is opt-in (`--wait`, 2026-11-16); without it `send` still returns at once.
+  test("drops the webhook option; waiting is opt-in", async () => {
     const dir = await tempDir();
     try {
       const backend: Backend = {
@@ -532,8 +533,7 @@ describe("argument parsing", () => {
       };
       const help = createProgram(runtime(dir, backend)).commands.find((command) => command.name() === "send")?.helpInformation() ?? "";
       expect(help).not.toContain("--webhook");
-      expect(help).not.toContain("--timeout");
-      expect(help.toLowerCase()).not.toContain("wait for a reply");
+      expect(help).toContain("--wait");
 
       const parse = (argv: string[]) => createProgram(runtime(dir, backend)).parseAsync(argv, { from: "user" });
       await expect(parse(["ask", "Up yet?"])).rejects.toThrow(/unknown command/u);

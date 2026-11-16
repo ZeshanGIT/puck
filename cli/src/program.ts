@@ -11,8 +11,12 @@ import {
   sendAlert,
   setBotWebhook,
   statusCommand,
+  WAIT_DEFAULT_MS,
+  waitForAnswer,
   type Runtime,
 } from "./commands";
+import { CliError } from "./errors";
+import { parseDuration } from "./time";
 import { defaultConfigDir } from "./config";
 import { promptHidden } from "./prompt";
 
@@ -115,9 +119,35 @@ export function createProgram(runtime: Runtime = defaultRuntime()): Command {
     .option("--file <path>", "alert JSON file; stdin is used when this is omitted")
     .option("--bot <bot-id>", "bot id, or the default in config.json")
     .option("--at <time>", "ring at HH:MM instead of immediately")
-    .action(async (options: { file?: string; bot?: string; at?: string }) => {
-      runtime.stdout(await sendAlert({ file: options.file, bot: options.bot, at: options.at }, runtime));
-    });
+    .option("--wait", "wait for the answer and print it as JSON (exit 0 answered, 3 snoozed, 4 cancelled, 5 timed out)")
+    .option("--timeout <duration>", "with --wait: how long to wait, such as 90s, 30m or 2h (default 30m)")
+    .option("--through-snooze", "with --wait: keep waiting while the alert is snoozed")
+    .action(
+      async (options: { file?: string; bot?: string; at?: string; wait?: boolean; timeout?: string; throughSnooze?: boolean }) => {
+        if (!options.wait && (options.timeout !== undefined || options.throughSnooze)) {
+          throw new CliError("--timeout and --through-snooze need --wait");
+        }
+        let timeoutMs = WAIT_DEFAULT_MS;
+        if (options.timeout !== undefined) {
+          try {
+            timeoutMs = parseDuration(options.timeout);
+          } catch (error) {
+            throw new CliError(error instanceof Error ? error.message : "timeout is not valid");
+          }
+        }
+        const sent = await sendAlert({ file: options.file, bot: options.bot, at: options.at }, runtime);
+        if (!options.wait) {
+          runtime.stdout(sent);
+          return;
+        }
+        // The id goes to stderr at once, so a bot that is stopped while waiting can still look it up.
+        const questionId = sent.trim();
+        runtime.stderr?.(`${questionId} sent, waiting for the answer\n`);
+        const result = await waitForAnswer(questionId, options.bot, { timeoutMs, throughSnooze: options.throughSnooze === true }, runtime);
+        runtime.stdout(result.text);
+        if (result.exitCode !== 0) process.exitCode = result.exitCode;
+      },
+    );
 
   program
     .command("schedule")

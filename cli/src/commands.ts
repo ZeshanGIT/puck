@@ -184,6 +184,68 @@ export async function sendAlert(
   return `${posted.questionId}\n`;
 }
 
+/** How often `puck send --wait` asks for the answer. */
+export const WAIT_POLL_MS = 3_000;
+/** The default `--timeout`. */
+export const WAIT_DEFAULT_MS = 30 * 60_000;
+/** Failed checks in a row (network, server) before `--wait` gives up. */
+const WAIT_MAX_FAILURES = 5;
+
+/**
+ * Exit codes of `puck send --wait`, so a bot can branch without reading the output. 1 stays every
+ * error (bad alert, not paired, network).
+ */
+export const WAIT_EXIT = { answered: 0, snoozed: 3, cancelled: 4, timedOut: 5 } as const;
+
+export interface WaitOptions {
+  timeoutMs: number;
+  /** Keep waiting while the alert is snoozed, instead of returning. */
+  throughSnooze: boolean;
+}
+
+/**
+ * Asks for the alert until it is answered, cancelled, snoozed (unless `throughSnooze`) or the time
+ * is up, and prints the alert as `puck answer --json` does. The exit code says which.
+ */
+export async function waitForAnswer(
+  questionId: string,
+  bot: string | undefined,
+  wait: WaitOptions,
+  runtime: Runtime,
+): Promise<{ text: string; exitCode: number }> {
+  const { config, botId, secret } = await openBot(bot, runtime);
+  const now = runtime.now ?? Date.now;
+  const sleep = runtime.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const deadline = now() + wait.timeoutMs;
+  let failures = 0;
+  let last: AlertStatusView | null = null;
+  for (;;) {
+    try {
+      last = await runtime.backend.getAlert(config.siteUrl, botId, secret, questionId);
+      failures = 0;
+    } catch (error) {
+      failures += 1;
+      if (failures >= WAIT_MAX_FAILURES) throw error;
+    }
+    if (last) {
+      const exitCode =
+        last.answer !== null || last.status === "answered"
+          ? WAIT_EXIT.answered
+          : last.status === "cancelled"
+            ? WAIT_EXIT.cancelled
+            : last.status === "snoozed" && !wait.throughSnooze
+              ? WAIT_EXIT.snoozed
+              : null;
+      if (exitCode !== null) return { text: `${JSON.stringify(last, null, 2)}\n`, exitCode };
+    }
+    if (now() >= deadline) {
+      if (!last) throw new CliError("could not read the alert before the timeout");
+      return { text: `${JSON.stringify(last, null, 2)}\n`, exitCode: WAIT_EXIT.timedOut };
+    }
+    await sleep(Math.min(WAIT_POLL_MS, Math.max(0, deadline - now())));
+  }
+}
+
 export async function scheduleAlert(
   input: { message: string; at?: string; bot?: string },
   runtime: Runtime,
