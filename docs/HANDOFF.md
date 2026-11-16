@@ -4,7 +4,7 @@ Updated when product direction or alert presentation behavior changes. Vault `Pr
 
 ## `puck send --wait` (2026-11-16)
 
-Opt-in waiting in the CLI (`waitForAnswer` in `cli/src/commands.ts`): polls `GET /alerts/<id>` every 3 s, prints the `puck answer --json` view, exit 0 answered, 3 snoozed, 4 cancelled, 5 timed out, 1 error (5 failed checks in a row). `--timeout` (default 30m) and `--through-snooze` need `--wait`. Id on stderr first. Relaxes the 2026-10-28 webhook-only decision (vault DECISIONS). Not yet run against the live server.
+Opt-in waiting in the CLI (`waitForAnswer` in `cli/src/commands.ts`): polls `GET /alerts/<id>` every 3 s, prints the `puck answer --json` view, exit 0 answered, 3 snoozed, 4 cancelled, 5 timed out, 1 error (5 failed checks in a row). `--timeout` (default 30m) and `--through-snooze` need `--wait`. Id on stderr first. Relaxes the 2026-10-28 webhook-only decision (vault DECISIONS). Not yet run against the live server. Since 30111b0, `GET /alerts/<id>` (so `puck answer` and `--wait`) also returns `snoozedUntil` while snoozed and the answer's `attachments` with download URLs, as the webhook does.
 
 ## Bot avatar shape and colour (2026-11-16)
 
