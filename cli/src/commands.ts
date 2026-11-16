@@ -80,6 +80,8 @@ export interface AddBotOptions {
   color?: string;
   /** Avatar shape: round, squircle, hex, bean or cloud. */
   shape?: string;
+  /** `--no-webhook`: pair with no webhook; the bot reads its answers (`puck answer`, `send --wait`). */
+  noWebhook?: boolean;
 }
 
 /**
@@ -98,8 +100,13 @@ export async function addBot(name: string, runtime: Runtime, options: AddBotOpti
   if (options.shape !== undefined && !isBotShape(options.shape)) {
     throw new CliError(`shape must be one of: ${BOT_SHAPES.join(", ")}`);
   }
+  if (options.noWebhook && (runtime.env.PUCK_WEBHOOK_URL?.trim() || runtime.env.PUCK_WEBHOOK_HEADER?.trim())) {
+    throw new CliError("--no-webhook, but PUCK_WEBHOOK_URL or PUCK_WEBHOOK_HEADER is set: unset them, or drop --no-webhook");
+  }
   const config = await loadConfig(runtime.configDir, runtime.env);
-  const secrets = await readPairingSecrets(runtime.env, runtime.prompt);
+  const secrets = options.noWebhook
+    ? { webhookUrl: "", webhookHeader: "" }
+    : await readPairingSecrets(runtime.env, runtime.prompt);
   const addedFrom = machineName(runtime.hostname ? runtime.hostname() : osHostname());
   let pairing: PairingInput;
   try {
@@ -323,7 +330,8 @@ export function formatAnswer(view: AlertStatusView): string {
     if (answer.customReply !== null && answer.customReply !== "") lines.push(`reply: ${answer.customReply}`);
     for (const file of answer.attachments) lines.push(`attachment: ${file.name} (${file.type}, ${file.size} bytes) ${file.url}`);
     lines.push(`answered: ${formatLocal(Date.parse(answer.answeredAt))}`);
-    lines.push(`delivery: ${answer.deliveryStatus} (${answer.deliveryAttempts} attempt${answer.deliveryAttempts === 1 ? "" : "s"})`);
+    if (answer.deliveryStatus === "delivered" && answer.deliveryAttempts === 0) lines.push("delivery: none (no webhook)");
+    else lines.push(`delivery: ${answer.deliveryStatus} (${answer.deliveryAttempts} attempt${answer.deliveryAttempts === 1 ? "" : "s"})`);
     if (answer.lastError) lines.push(`error: ${answer.lastError}`);
   } else if (view.status === "cancelled") {
     lines.push("cancelled");

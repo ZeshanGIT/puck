@@ -34,8 +34,9 @@ export const begin = internalMutationGeneric({
     const attempts = answer.deliveryAttempts + 1;
     const alert = await ctx.db.get(answer.alertId);
     const bot = alert ? await ctx.db.get(alert.botId) : null;
-    if (alert && bot && deliveryRoute(bot) === "built-in") {
-      // The built-in Puck bot has no webhook. Nothing is sent, so no attempt is counted.
+    if (alert && bot && deliveryRoute(bot) !== "webhook") {
+      // No webhook (the built-in bot, or one paired with --no-webhook). Nothing is sent, so no
+      // attempt is counted; the bot reads the answer with GET /alerts/<id>.
       await ctx.db.patch(answer._id, { deliveryStatus: "delivered" });
       return { proceed: false as const };
     }
@@ -200,8 +201,8 @@ export const beginSnooze = internalMutationGeneric({
       });
       return { proceed: false as const };
     }
-    if (deliveryRoute(bot) === "built-in") {
-      // The built-in Puck bot has no webhook. Nothing is sent, so no attempt is counted.
+    if (deliveryRoute(bot) !== "webhook") {
+      // No webhook (the built-in bot, or one paired with --no-webhook). Nothing is sent.
       await ctx.db.patch(event._id, { deliveryStatus: "delivered" });
       return { proceed: false as const };
     }

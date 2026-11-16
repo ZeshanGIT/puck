@@ -341,6 +341,7 @@ export interface RecordedAnswer {
 /** Fields `createPairing` accepts before it hashes the secret and encrypts the header. */
 export interface PairingInput {
   name: string;
+  /** Both "" when the bot has no webhook (`puck add --no-webhook`). */
   webhookUrl: string;
   webhookHeader: string;
   routine: string | null;

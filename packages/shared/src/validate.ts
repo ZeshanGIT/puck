@@ -331,6 +331,12 @@ export function validatePairingInput(body: unknown): PairingInput {
   if (!isRecord(body)) fail("body must be a JSON object");
   const name = oneLine(requiredString(body.name, "name"), "name", 32).toLowerCase();
   if (!NAME_PATTERN.test(name)) fail("name must be lowercase letters, digits and hyphens");
+  const blank = (value: unknown) => value === undefined || value === null || value === "";
+  // No webhook (`puck add --no-webhook`): the bot reads its answers with `GET /alerts/<id>`.
+  if (blank(body.webhookUrl) || blank(body.webhookHeader)) {
+    if (!blank(body.webhookUrl) || !blank(body.webhookHeader)) fail("give both webhookUrl and webhookHeader, or neither");
+    return withPairingExtras(body, { name, webhookUrl: "", webhookHeader: "", routine: optionalRoutine(body) });
+  }
   const webhookUrl = oneLine(requiredString(body.webhookUrl, "webhookUrl"), "webhookUrl", 2_048);
   let parsed: URL;
   try {
@@ -343,11 +349,16 @@ export function validatePairingInput(body: unknown): PairingInput {
   const webhookHeader = normalizeWebhookAuthorization(
     oneLine(requiredString(body.webhookHeader, "webhookHeader"), "webhookHeader", 2_048),
   );
-  let routine: string | null = null;
-  if (body.routine !== undefined && body.routine !== null && body.routine !== "") {
-    routine = oneLine(requiredString(body.routine, "routine"), "routine", 80);
-  }
-  const pairing: PairingInput = { name, webhookUrl, webhookHeader, routine };
+  return withPairingExtras(body, { name, webhookUrl, webhookHeader, routine: optionalRoutine(body) });
+}
+
+function optionalRoutine(body: Record<string, unknown>): string | null {
+  if (body.routine === undefined || body.routine === null || body.routine === "") return null;
+  return oneLine(requiredString(body.routine, "routine"), "routine", 80);
+}
+
+/** Colour, shape and addedFrom, checked the same with or without a webhook. */
+function withPairingExtras(body: Record<string, unknown>, pairing: PairingInput): PairingInput {
   if (body.colour !== undefined && body.colour !== null && body.colour !== "") {
     const colour = requiredString(body.colour, "colour");
     if (!isBotColour(colour)) fail(`colour must be one of: ${BOT_COLOURS.join(", ")}`);

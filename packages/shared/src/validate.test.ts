@@ -335,6 +335,19 @@ describe("validateAnswer with attachments", () => {
 });
 
 describe("validatePairingInput", () => {
+  test("no webhook at all is allowed (--no-webhook); half a webhook is not", () => {
+    expect(validatePairingInput({ name: "claude", shape: "round" })).toEqual({
+      name: "claude",
+      webhookUrl: "",
+      webhookHeader: "",
+      routine: null,
+      shape: "round",
+    });
+    expect(validatePairingInput({ name: "claude", webhookUrl: "", webhookHeader: "" }).webhookUrl).toBe("");
+    expect(() => validatePairingInput({ name: "claude", webhookUrl: "https://example.com/hook" })).toThrow(/both webhookUrl and webhookHeader, or neither/);
+    expect(() => validatePairingInput({ name: "claude", webhookHeader: "Bearer x" })).toThrow(/or neither/);
+  });
+
   test("accepts an https webhook and a one-line authorization header", () => {
     expect(
       validatePairingInput({

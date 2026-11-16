@@ -85,7 +85,7 @@ export const createPairing = mutationGeneric({
     } catch (error) {
       validationMessage(error);
     }
-    const webhookHeader = await encryptHeader(pairing.webhookHeader);
+    const webhookHeader = pairing.webhookHeader === "" ? "" : await encryptHeader(pairing.webhookHeader);
     const secret = newSecret();
     const secretHash = await hashSecret(secret);
     const now = Date.now();
@@ -423,6 +423,8 @@ const botListItem = v.object({
   addedFrom: v.union(v.string(), v.null()),
   lastAlertAt: v.union(v.number(), v.null()),
   waitingCount: v.number(),
+  // False for a bot paired with --no-webhook: it asks for its answers.
+  hasWebhook: v.boolean(),
 });
 
 /**
@@ -474,6 +476,7 @@ export const list = queryGeneric({
         addedFrom: bot.addedFrom ?? null,
         lastAlertAt: latest[0]?.createdAt ?? null,
         waitingCount: waitingCounts.get(bot._id as string) ?? 0,
+        hasWebhook: bot.webhookUrl !== "",
       });
     }
     return views.sort((a, b) => a.createdAt - b.createdAt);
@@ -562,6 +565,7 @@ export const updateWebhook = mutationGeneric({
     } catch (error) {
       validationMessage(error);
     }
+    if (pairing.webhookUrl === "") throw new Error("give both webhookUrl and webhookHeader");
     await ctx.db.patch(bot._id, {
       webhookUrl: pairing.webhookUrl,
       webhookHeader: await encryptHeader(pairing.webhookHeader),

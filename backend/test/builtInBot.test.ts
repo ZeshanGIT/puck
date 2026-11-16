@@ -58,10 +58,11 @@ describe("built-in bot rules", () => {
     expect(isBuiltInBot(null)).toBe(false);
   });
 
-  test("answers to the built-in bot skip the webhook; others POST", () => {
-    expect(deliveryRoute({ builtIn: true })).toBe("built-in");
-    expect(deliveryRoute({ builtIn: false })).toBe("webhook");
-    expect(deliveryRoute({})).toBe("webhook");
+  test("answers to the built-in bot and to a bot with no webhook skip it; others POST", () => {
+    expect(deliveryRoute({ builtIn: true, webhookUrl: "" })).toBe("built-in");
+    expect(deliveryRoute({ builtIn: false, webhookUrl: "https://hooks.example/puck" })).toBe("webhook");
+    expect(deliveryRoute({ webhookUrl: "https://hooks.example/puck" })).toBe("webhook");
+    expect(deliveryRoute({ builtIn: false, webhookUrl: "" })).toBe("none");
   });
 
   test("the built-in bot cannot authenticate", () => {

@@ -24,6 +24,8 @@ export interface BotListItem {
   addedFrom: string | null;
   lastAlertAt: number | null;
   waitingCount: number;
+  /** False for a bot paired with `--no-webhook`: it asks Puck for its answers. Absent on older servers. */
+  hasWebhook?: boolean;
 }
 
 const MINUTE = 60_000;

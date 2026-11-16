@@ -47,11 +47,15 @@ export function isBuiltInBot(bot: { builtIn?: boolean | null } | null | undefine
   return bot?.builtIn === true;
 }
 
-export type DeliveryRoute = "webhook" | "built-in";
+export type DeliveryRoute = "webhook" | "built-in" | "none";
 
-/** Answers to the built-in bot are marked delivered at once; they are never POSTed anywhere. */
-export function deliveryRoute(bot: { builtIn?: boolean | null }): DeliveryRoute {
-  return isBuiltInBot(bot) ? "built-in" : "webhook";
+/**
+ * Answers to the built-in bot, and to a bot paired with no webhook (`puck add --no-webhook`, which
+ * reads its answers with `GET /alerts/<id>`), are marked delivered at once and never POSTed.
+ */
+export function deliveryRoute(bot: { builtIn?: boolean | null; webhookUrl?: string }): DeliveryRoute {
+  if (isBuiltInBot(bot)) return "built-in";
+  return bot.webhookUrl ? "webhook" : "none";
 }
 
 /** The built-in bot can never authenticate a bot request, whatever secret hash is presented. */

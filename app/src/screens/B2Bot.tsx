@@ -231,6 +231,11 @@ export function B2Bot({
           <KvRow label="Paired">
             <KvText>{dateText(bot.createdAt)}</KvText>
           </KvRow>
+          {bot.hasWebhook === undefined ? null : (
+            <KvRow label="Answers">
+              <KvText>{bot.hasWebhook ? "Sent to its webhook" : "It asks for them (no webhook)"}</KvText>
+            </KvRow>
+          )}
         </View>
 
         {error ? (

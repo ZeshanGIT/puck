@@ -186,6 +186,28 @@ describe("puck add signed in", () => {
     }
   });
 
+  test("--no-webhook pairs without asking, and refuses webhook variables alongside it", async () => {
+    const dir = await tempDir();
+    try {
+      let asked = false;
+      let sent: { webhookUrl?: string; webhookHeader?: string } = {};
+      const backend = fakeBackend(["paired"]);
+      const create = backend.createPairing.bind(backend);
+      backend.createPairing = async (url, input, token) => {
+        sent = { webhookUrl: input.webhookUrl, webhookHeader: input.webhookHeader };
+        return create(url, input, token);
+      };
+      const r = { ...runtime(dir, backend), env: {}, prompt: async () => ((asked = true), "") };
+      expect(await addBot("claude", r, { noWebhook: true, shape: "round" })).toContain("bot: cortana-12345");
+      expect(asked).toBe(false);
+      expect(sent).toEqual({ webhookUrl: "", webhookHeader: "" });
+      const withEnv = { ...r, env: { ...r.env, PUCK_WEBHOOK_URL: "https://example.com/hook" } };
+      await expect(addBot("claude", withEnv, { noWebhook: true })).rejects.toThrow(/drop --no-webhook/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("signed out, it prints the code and does not wait", async () => {
     const dir = await tempDir();
     try {

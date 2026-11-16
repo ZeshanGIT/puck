@@ -72,8 +72,10 @@ export function createProgram(runtime: Runtime = defaultRuntime()): Command {
     .option("--colour <name>", "bot colour, such as indigo")
     .option("--color <name>", "same as --colour")
     .option("--shape <name>", "avatar shape: round, squircle, hex, bean or cloud")
-    .action(async (name: string, options: { colour?: string; color?: string; shape?: string }) => {
-      runtime.stdout(await addBot(name, runtime, options));
+    .option("--no-webhook", "pair without a webhook; read answers with puck answer or puck send --wait")
+    .action(async (name: string, options: { colour?: string; color?: string; shape?: string; webhook?: boolean }) => {
+      const { webhook, ...rest } = options;
+      runtime.stdout(await addBot(name, runtime, { ...rest, noWebhook: webhook === false }));
     });
 
   const status = program.command("status").description("report what the bot is working on (live activity)");
