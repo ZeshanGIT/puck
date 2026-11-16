@@ -10,7 +10,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireClient } from "./lib/clientAuth";
-import { applyStep, applySteps, effectiveState, liveSendMode, startTrack, type Track } from "./lib/liveRules";
+import { applyStep, applySteps, effectiveState, liveSendMode, recordStep, startTrack, type Track } from "./lib/liveRules";
 import { selectPushTargets } from "./lib/pushTargets";
 import { alertLink, liveState } from "./schema";
 
@@ -18,16 +18,16 @@ const MAX_OWNER_CLIENTS = 50;
 const MAX_LIST = 50;
 const SCAN = 200;
 
-/** The bot's activities (one, plus any left over). Bounded. */
-async function activitiesOf(ctx: MutationCtx, botDocId: Id<"bots">): Promise<Doc<"liveActivities">[]> {
+/** The bot's running activities (one, plus any left over). Ended ones stay, for the Archive. Bounded. */
+async function runningOf(ctx: MutationCtx, botDocId: Id<"bots">): Promise<Doc<"liveActivities">[]> {
   return await ctx.db
     .query("liveActivities")
-    .withIndex("by_bot", (q) => q.eq("botId", botDocId))
+    .withIndex("by_bot_state", (q) => q.eq("botId", botDocId).eq("state", "running"))
     .take(10);
 }
 
 function running(rows: Doc<"liveActivities">[]): Doc<"liveActivities"> | null {
-  return rows.find((row) => row.state === "running") ?? null;
+  return rows[0] ?? null;
 }
 
 /** After any change: push to the owner's phones, and arm the stale check for this update. */
@@ -54,7 +54,10 @@ function trackOf(row: Doc<"liveActivities">): Track {
   };
 }
 
-/** `start`: a new activity, replacing any this bot had. */
+/**
+ * `start`: a new activity. One this bot still has running ends as stale (left unfinished) and,
+ * like every ended activity, stays for the Archive.
+ */
 export const start = internalMutationGeneric({
   args: {
     botDocId: v.id("bots"),
@@ -66,13 +69,15 @@ export const start = internalMutationGeneric({
   handler: async (ctx, args) => {
     const bot = await ctx.db.get(args.botDocId);
     if (!bot) throw new Error("bot not found");
-    for (const row of await activitiesOf(ctx, args.botDocId)) await ctx.db.delete(row._id);
     const now = Date.now();
+    for (const row of await runningOf(ctx, args.botDocId)) await ctx.db.patch(row._id, { state: "stale", endedAt: now });
+    const track = startTrack(args.steps);
     const activityId = await ctx.db.insert("liveActivities", {
       botId: args.botDocId,
       ...(bot.userId === undefined ? {} : { userId: bot.userId }),
       title: args.title,
-      ...trackFields(startTrack(args.steps)),
+      ...trackFields(track),
+      history: recordStep([], track.currentStep, now),
       state: "running",
       ...(args.link === null ? {} : { link: { label: "Open", url: args.link } }),
       startedAt: now,
@@ -88,11 +93,11 @@ export const step = internalMutationGeneric({
   args: { botDocId: v.id("bots"), step: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const row = running(await activitiesOf(ctx, args.botDocId));
+    const row = running(await runningOf(ctx, args.botDocId));
     if (!row) throw new Error("no running activity");
     const track = applyStep(trackOf(row), args.step);
     const now = Date.now();
-    await ctx.db.patch(row._id, { ...trackFields(track), updatedAt: now });
+    await ctx.db.patch(row._id, { ...trackFields(track), history: recordStep(row.history ?? [], track.currentStep, now), updatedAt: now });
     await announce(ctx, row._id, now);
     return null;
   },
@@ -103,22 +108,22 @@ export const steps = internalMutationGeneric({
   args: { botDocId: v.id("bots"), steps: v.array(v.string()) },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const row = running(await activitiesOf(ctx, args.botDocId));
+    const row = running(await runningOf(ctx, args.botDocId));
     if (!row) throw new Error("no running activity");
     const track = applySteps(trackOf(row), args.steps);
     const now = Date.now();
-    await ctx.db.patch(row._id, { ...trackFields(track), updatedAt: now });
+    await ctx.db.patch(row._id, { ...trackFields(track), history: recordStep(row.history ?? [], track.currentStep, now), updatedAt: now });
     await announce(ctx, row._id, now);
     return null;
   },
 });
 
-/** `end`: done or failed. The row stays until the bot starts again, so the card can show it. */
+/** `end`: done or failed. The row stays: the card shows it until the bot starts again, the Archive after. */
 export const end = internalMutationGeneric({
   args: { botDocId: v.id("bots"), state: v.union(v.literal("done"), v.literal("failed")) },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const row = running(await activitiesOf(ctx, args.botDocId));
+    const row = running(await runningOf(ctx, args.botDocId));
     if (!row) throw new Error("no running activity");
     const now = Date.now();
     await ctx.db.patch(row._id, { state: args.state, endedAt: now, updatedAt: now });
@@ -273,12 +278,70 @@ export const forBot = queryGeneric({
       .withIndex("by_publicId", (q) => q.eq("id", args.botId))
       .unique();
     if (!bot || bot.userId !== client.userId) return null;
+    // Newest first: the running one if any (it is the newest), else the last to end.
     const rows = await ctx.db
       .query("liveActivities")
       .withIndex("by_bot", (q) => q.eq("botId", bot._id))
+      .order("desc")
       .take(10);
     const row = rows.find((candidate) => candidate.state === "running") ?? rows[0];
     if (!row) return null;
     return await viewOf(ctx, row, Date.now());
+  },
+});
+
+const archivedView = v.object({
+  activityId: v.string(),
+  botId: v.string(),
+  botName: v.string(),
+  colour: v.union(v.string(), v.null()),
+  title: v.string(),
+  steps: v.union(v.array(v.string()), v.null()),
+  state: liveState,
+  startedAt: v.number(),
+  endedAt: v.number(),
+  history: v.array(v.object({ step: v.string(), at: v.number() })),
+});
+
+const ARCHIVE_MAX = 100;
+
+/**
+ * The Archive's finished tasks (done, failed, or left unfinished), newest first: each with the
+ * steps it went through and when. A task with no record of its steps (from before steps were
+ * recorded) shows the one it ended on.
+ */
+export const archive = queryGeneric({
+  args: { clientId: v.string() },
+  returns: v.array(archivedView),
+  handler: async (ctx, args) => {
+    const client = await requireClient(ctx, args.clientId);
+    const now = Date.now();
+    const rows = await ctx.db
+      .query("liveActivities")
+      .withIndex("by_user", (q) => q.eq("userId", client.userId))
+      .order("desc")
+      .take(SCAN);
+    const ended = rows.filter((row) => effectiveState(row, now) !== "running").slice(0, ARCHIVE_MAX);
+    const botNames = new Map<string, Doc<"bots"> | null>();
+    const views = [];
+    for (const row of ended) {
+      const key = row.botId as string;
+      if (!botNames.has(key)) botNames.set(key, await ctx.db.get(row.botId));
+      const bot = botNames.get(key) ?? null;
+      const history = row.history ?? (row.currentStep === "" ? [] : [{ step: row.currentStep, at: row.updatedAt }]);
+      views.push({
+        activityId: row._id as string,
+        botId: bot?.id ?? "",
+        botName: bot?.name ?? "the bot",
+        colour: bot?.colour ?? null,
+        title: row.title,
+        steps: row.steps ?? null,
+        state: effectiveState(row, now) as LiveState,
+        startedAt: row.startedAt,
+        endedAt: row.endedAt ?? row.updatedAt,
+        history,
+      });
+    }
+    return views.sort((a, b) => b.endedAt - a.endedAt);
   },
 });

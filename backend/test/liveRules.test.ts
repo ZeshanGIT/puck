@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AlertValidationError, LIVE_MAX_STEPS, LIVE_LOG_MAX, LIVE_STALE_MS } from "@puck/shared";
-import { applyStep, applySteps, effectiveState, isStale, startTrack } from "../convex/lib/liveRules";
+import { applyStep, applySteps, effectiveState, isStale, LIVE_HISTORY_MAX, recordStep, startTrack } from "../convex/lib/liveRules";
 
 describe("startTrack", () => {
   test("with steps, the first one is current; without, there is no current text yet", () => {
@@ -71,5 +71,30 @@ describe("stale check", () => {
     expect(effectiveState({ state: "running", updatedAt: T }, T + LIVE_STALE_MS)).toBe("stale");
     expect(effectiveState({ state: "running", updatedAt: T }, T + 1)).toBe("running");
     expect(effectiveState({ state: "done", updatedAt: T }, T + LIVE_STALE_MS * 2)).toBe("done");
+  });
+});
+
+describe("recordStep", () => {
+  test("adds each new step with its time, and skips a repeat or an empty step", () => {
+    let history = recordStep([], "Fetch", 1);
+    history = recordStep(history, "Build", 2);
+    history = recordStep(history, "Build", 3);
+    history = recordStep(history, "", 4);
+    expect(history).toEqual([
+      { step: "Fetch", at: 1 },
+      { step: "Build", at: 2 },
+    ]);
+  });
+
+  test("a step visited again later is recorded again", () => {
+    const history = recordStep(recordStep(recordStep([], "Test", 1), "Fix", 2), "Test", 3);
+    expect(history.map((mark) => mark.step)).toEqual(["Test", "Fix", "Test"]);
+  });
+
+  test("keeps only the most recent marks", () => {
+    let history: { step: string; at: number }[] = [];
+    for (let i = 0; i < LIVE_HISTORY_MAX + 5; i++) history = recordStep(history, `s${i}`, i);
+    expect(history).toHaveLength(LIVE_HISTORY_MAX);
+    expect(history[0]!.step).toBe("s5");
   });
 });

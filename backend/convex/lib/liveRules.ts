@@ -50,6 +50,24 @@ export function applySteps(track: Track, steps: string[]): Track {
   return { ...track, steps: [...steps], stepIndex, currentStep: steps[stepIndex] ?? "" };
 }
 
+/** The most step changes one activity keeps for the Archive. */
+export const LIVE_HISTORY_MAX = 100;
+
+export interface StepMark {
+  step: string;
+  /** Epoch ms the step became current. */
+  at: number;
+}
+
+/**
+ * The Archive's record of a task: each step it moved to, with the time. A step equal to the one
+ * already current (a repeated update) or empty (a task with no steps yet) adds nothing.
+ */
+export function recordStep(history: readonly StepMark[], step: string, at: number): StepMark[] {
+  if (step === "" || history[history.length - 1]?.step === step) return [...history];
+  return [...history, { step, at }].slice(-LIVE_HISTORY_MAX);
+}
+
 /** Running with no update for LIVE_STALE_MS or more. The scheduled check does the same; this covers a missed one. */
 export function isStale(updatedAt: number, now: number): boolean {
   return now - updatedAt >= LIVE_STALE_MS;

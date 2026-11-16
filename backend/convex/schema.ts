@@ -204,9 +204,13 @@ export default defineSchema({
     startedAt: v.number(),
     updatedAt: v.number(),
     endedAt: v.optional(v.number()),
+    // Each step the task moved to, with when (for the Archive). Absent on rows from before 2026-11-16.
+    history: v.optional(v.array(v.object({ step: v.string(), at: v.number() }))),
   })
     .index("by_bot", ["botId"])
-    .index("by_state", ["state"]),
+    .index("by_bot_state", ["botId", "state"])
+    .index("by_state", ["state"])
+    .index("by_user", ["userId"]),
 
   // One `snoozed` webhook event (Q17), delivered like an answer: same four tries and backoff.
   // `snoozedUntil` is epoch ms, or null for "until I'm back". Not an answer, so `answers` is untouched.
