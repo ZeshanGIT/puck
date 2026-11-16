@@ -303,7 +303,12 @@ object LiveFloat {
           val dy = event.rawY - downY
           if (!dragging && hypot(dx, dy) > slop) {
             dragging = true
-            if (expanded) toggle(context)
+            if (expanded) {
+              // Folding the card moves the window's origin (on the right edge it shrinks to the
+              // pill). Measure the drag from there, so the pill stays under the finger.
+              toggle(context)
+              startX = layoutParams.x - dx.toInt()
+            }
             showTarget(context)
           }
           if (dragging) {
