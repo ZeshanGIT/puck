@@ -2,6 +2,10 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## `puck send --wait` (2026-11-16)
+
+Opt-in waiting in the CLI (`waitForAnswer` in `cli/src/commands.ts`): polls `GET /alerts/<id>` every 3 s, prints the `puck answer --json` view, exit 0 answered, 3 snoozed, 4 cancelled, 5 timed out, 1 error (5 failed checks in a row). `--timeout` (default 30m) and `--through-snooze` need `--wait`. Id on stderr first. Relaxes the 2026-10-28 webhook-only decision (vault DECISIONS). Not yet run against the live server.
+
 ## Bot avatar shape and colour (2026-11-16)
 
 `puck add --shape round|squircle|hex|bean|cloud` (with `--colour`), checked before the webhook prompts. `BOT_SHAPES` in `@puck/shared`; the backend stores `bots.shape`, returns it from `bots.list` and `pairingRequests`, sends it in the pairing push, and `bots.update` changes it (Convex dev pushed 2026-11-16). B2 has a Shape row above Colour. Alerts carry only the bot id, so `ui/botLookStore.ts` remembers each bot's colour and shape from `bots.list` (Inbox), saves them in SecureStore for a headless card (`loadBotLooks` in `showCard`), and `botLook` uses them after explicit values; `useBotLook` redraws on change. Before this, alerts, Home, the stack and the card ignored the chosen colour. Release installed 09:42 IST; owner check pending.
