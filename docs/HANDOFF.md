@@ -2,6 +2,10 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## Bots with no webhook (2026-11-16)
+
+`puck add --no-webhook` pairs without asking for a webhook (refused if `PUCK_WEBHOOK_*` are set). `validatePairingInput` takes both webhook fields or neither; none stores them as `""`, like the built-in bot. `deliveryRoute` returns `"none"` for such bots, and answers and snoozes are marked delivered with no attempt (`puck answer` prints `delivery: none (no webhook)`). `updateWebhook` still needs both. `bots.list` has `hasWebhook`; B2 Details shows "Answers". The CLI is linked at `~/.local/bin/puck` on the Mac. App row needs the next APK install.
+
 ## `puck send --wait` (2026-11-16)
 
 Opt-in waiting in the CLI (`waitForAnswer` in `cli/src/commands.ts`): polls `GET /alerts/<id>` every 3 s, prints the `puck answer --json` view, exit 0 answered, 3 snoozed, 4 cancelled, 5 timed out, 1 error (5 failed checks in a row). `--timeout` (default 30m) and `--through-snooze` need `--wait`. Id on stderr first. Relaxes the 2026-10-28 webhook-only decision (vault DECISIONS). Not yet run against the live server. Since 30111b0, `GET /alerts/<id>` (so `puck answer` and `--wait`) also returns `snoozedUntil` while snoozed and the answer's `attachments` with download URLs, as the webhook does.
