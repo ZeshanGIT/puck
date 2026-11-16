@@ -4,7 +4,7 @@ Updated when product direction or alert presentation behavior changes. Vault `Pr
 
 ## Show floating card button (2026-11-16)
 
-The live notification's "Show floating card" button was opening Notifee's `NotificationReceiverActivity`, which threw inside EventBus (`getClass()` on null) before any JavaScript handler ran, so `LiveFloat.restore` never happened. The button now sets `launchActivity` to `puck.fullscreen.ShowFloatActivity`: an invisible activity that calls `LiveFloat.restore` with the last saved update and finishes. Notifee still stacks its own receiver activity on that press (translucent, no history); the card comes back from ours even when that event fails. A notification posted before this build keeps the old button until the next live update. Release installed 12:39 IST. Seshan checked it at 12:53 IST: hide and bring back works.
+The live notification's "Show floating card" button was opening Notifee's `NotificationReceiverActivity`, which threw inside EventBus (`getClass()` on null) before any JavaScript handler ran, so `LiveFloat.restore` never happened. The button now sets `launchActivity` to `puck.fullscreen.ShowFloatActivity`: an invisible activity that calls `LiveFloat.restore` with the last saved update and finishes. Notifee still stacks its own receiver activity on that press (translucent, no history); the card comes back from ours even when that event fails. A notification posted before this build keeps the old button until the next live update. Release installed 12:39 IST, then rebuilt from `main` at `250646c` and installed again at 12:59 IST (data kept). Seshan checked the 12:39 build at 12:53 IST: hide and bring back works.
 
 ## Bots with no webhook (2026-11-16)
 
