@@ -297,8 +297,20 @@ export async function listAlerts(bot: string | undefined, runtime: Runtime): Pro
   return `${alerts.map(formatListedAlert).join("\n")}\n`;
 }
 
-export async function cancelAlert(questionId: string, bot: string | undefined, runtime: Runtime): Promise<string> {
-  if (!isQuestionId(questionId)) throw new CliError("alert id is not valid");
+/**
+ * An alert id as the person or agent typed it, in Puck's form (`q_` then 16 capitals and digits).
+ * Ids are matched case-insensitively, so `Q_JNWG…` or `q_jnwg…` (an agent retyping the id) still
+ * finds the alert; anything else is refused.
+ */
+export function alertIdArg(raw: string): string {
+  const trimmed = raw.trim();
+  const id = /^q_/iu.test(trimmed) ? `q_${trimmed.slice(2).toUpperCase()}` : trimmed;
+  if (!isQuestionId(id)) throw new CliError("alert id is not valid: it looks like q_ followed by 16 letters and digits");
+  return id;
+}
+
+export async function cancelAlert(rawId: string, bot: string | undefined, runtime: Runtime): Promise<string> {
+  const questionId = alertIdArg(rawId);
   const { config, botId, secret } = await openBot(bot, runtime);
   await runtime.backend.cancelAlert(config.siteUrl, botId, secret, questionId);
   return `cancelled ${questionId}\n`;
@@ -309,12 +321,12 @@ export async function cancelAlert(questionId: string, bot: string | undefined, r
  * through. `json` prints the validated view instead of text.
  */
 export async function getAnswer(
-  questionId: string,
+  rawId: string,
   bot: string | undefined,
   runtime: Runtime,
   json = false,
 ): Promise<string> {
-  if (!isQuestionId(questionId)) throw new CliError("alert id is not valid");
+  const questionId = alertIdArg(rawId);
   const { config, botId, secret } = await openBot(bot, runtime);
   const view = await runtime.backend.getAlert(config.siteUrl, botId, secret, questionId);
   return json ? `${JSON.stringify(view, null, 2)}\n` : formatAnswer(view);

@@ -237,3 +237,14 @@ describe("parseAlertStatus", () => {
     expect(parsed.snoozedUntil).toBeNull();
   });
 });
+
+describe("alertIdArg", () => {
+  test("any letter case of a real id reads as Puck's form; anything else is refused", async () => {
+    const { alertIdArg } = await import("./commands");
+    expect(alertIdArg("q_JNWGQSBMWNYWZJ3P")).toBe("q_JNWGQSBMWNYWZJ3P");
+    expect(alertIdArg("Q_JNWGQSBMWNYWZJ3P")).toBe("q_JNWGQSBMWNYWZJ3P");
+    expect(alertIdArg(" q_jnwgqsbmwnywzj3p\n")).toBe("q_JNWGQSBMWNYWZJ3P");
+    expect(() => alertIdArg("JNWGQSBMWNYWZJ3P")).toThrow(/alert id is not valid/);
+    expect(() => alertIdArg("q_SHORT")).toThrow(/alert id is not valid/);
+  });
+});
