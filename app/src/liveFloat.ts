@@ -35,6 +35,11 @@ export async function floatLive(push: LivePush): Promise<void> {
 
 /** The live notification's button that brings the floating card back after it was hidden. */
 export const SHOW_FLOAT_ACTION = "live-float-show";
+/**
+ * The native activity the button opens: it brings the card back without opening Puck. The
+ * library's own action event fails in this app, so the JavaScript handler below is only a backup.
+ */
+export const SHOW_FLOAT_ACTIVITY = "puck.fullscreen.ShowFloatActivity";
 
 /** Whether this bot's live notification carries the "Show floating card" button. */
 export async function offersFloat(botId: string): Promise<boolean> {

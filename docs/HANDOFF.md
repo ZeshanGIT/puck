@@ -2,6 +2,10 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## Show floating card button (2026-11-16)
+
+The live notification's "Show floating card" button was opening Notifee's `NotificationReceiverActivity`, which threw inside EventBus (`getClass()` on null) before any JavaScript handler ran, so `LiveFloat.restore` never happened. The button now sets `launchActivity` to `puck.fullscreen.ShowFloatActivity`: an invisible activity that calls `LiveFloat.restore` with the last saved update and finishes. Notifee still stacks its own receiver activity on that press (translucent, no history); the card comes back from ours even when that event fails. A notification posted before this build keeps the old button until the next live update. Release installed 12:39 IST; owner check pending.
+
 ## Bots with no webhook (2026-11-16)
 
 `puck add --no-webhook` pairs without asking for a webhook (refused if `PUCK_WEBHOOK_*` are set). `validatePairingInput` takes both webhook fields or neither; none stores them as `""`, like the built-in bot. `deliveryRoute` returns `"none"` for such bots, and answers and snoozes are marked delivered with no attempt (`puck answer` prints `delivery: none (no webhook)`). `updateWebhook` still needs both. `bots.list` has `hasWebhook`; B2 Details shows "Answers". The CLI is linked at `~/.local/bin/puck` on the Mac. App row needs the next APK install.

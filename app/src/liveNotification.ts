@@ -1,6 +1,6 @@
 import notifee, { AndroidImportance, AndroidVisibility } from "@notifee/react-native";
 import type { LivePush } from "./livePayload";
-import { floatLive, offersFloat, SHOW_FLOAT_ACTION } from "./liveFloat";
+import { floatLive, offersFloat, SHOW_FLOAT_ACTION, SHOW_FLOAT_ACTIVITY } from "./liveFloat";
 import { decideLive, liveNotificationSpec, NOTHING_SEEN, type LiveSeen } from "./liveNotificationModel";
 
 /**
@@ -64,7 +64,7 @@ export async function handleLivePush(push: LivePush): Promise<void> {
       autoCancel: !spec.ongoing,
       onlyAlertOnce: true,
       pressAction: { id: "default" },
-      ...(showFloat ? { actions: [{ title: "Show floating card", pressAction: { id: SHOW_FLOAT_ACTION } }] } : {}),
+      ...(showFloat ? { actions: [{ title: "Show floating card", pressAction: { id: SHOW_FLOAT_ACTION, launchActivity: SHOW_FLOAT_ACTIVITY } }] } : {}),
       visibility: AndroidVisibility.PUBLIC,
       ...(spec.colour === null ? {} : { color: spec.colour }),
       ...(spec.progress === null ? {} : { progress: { max: spec.progress.max, current: spec.progress.current } }),

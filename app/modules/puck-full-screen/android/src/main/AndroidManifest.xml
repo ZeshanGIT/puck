@@ -9,5 +9,13 @@
       android:name="puck.fullscreen.RingService"
       android:exported="false"
       android:foregroundServiceType="mediaPlayback" />
+    <!-- The live notification's "Show floating card": brings the card back, then closes. -->
+    <activity
+      android:name="puck.fullscreen.ShowFloatActivity"
+      android:exported="false"
+      android:excludeFromRecents="true"
+      android:noHistory="true"
+      android:taskAffinity=""
+      android:theme="@android:style/Theme.Translucent.NoTitleBar" />
   </application>
 </manifest>
