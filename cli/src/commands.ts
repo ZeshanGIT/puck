@@ -2,6 +2,9 @@ import { hostname as osHostname } from "node:os";
 import type { Readable } from "node:stream";
 import {
   AlertValidationError,
+  BOT_COLOURS,
+  BOT_SHAPES,
+  isBotShape,
   isBotId,
   isQuestionId,
   validateAlertTiming,
@@ -75,6 +78,8 @@ export interface AddBotOptions {
   colour?: string;
   /** The same option as `colour`, spelled the American way. */
   color?: string;
+  /** Avatar shape: round, squircle, hex, bean or cloud. */
+  shape?: string;
 }
 
 /**
@@ -86,6 +91,13 @@ export async function addBot(name: string, runtime: Runtime, options: AddBotOpti
     throw new CliError("give one colour: --colour or --color");
   }
   const colour = options.colour ?? options.color;
+  // Checked before the webhook questions, so a typo does not cost a pasted secret.
+  if (colour !== undefined && !(BOT_COLOURS as readonly string[]).includes(colour)) {
+    throw new CliError(`colour must be one of: ${BOT_COLOURS.join(", ")}`);
+  }
+  if (options.shape !== undefined && !isBotShape(options.shape)) {
+    throw new CliError(`shape must be one of: ${BOT_SHAPES.join(", ")}`);
+  }
   const config = await loadConfig(runtime.configDir, runtime.env);
   const secrets = await readPairingSecrets(runtime.env, runtime.prompt);
   const addedFrom = machineName(runtime.hostname ? runtime.hostname() : osHostname());
@@ -96,6 +108,7 @@ export async function addBot(name: string, runtime: Runtime, options: AddBotOpti
       webhookUrl: secrets.webhookUrl,
       webhookHeader: secrets.webhookHeader,
       ...(colour === undefined ? {} : { colour }),
+      ...(options.shape === undefined ? {} : { shape: options.shape }),
       ...(addedFrom === undefined ? {} : { addedFrom }),
     });
   } catch (error) {

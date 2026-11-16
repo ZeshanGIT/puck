@@ -199,6 +199,7 @@ export const sendPairing = internalActionGeneric({
               botId: target.botId,
               botName: target.botName,
               colour: target.colour,
+              shape: target.shape,
               addedFrom: target.addedFrom,
             }),
           ),

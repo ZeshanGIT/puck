@@ -6,7 +6,7 @@
  */
 import type { KnownBot } from "./homeModel";
 import { clockText } from "./localSettings";
-import { requestedColour } from "./pairingModel";
+import { requestedColour, requestedShape } from "./pairingModel";
 import type { BlobBot } from "./ui/blobShapes";
 import { botLook } from "./ui/botLook";
 
@@ -16,6 +16,8 @@ export interface BotListItem {
   name: string;
   /** The palette name, or null when the bot never had one. */
   colour: string | null;
+  /** The avatar shape (`BOT_SHAPES`), or null when the bot never chose one. */
+  shape?: string | null;
   /** Epoch ms the mute ends, or null. */
   mutedUntil: number | null;
   createdAt: number;
@@ -148,10 +150,16 @@ export function sortBots(bots: readonly BotListItem[]): BotListItem[] {
   );
 }
 
-/** How a bot looks: its own colour, else the one derived from its id. */
-export function botBlob(bot: Pick<BotListItem, "botId" | "name" | "colour">): BlobBot {
+/** How a bot looks: its own colour and shape, else the ones derived from its id. */
+export function botBlob(bot: Pick<BotListItem, "botId" | "name" | "colour" | "shape">): BlobBot {
   const colour = requestedColour(bot.colour);
-  return botLook({ botId: bot.botId, botName: bot.name, ...(colour === null ? {} : { colour }) });
+  const shape = requestedShape(bot.shape ?? null);
+  return botLook({
+    botId: bot.botId,
+    botName: bot.name,
+    ...(colour === null ? {} : { colour }),
+    ...(shape === null ? {} : { shape }),
+  });
 }
 
 /* ----------------------------------------------------------------------- home */

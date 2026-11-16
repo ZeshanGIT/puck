@@ -35,6 +35,7 @@ import { ConnectedPairingHost, type PairingStart } from "./screens/PairingHost";
 import { H4Detail } from "./screens/H4Detail";
 import { StackHost } from "./screens/StackHost";
 import { Toast, useToast } from "./ui/Toast";
+import { loadBotLooks, rememberBotLooks } from "./ui/botLookStore";
 import { normalizeExpiry } from "./alertExpiry";
 
 export function Inbox({
@@ -126,6 +127,11 @@ function InboxBody({
   // A muted bot's alerts do not take over the screen (no alert, not in the stack): they wait under
   // Needs you. The push is already silent; this keeps the open app quiet too. A chosen alert always shows.
   const bots = useBots(clientId);
+  // Every screen draws a bot in the colour and shape it chose; alerts carry only its id.
+  useEffect(() => {
+    if (bots === undefined) void loadBotLooks();
+    else rememberBotLooks(bots);
+  }, [bots]);
   const [muteClock, setMuteClock] = useState(() => Date.now());
   useEffect(() => {
     const refresh = () => setMuteClock(Date.now());

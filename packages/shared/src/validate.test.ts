@@ -490,6 +490,13 @@ describe("validatePairingInput colour and addedFrom", () => {
     expect(() => validatePairingInput({ ...base, colour: 3 })).toThrow(/colour must be a string/);
   });
 
+  test("accepts a known shape, drops a blank one and rejects anything else", () => {
+    expect(validatePairingInput({ ...base, shape: "cloud" }).shape).toBe("cloud");
+    expect("shape" in validatePairingInput({ ...base, shape: "" })).toBe(false);
+    expect(() => validatePairingInput({ ...base, shape: "star" })).toThrow(/shape must be one of: round, squircle, hex, bean, cloud/);
+    expect(() => validatePairingInput({ ...base, shape: "Cloud" })).toThrow(/shape must be one of/);
+  });
+
   test("rejects an addedFrom that is not a hostname", () => {
     expect(() => validatePairingInput({ ...base, addedFrom: "bad host!" })).toThrow(/addedFrom must be a hostname/);
     expect(() => validatePairingInput({ ...base, addedFrom: "a".repeat(254) })).toThrow(/too long/);

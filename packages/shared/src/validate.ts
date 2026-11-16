@@ -1,7 +1,9 @@
 import {
   ATTACHMENT_TYPES,
   BOT_COLOURS,
+  BOT_SHAPES,
   type BotColour,
+  type BotShape,
   MAX_ATTACHMENTS,
   MAX_ATTACHMENT_BYTES,
   MAX_OPTIONS,
@@ -351,6 +353,11 @@ export function validatePairingInput(body: unknown): PairingInput {
     if (!isBotColour(colour)) fail(`colour must be one of: ${BOT_COLOURS.join(", ")}`);
     pairing.colour = colour;
   }
+  if (body.shape !== undefined && body.shape !== null && body.shape !== "") {
+    const shape = requiredString(body.shape, "shape");
+    if (!isBotShape(shape)) fail(`shape must be one of: ${BOT_SHAPES.join(", ")}`);
+    pairing.shape = shape;
+  }
   if (body.addedFrom !== undefined && body.addedFrom !== null && body.addedFrom !== "") {
     const addedFrom = oneLine(requiredString(body.addedFrom, "addedFrom"), "addedFrom", HOSTNAME_MAX);
     if (!HOSTNAME_PATTERN.test(addedFrom)) fail("addedFrom must be a hostname");
@@ -361,6 +368,10 @@ export function validatePairingInput(body: unknown): PairingInput {
 
 function isBotColour(value: string): value is BotColour {
   return (BOT_COLOURS as readonly string[]).includes(value);
+}
+
+export function isBotShape(value: string): value is BotShape {
+  return (BOT_SHAPES as readonly string[]).includes(value);
 }
 
 /**

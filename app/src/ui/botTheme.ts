@@ -47,6 +47,11 @@ export const PALETTE: readonly PaletteEntry[] = [
   { name: "slate", base: "#5f7482", deep: "#37454f", rgb: [95, 116, 130] },
 ];
 
+/** True for a name in `PALETTE`. */
+export function isPaletteName(value: string): value is PaletteName {
+  return PALETTE.some((entry) => entry.name === value);
+}
+
 /** Colours whose text is ink rather than white (prototype `botVars`). */
 const INK_ON_BOT: ReadonlySet<PaletteName> = new Set<PaletteName>([
   "mustard",

@@ -37,7 +37,7 @@ import { shouldGoBack, type ReceiptViewState } from "../receiptCopy";
 import { useReadingAloud } from "../speak";
 import { useAnnounceNewAlerts } from "../ui/announce";
 import { useTheme } from "../ui/theme";
-import { botLook } from "../ui/botLook";
+import { useBotLook } from "../ui/useBotLook";
 import { ensureUnlockedFor } from "../unlock";
 import { clearDisplayedAlert, useUrgentLook } from "../urgentDisplay";
 import { A1ChoiceSingle } from "./A1ChoiceSingle";
@@ -544,7 +544,7 @@ function AlertScreen({
     return subscribeSnoozeRequests(checkSnoozeRequest);
   }, [questionId, onSnoozeChoose]);
   const { botId, botName: alertBotName } = alert;
-  const bot = useMemo(() => botLook({ botId, botName: alertBotName }), [botId, alertBotName]);
+  const bot = useBotLook({ botId, botName: alertBotName });
   // Over the lock screen the A9 card closes by itself, so it never holds the lock screen.
   const goneAutoCloseMs = gone && isLocked() === true ? GONE_LOCKED_CLOSE_MS : undefined;
   return (

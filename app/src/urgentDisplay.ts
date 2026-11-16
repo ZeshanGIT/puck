@@ -56,6 +56,7 @@ import {
   type InUsePresentation,
 } from "./overlayCardModel";
 import { botLook } from "./ui/botLook";
+import { loadBotLooks } from "./ui/botLookStore";
 import { livePush } from "./livePayload";
 import { openPairingFromNotificationData } from "./pairingOpen";
 import { displayPairing } from "./pairingDisplay";
@@ -437,6 +438,7 @@ async function startRinging(alert: FullScreenAlert, settings: LocalSettings, ver
 async function showCard(alert: FullScreenAlert, settings: LocalSettings, version: number): Promise<void> {
   const dark = themeIsDark(settings.theme, await systemIsDark());
   const plan = alertRingingPlan(alert, settings, alert.botId, canCreateRingChannel());
+  await loadBotLooks();
   if (revision(alert.questionId) !== version) return;
   const bot = botLook({ botId: alert.botId ?? alert.botName, botName: alert.botName });
   const shown = await showOverlayCard({

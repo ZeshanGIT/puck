@@ -20,7 +20,7 @@
  * The middle's pieces (wash, rings, expiry pill, who line, details, link) are drawn here rather
  * than by `AlertFrame` because `AlertFrame` is the full-screen frame; they follow its numbers.
  */
-import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   type LayoutChangeEvent,
@@ -54,7 +54,7 @@ import { ageLabel, AlertSecondaryRow, Glyph, ICON, useExpiry, type ExpiryView } 
 import { Blob, type BlobHandle } from "./Blob";
 import { ringBox, ringGeometry, type RingGeometry } from "./blobCentre";
 import type { BlobBot, Offset } from "./blobShapes";
-import { botLook } from "./botLook";
+import { useBotLook } from "./useBotLook";
 import { Btn } from "./Btn";
 import { CheckOption } from "./CheckOption";
 import { OptionButton } from "./OptionButton";
@@ -129,7 +129,7 @@ let answeredOnce = false;
 
 export function StackCard(props: StackCardProps) {
   const { alert, status = "waiting", answer, gone } = props;
-  const bot = useMemo(() => botLook({ botId: alert.botId, botName: alert.botName }), [alert.botId, alert.botName]);
+  const bot = useBotLook({ botId: alert.botId, botName: alert.botName });
   const bt = useBotTheme(bot);
   const blob = useRef<BlobHandle>(null);
   const [look, setLook] = useState<Offset | null>(null);

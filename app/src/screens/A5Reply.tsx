@@ -16,7 +16,7 @@
 import { anyApi } from "convex/server";
 import { useMutation } from "convex/react";
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
-import { createContext, type ComponentRef, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, type ComponentRef, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Image,
   Keyboard,
@@ -59,7 +59,7 @@ import {
 import type { PendingAlert } from "../ChoiceScreen";
 import { readClientId } from "../clientStore";
 import { readableError } from "../session";
-import { botLook } from "../ui/botLook";
+import { useBotLook } from "../ui/useBotLook";
 import { Btn } from "../ui/Btn";
 import { Sheet, SheetText, SheetTitle } from "../ui/Sheet";
 import { useBotTheme, useTheme } from "../ui/theme";
@@ -132,7 +132,7 @@ function A5ReplySheet({
   getUploadUrl,
 }: A5ReplyProps & { getUploadUrl: () => Promise<string> }) {
   const { tokens: t } = useTheme();
-  const bot = useMemo(() => botLook({ botId: alert.botId, botName: alert.botName }), [alert.botId, alert.botName]);
+  const bot = useBotLook({ botId: alert.botId, botName: alert.botName });
   const bt = useBotTheme(bot);
   const toast = useToast();
 

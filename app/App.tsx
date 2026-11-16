@@ -280,6 +280,7 @@ function DevBots({ name }: { name: string }) {
       bypass,
       mute: async (botId, until) => setBots((all) => all.map((bot) => (bot.botId === botId ? { ...bot, mutedUntil: until } : bot))),
       setColour: async (botId, colour) => setBots((all) => all.map((bot) => (bot.botId === botId ? { ...bot, colour } : bot))),
+      setShape: async (botId, shape) => setBots((all) => all.map((bot) => (bot.botId === botId ? { ...bot, shape } : bot))),
       setBypass: async (botId, change) =>
         setBypass((all) => {
           const next: BotBypass = { ...all[botId] };

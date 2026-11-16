@@ -1,13 +1,14 @@
 /**
  * How a real bot looks on screen: its blob colour, shape and tilt. Plain TypeScript, no React.
  *
- * Bots do not carry a colour yet (a later card), so until they do the look is derived
- * from the bot: an explicit `colour` or `shape` wins, then the prototype's sample bot with
- * the same name (Sheldon, Brow, Grok Bot, Deploy Watch, Puck, Cortana), then a hash of the
- * public `botId`, so the same bot always looks the same.
+ * An explicit `colour` or `shape` wins, then the one the bot chose (`puck add --colour --shape`
+ * or its page, remembered in `botLookStore`), then the prototype's sample bot with the same name
+ * (Sheldon, Brow, Grok Bot, Deploy Watch, Puck, Cortana), then a hash of the public `botId`, so
+ * the same bot always looks the same.
  */
 import { PALETTE, type PaletteName } from "./botTheme";
 import { SAMPLE_BOTS, SHAPES, type BlobBot, type ShapeName } from "./blobShapes";
+import { knownLook } from "./botLookStore";
 
 export interface BotLookInput {
   botId: string;
@@ -44,8 +45,9 @@ function sampleFor(name: string): BlobBot | null {
 export function botLook(bot: BotLookInput): BlobBot {
   const sample = sampleFor(bot.botName);
   const h = hash(bot.botId);
-  const colour = bot.colour ?? sample?.colour ?? PALETTE[h % PALETTE.length]!.name;
-  const shape = bot.shape ?? sample?.shape ?? SHAPE_NAMES[Math.floor(h / PALETTE.length) % SHAPE_NAMES.length]!;
+  const chosen = knownLook(bot.botId);
+  const colour = bot.colour ?? chosen?.colour ?? sample?.colour ?? PALETTE[h % PALETTE.length]!.name;
+  const shape = bot.shape ?? chosen?.shape ?? sample?.shape ?? SHAPE_NAMES[Math.floor(h / PALETTE.length) % SHAPE_NAMES.length]!;
   const tilt =
     sample?.tilt ?? TILT_MIN + (Math.floor(h / (PALETTE.length * SHAPE_NAMES.length)) % TILT_SPAN);
   return { name: bot.botName, colour, shape, tilt };

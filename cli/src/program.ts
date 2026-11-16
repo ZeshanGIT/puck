@@ -67,7 +67,8 @@ export function createProgram(runtime: Runtime = defaultRuntime()): Command {
     .argument("<name>", "bot name, such as sheldon")
     .option("--colour <name>", "bot colour, such as indigo")
     .option("--color <name>", "same as --colour")
-    .action(async (name: string, options: { colour?: string; color?: string }) => {
+    .option("--shape <name>", "avatar shape: round, squircle, hex, bean or cloud")
+    .action(async (name: string, options: { colour?: string; color?: string; shape?: string }) => {
       runtime.stdout(await addBot(name, runtime, options));
     });
 

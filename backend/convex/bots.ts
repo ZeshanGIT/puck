@@ -25,7 +25,7 @@ import {
   isOpenRequestFor,
   pairingStatusOf,
 } from "./lib/pairingRules";
-import { tallyWaiting, validateBotColour, validateMutedUntil } from "./lib/botSettings";
+import { tallyWaiting, validateBotColour, validateBotShape, validateMutedUntil } from "./lib/botSettings";
 import { selectPushTargets } from "./lib/pushTargets";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
@@ -65,6 +65,7 @@ export const createPairing = mutationGeneric({
     webhookHeader: v.string(),
     routine: v.optional(v.string()),
     colour: v.optional(v.string()),
+    shape: v.optional(v.string()),
     addedFrom: v.optional(v.string()),
   },
   returns: v.object({
@@ -134,6 +135,7 @@ export const createPairing = mutationGeneric({
       pairingCodeHash,
       pairingCodeExpiresAt: now + PAIRING_TTL_MS,
       ...(pairing.colour === undefined ? {} : { colour: pairing.colour }),
+      ...(pairing.shape === undefined ? {} : { shape: pairing.shape }),
       ...(pairing.addedFrom === undefined ? {} : { addedFrom: pairing.addedFrom }),
       ...(userId === null
         ? {}
@@ -266,6 +268,7 @@ const pairingRequestView = v.object({
   botId: v.string(),
   name: v.string(),
   colour: v.union(v.string(), v.null()),
+  shape: v.union(v.string(), v.null()),
   addedFrom: v.union(v.string(), v.null()),
   pairingCode: v.string(),
   expiresAt: v.number(),
@@ -299,6 +302,7 @@ export const pairingRequests = queryGeneric({
         botId: bot.id,
         name: bot.name,
         colour: bot.colour ?? null,
+        shape: bot.shape ?? null,
         addedFrom: bot.addedFrom ?? null,
         pairingCode,
         expiresAt: bot.pairingCodeExpiresAt ?? now,
@@ -345,6 +349,7 @@ export const loadPairingPush = internalQueryGeneric({
       botId: v.string(),
       botName: v.string(),
       colour: v.union(v.string(), v.null()),
+      shape: v.union(v.string(), v.null()),
       addedFrom: v.union(v.string(), v.null()),
       targets: v.array(v.object({ pushToken: v.string() })),
     }),
@@ -372,6 +377,7 @@ export const loadPairingPush = internalQueryGeneric({
       botId: bot.id,
       botName: bot.name,
       colour: bot.colour ?? null,
+      shape: bot.shape ?? null,
       addedFrom: bot.addedFrom ?? null,
       targets: targets.map((target) => ({ pushToken: target.pushToken })),
     };
@@ -411,6 +417,7 @@ const botListItem = v.object({
   botId: v.string(),
   name: v.string(),
   colour: v.union(v.string(), v.null()),
+  shape: v.union(v.string(), v.null()),
   mutedUntil: v.union(v.number(), v.null()),
   createdAt: v.number(),
   addedFrom: v.union(v.string(), v.null()),
@@ -461,6 +468,7 @@ export const list = queryGeneric({
         botId: bot.id,
         name: bot.name,
         colour: bot.colour ?? null,
+        shape: bot.shape ?? null,
         mutedUntil: bot.mutedUntil ?? null,
         createdAt: bot.createdAt,
         addedFrom: bot.addedFrom ?? null,
@@ -473,7 +481,7 @@ export const list = queryGeneric({
 });
 
 /**
- * Change a bot's colour and/or mute (B2). `mutedUntil`: a future epoch ms to mute until, null to
+ * Change a bot's colour, shape and/or mute (B2). `mutedUntil`: a future epoch ms to mute until, null to
  * unmute, or left out to keep it. Owner only.
  */
 export const update = mutationGeneric({
@@ -481,22 +489,31 @@ export const update = mutationGeneric({
     clientId: v.string(),
     botId: v.string(),
     colour: v.optional(v.string()),
+    shape: v.optional(v.string()),
     mutedUntil: v.optional(v.union(v.number(), v.null())),
   },
   returns: v.object({
     botId: v.string(),
     colour: v.union(v.string(), v.null()),
+    shape: v.union(v.string(), v.null()),
     mutedUntil: v.union(v.number(), v.null()),
   }),
   handler: async (ctx, args) => {
     const bot = await ownedBot(ctx, args.clientId, args.botId);
     const now = Date.now();
-    const patch: { colour?: string; mutedUntil?: number | undefined } = {};
+    const patch: { colour?: string; shape?: string; mutedUntil?: number | undefined } = {};
     if (args.colour !== undefined) {
       try {
         patch.colour = validateBotColour(args.colour);
       } catch (error) {
         throw new Error(error instanceof Error ? error.message : "colour is not valid");
+      }
+    }
+    if (args.shape !== undefined) {
+      try {
+        patch.shape = validateBotShape(args.shape);
+      } catch (error) {
+        throw new Error(error instanceof Error ? error.message : "shape is not valid");
       }
     }
     if (args.mutedUntil !== undefined) {
@@ -512,6 +529,7 @@ export const update = mutationGeneric({
     return {
       botId: bot.id,
       colour: after?.colour ?? null,
+      shape: after?.shape ?? null,
       mutedUntil: after?.mutedUntil ?? null,
     };
   },

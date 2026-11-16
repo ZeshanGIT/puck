@@ -140,6 +140,7 @@ export function fcmPairingMessage(input: {
   botId: string;
   botName: string;
   colour: string | null;
+  shape: string | null;
   addedFrom: string | null;
 }) {
   const data: Record<string, string> = {
@@ -148,6 +149,7 @@ export function fcmPairingMessage(input: {
     botName: input.botName,
   };
   if (input.colour !== null) data.colour = input.colour;
+  if (input.shape !== null) data.shape = input.shape;
   if (input.addedFrom !== null) data.addedFrom = input.addedFrom;
   return {
     message: {

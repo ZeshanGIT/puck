@@ -68,6 +68,14 @@ export const BOT_COLOURS = [
 
 export type BotColour = (typeof BOT_COLOURS)[number];
 
+/**
+ * The shapes a bot's avatar can take (`puck add --shape`, the bot's page in the app). The app draws
+ * them (`app/src/ui/blobShapes.ts`); a test there checks the two lists match.
+ */
+export const BOT_SHAPES = ["round", "squircle", "hex", "bean", "cloud"] as const;
+
+export type BotShape = (typeof BOT_SHAPES)[number];
+
 /** True when another pending bot would pass the cap. */
 export function tooManyPendingBots(pendingCount: number): boolean {
   if (!Number.isInteger(pendingCount) || pendingCount < 0) {
@@ -338,6 +346,8 @@ export interface PairingInput {
   routine: string | null;
   /** Palette name, when the CLI gave one (`puck add --colour`). */
   colour?: BotColour;
+  /** Avatar shape, when the CLI gave one (`puck add --shape`). */
+  shape?: BotShape;
   /** The machine the CLI runs on (its hostname), shown on the approve screen. */
   addedFrom?: string;
 }

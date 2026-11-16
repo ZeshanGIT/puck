@@ -55,7 +55,7 @@ import { ageLabel, Glyph, ICON } from "../ui/AlertFrame";
 import { Banner } from "../ui/Banner";
 import { Blob } from "../ui/Blob";
 import { RestingBlob } from "../ui/RestingBlob";
-import { botLook } from "../ui/botLook";
+import { useBotLook } from "../ui/useBotLook";
 import { Btn } from "../ui/Btn";
 import { NeedCard } from "../ui/NeedCard";
 import { Row } from "../ui/Row";
@@ -257,7 +257,7 @@ export function Section({ label }: { label: string }) {
 function NeedRow({ item, now, onPress }: { item: NeedItem; now: number; onPress: () => void }) {
   const t = useTheme().tokens;
   const { botId, botName } = item;
-  const bot = useMemo(() => botLook({ botId, botName }), [botId, botName]);
+  const bot = useBotLook({ botId, botName });
   return (
     <NeedCard
       bot={bot}
@@ -305,7 +305,7 @@ export function HistoryRow({
 }) {
   const t = useTheme().tokens;
   const { botName } = row;
-  const bot = useMemo(() => botLook({ botId, botName }), [botId, botName]);
+  const bot = useBotLook({ botId, botName });
   const colour = row.tone === "ok" ? t.ok : row.tone === "bad" ? t.danger : t.ink2;
   return (
     <Row

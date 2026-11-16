@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { BOT_COLOURS } from "@puck/shared";
-import { alertPushMode, isMuted, tallyWaiting, validateBotColour, validateMutedUntil } from "../convex/lib/botSettings";
+import { BOT_COLOURS, BOT_SHAPES } from "@puck/shared";
+import { alertPushMode, isMuted, tallyWaiting, validateBotColour, validateBotShape, validateMutedUntil } from "../convex/lib/botSettings";
 
 const NOW = 1_000_000;
 
@@ -31,6 +31,15 @@ describe("validateBotColour", () => {
     expect(() => validateBotColour("Indigo")).toThrow(/colour must be one of/);
     expect(() => validateBotColour("purple")).toThrow(/colour must be one of/);
     expect(() => validateBotColour(3)).toThrow(/colour must be one of/);
+  });
+});
+
+describe("validateBotShape", () => {
+  test("accepts every shape and nothing else", () => {
+    for (const shape of BOT_SHAPES) expect(validateBotShape(shape)).toBe(shape);
+    expect(() => validateBotShape("Cloud")).toThrow(/shape must be one of/);
+    expect(() => validateBotShape("star")).toThrow(/shape must be one of/);
+    expect(() => validateBotShape(null)).toThrow(/shape must be one of/);
   });
 });
 

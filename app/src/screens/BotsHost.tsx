@@ -46,6 +46,7 @@ export interface BotsSource {
   /** Mute until a time (epoch ms), or null to unmute. */
   mute: (botId: string, until: number | null) => Promise<void>;
   setColour: (botId: string, colour: string) => Promise<void>;
+  setShape: (botId: string, shape: string) => Promise<void>;
   setBypass: (botId: string, change: BotBypassChange) => Promise<void>;
   remove: (botId: string) => Promise<void>;
   /** Opens the ringtone picker for this bot's normal or urgent alerts and keeps the choice; resolves false when it could not open. */
@@ -150,6 +151,7 @@ export function BotsHost({ source, start = { kind: "list" }, pairings, onOpenPai
         onMute={(choice: MuteChoice) => void run(() => source.mute(bot.botId, muteUntil(choice, Date.now())))}
         onBypass={(which, mode: BypassMode | null) => void run(() => source.setBypass(bot.botId, { [which]: mode }))}
         onColour={(colour) => void run(() => source.setColour(bot.botId, colour))}
+        onShape={(shape) => void run(() => source.setShape(bot.botId, shape))}
         onReminder={(kind, minutes) =>
           void run(() =>
             source.setBypass(bot.botId, kind === "urgent" ? { reminderMinutes: minutes } : { reminderMinutesNormal: minutes }),
@@ -255,6 +257,9 @@ export function ConnectedBotsHost({
       },
       setColour: async (botId, colour) => {
         await updateMutation({ clientId: needClient(), botId, colour });
+      },
+      setShape: async (botId, shape) => {
+        await updateMutation({ clientId: needClient(), botId, shape });
       },
       setBypass: async (botId, change) => {
         const next = await saveBotBypass(botId, change);

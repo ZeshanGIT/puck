@@ -1,7 +1,7 @@
 // Pure rules for a bot's owner settings (B1, B2): mute, colour, and the waiting count on the
 // bot list. No database access here, so backend/test can run them directly.
 
-import { BOT_COLOURS, type BotColour } from "@puck/shared";
+import { BOT_COLOURS, BOT_SHAPES, type BotColour, type BotShape } from "@puck/shared";
 import { isWaiting } from "./alertHistory";
 
 /** True while a mute is in force. A mute that ends exactly now is over. */
@@ -22,6 +22,13 @@ export function validateBotColour(value: unknown): BotColour {
     throw new Error(`colour must be one of: ${BOT_COLOURS.join(", ")}`);
   }
   return value as BotColour;
+}
+
+export function validateBotShape(value: unknown): BotShape {
+  if (typeof value !== "string" || !(BOT_SHAPES as readonly string[]).includes(value)) {
+    throw new Error(`shape must be one of: ${BOT_SHAPES.join(", ")}`);
+  }
+  return value as BotShape;
 }
 
 /** A mute time in the future (epoch ms), or null to unmute. */

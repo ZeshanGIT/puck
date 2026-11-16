@@ -18,7 +18,7 @@
  * Not here: the ringing, DND, spoken text and the night decision (card T34), the unlock check
  * for destructive options on the lock screen (Q10), and the stack of several alerts (A8).
  */
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Linking, StyleSheet, View } from "react-native";
 import { Text } from "../ui/Text";
 import type { PendingAlert } from "../ChoiceScreen";
@@ -26,7 +26,7 @@ import { readableError } from "../session";
 import { AlertFrame, AlertSecondaryRow, useExpiry } from "../ui/AlertFrame";
 import type { BlobHandle } from "../ui/Blob";
 import type { Offset } from "../ui/blobShapes";
-import { botLook } from "../ui/botLook";
+import { useBotLook } from "../ui/useBotLook";
 import { OptionButton } from "../ui/OptionButton";
 import { useTheme } from "../ui/theme";
 import { Toast, useToast } from "../ui/Toast";
@@ -83,7 +83,7 @@ export function A1ChoiceSingle(props: A1ChoiceSingleProps) {
 
 function A1Body({ alert, waiting, onAnswer, onReply, onSnooze, night, readingAloud, clock, receipt, gone }: A1ChoiceSingleProps) {
   const { botId, botName } = alert;
-  const bot = useMemo(() => botLook({ botId, botName }), [botId, botName]);
+  const bot = useBotLook({ botId, botName });
   const expiry = useExpiry(alert.expiresAt, alert.createdAt, snoozeOf(alert));
   const toast = useToast();
   const blob = useRef<BlobHandle>(null);

@@ -18,11 +18,15 @@ async function tempDir(): Promise<string> {
 }
 
 /** A backend whose pairing status walks through `statuses`, then repeats the last one. */
-function fakeBackend(statuses: PairingStatus[], seen: { colour?: string; addedFrom?: string; token?: string | null } = {}): Backend {
+function fakeBackend(
+  statuses: PairingStatus[],
+  seen: { colour?: string; shape?: string; addedFrom?: string; token?: string | null } = {},
+): Backend {
   let index = 0;
   return {
     async createPairing(_url, input, token) {
       seen.colour = input.colour;
+      if (input.shape !== undefined) seen.shape = input.shape;
       seen.addedFrom = input.addedFrom;
       seen.token = token;
       return { botId: "cortana-12345", secret: SECRET, pairingCode: "042815" };
@@ -162,6 +166,21 @@ describe("puck add signed in", () => {
     try {
       const r = runtime(dir, fakeBackend(["paired"]));
       await expect(addBot("cortana", r, { colour: "purple" })).rejects.toThrow(/colour must be one of/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("sends the shape, and refuses an unknown one before asking for the webhook", async () => {
+    const dir = await tempDir();
+    try {
+      const seen: { colour?: string; shape?: string } = {};
+      await addBot("cortana", runtime(dir, fakeBackend(["paired"], seen)), { colour: "indigo", shape: "cloud" });
+      expect(seen.shape).toBe("cloud");
+      let asked = false;
+      const r = { ...runtime(dir, fakeBackend(["paired"])), prompt: async () => ((asked = true), "") };
+      await expect(addBot("cortana", r, { shape: "star" })).rejects.toThrow(/shape must be one of: round, squircle, hex, bean, cloud/);
+      expect(asked).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

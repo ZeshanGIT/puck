@@ -98,6 +98,7 @@ export const liveBackend: Backend = {
         webhookHeader: input.webhookHeader,
         ...(input.routine ? { routine: input.routine } : {}),
         ...(input.colour ? { colour: input.colour } : {}),
+        ...(input.shape ? { shape: input.shape } : {}),
         ...(input.addedFrom ? { addedFrom: input.addedFrom } : {}),
       });
     } catch (error) {

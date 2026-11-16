@@ -93,6 +93,7 @@ describe("fcmPairingMessage", () => {
       botId: "cortana-12345",
       botName: "cortana",
       colour: "indigo",
+      shape: "cloud",
       addedFrom: "mac",
     });
     expect(body.message.token).toBe("token-aaaaaaaaaaaaaaaaaaaa");
@@ -101,18 +102,20 @@ describe("fcmPairingMessage", () => {
       botId: "cortana-12345",
       botName: "cortana",
       colour: "indigo",
+      shape: "cloud",
       addedFrom: "mac",
     });
     expect("notification" in body.message).toBe(false);
     expect(JSON.stringify(body)).not.toMatch(/\d{6}/);
   });
 
-  test("leaves colour and addedFrom out when the request has none", () => {
+  test("leaves colour, shape and addedFrom out when the request has none", () => {
     const body = fcmPairingMessage({
       pushToken: "token-aaaaaaaaaaaaaaaaaaaa",
       botId: "cortana-12345",
       botName: "cortana",
       colour: null,
+      shape: null,
       addedFrom: null,
     });
     expect(Object.keys(body.message.data).sort()).toEqual(["botId", "botName", "kind"]);

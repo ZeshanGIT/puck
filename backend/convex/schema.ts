@@ -95,6 +95,8 @@ export default defineSchema({
     // Pairing (Protocol changes section 3). `colour` is a palette name; `addedFrom` is the CLI's hostname.
     // `userId` is the Clerk owner when the CLI was signed in: only that user's clients see the request.
     colour: v.optional(v.string()),
+    // Avatar shape (`BOT_SHAPES`), from `puck add --shape` or the bot's page.
+    shape: v.optional(v.string()),
     addedFrom: v.optional(v.string()),
     userId: v.optional(v.string()),
     // Set by bots.rejectPairing. The pairing code is cleared with it.

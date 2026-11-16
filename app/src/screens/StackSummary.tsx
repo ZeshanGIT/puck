@@ -19,7 +19,7 @@
  * spoken by `AStack` (a status that settles on a card that is not in front), so the rows are not
  * live regions.
  */
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Text } from "../ui/Text";
 import type { PendingAlert } from "../ChoiceScreen";
@@ -27,7 +27,7 @@ import { Spinner } from "../onboarding/parts";
 import { answerSummary, attachmentSummary, receiptLine, type StatusTone } from "../receiptCopy";
 import { Glyph, ICON } from "../ui/AlertFrame";
 import { Blob } from "../ui/Blob";
-import { botLook } from "../ui/botLook";
+import { useBotLook } from "../ui/useBotLook";
 import { Btn } from "../ui/Btn";
 import type { StackAnswer, StackGone } from "../ui/StackCard";
 import { useTheme } from "../ui/theme";
@@ -131,7 +131,7 @@ function SummaryRow({
 }) {
   const t = useTheme().tokens;
   const { botId, botName } = alert;
-  const bot = useMemo(() => botLook({ botId, botName }), [botId, botName]);
+  const bot = useBotLook({ botId, botName });
   const line = answer ? receiptLine(answer.status, botName) : null;
   const picked = answer ? pickedText(alert, answer) : "";
   const lineColour = (tone: StatusTone) => (tone === "ok" ? t.ok : tone === "warn" ? t.warn : t.ink2);

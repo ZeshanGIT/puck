@@ -12,19 +12,19 @@ import {
   pairingPush,
 } from "./pairingPayload";
 
-const PUSH = { kind: "pairing", botId: "cortana-00042", botName: "Cortana", colour: "indigo", addedFrom: "MacBook" };
+const PUSH = { kind: "pairing", botId: "cortana-00042", botName: "Cortana", colour: "indigo", shape: "cloud", addedFrom: "MacBook" };
 
 describe("pairingPush", () => {
   test("reads Expo's dataString, a nested data object and a bare payload", () => {
-    const expected = { botId: "cortana-00042", botName: "Cortana", colour: "indigo", addedFrom: "MacBook" };
+    const expected = { botId: "cortana-00042", botName: "Cortana", colour: "indigo", shape: "cloud", addedFrom: "MacBook" };
     expect(pairingPush({ data: { dataString: JSON.stringify(PUSH) } })).toEqual(expected);
     expect(pairingPush({ data: PUSH })).toEqual(expected);
     expect(pairingPush(PUSH)).toEqual(expected);
   });
 
-  test("colour and addedFrom are optional", () => {
-    const { colour: _c, addedFrom: _a, ...bare } = PUSH;
-    expect(pairingPush(bare)).toEqual({ botId: "cortana-00042", botName: "Cortana", colour: null, addedFrom: null });
+  test("colour, shape and addedFrom are optional", () => {
+    const { colour: _c, shape: _s, addedFrom: _a, ...bare } = PUSH;
+    expect(pairingPush(bare)).toEqual({ botId: "cortana-00042", botName: "Cortana", colour: null, shape: null, addedFrom: null });
     expect(pairingPush({ ...PUSH, colour: "chartreuse" })?.colour).toBeNull();
   });
 
@@ -40,11 +40,11 @@ describe("pairingPush", () => {
 
 describe("notification", () => {
   test("the shade copy has the name and the machine but no code", () => {
-    const copy = pairingNotificationCopy({ botId: "cortana-00042", botName: "Cortana", colour: null, addedFrom: "MacBook" });
+    const copy = pairingNotificationCopy({ botId: "cortana-00042", botName: "Cortana", colour: null, shape: null, addedFrom: "MacBook" });
     expect(copy.title).toBe("Cortana wants to page you");
     expect(copy.body).toContain("MacBook");
     expect(copy.body).not.toMatch(/\d{3}/u);
-    expect(pairingNotificationCopy({ botId: "cortana-00042", botName: "Cortana", colour: null, addedFrom: null }).body).toBe(
+    expect(pairingNotificationCopy({ botId: "cortana-00042", botName: "Cortana", colour: null, shape: null, addedFrom: null }).body).toBe(
       "Tap to check the code and approve.",
     );
     expect(pairingNotificationId("cortana-00042")).toBe("pairing-cortana-00042");

@@ -1,6 +1,7 @@
 export {
   ALERT_STATUSES,
   BOT_COLOURS,
+  BOT_SHAPES,
   ANSWER_EVENTS,
   ANSWER_SOURCES,
   ATTACHMENT_TYPES,
@@ -44,6 +45,7 @@ export {
 } from "./model";
 export type {
   BotColour,
+  BotShape,
   AlertExtras,
   AlertLink,
   AlertOption,
@@ -101,6 +103,7 @@ export {
   validateAttachments,
   validateCreateAlert,
   validatePairingInput,
+  isBotShape,
   validateSnoozeUntil,
   resolveAnsweredAt,
   ANSWERED_AT_MAX_AGE_MS,

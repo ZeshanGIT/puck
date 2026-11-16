@@ -11,6 +11,7 @@ import { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Text } from "../ui/Text";
 import { PALETTE } from "../ui/botTheme";
+import { SHAPES, type ShapeName } from "../ui/blobShapes";
 import {
   botBlob,
   dateText,
@@ -34,6 +35,8 @@ import { OnboardingFrame } from "../onboarding/parts";
 import { KvRow, KvText, MAX_FONT_SCALE, NavBar } from "./PairingParts";
 import { SettingsRow, SettingsToggleRow } from "./SettingsParts";
 
+const SHAPE_NAMES = Object.keys(SHAPES) as ShapeName[];
+
 export interface B2BotProps {
   bot: BotListItem;
   now: number;
@@ -43,6 +46,7 @@ export interface B2BotProps {
   /** A mode, or null to follow app settings. */
   onBypass: (which: "dnd" | "silent", mode: BypassMode | null) => void;
   onColour: (colour: string) => void;
+  onShape: (shape: ShapeName) => void;
   /** Minutes between reminders for this kind of alert, or null to follow app settings. */
   onReminder: (kind: SoundKind, minutes: number | null) => void;
   /** What Alerts in Settings says about Do Not Disturb and silent mode, which this bot follows unless it has its own. */
@@ -80,6 +84,7 @@ export function B2Bot({
   onMute,
   onBypass,
   onColour,
+  onShape,
   onReminder,
   normalRingtone,
   urgentRingtone,
@@ -176,6 +181,26 @@ export function B2Bot({
         <Caption>
           These apply to {bot.name} only. Until you change one, it follows Alerts in Settings. Do Not Disturb and silent mode are bypassed only when {bot.name} asks.
         </Caption>
+
+        <Section label="Shape" />
+        <View style={styles.shapes}>
+          {SHAPE_NAMES.map((shape) => {
+            const selected = shape === look.shape;
+            return (
+              <Pressable
+                key={shape}
+                accessibilityRole="button"
+                accessibilityLabel={shape}
+                accessibilityState={{ selected }}
+                testID={`shape-${shape}`}
+                onPress={() => onShape(shape)}
+                style={[styles.shapeRing, { borderColor: selected ? t.ink : "transparent" }]}
+              >
+                <Blob bot={{ ...look, shape, tilt: 0 }} size={44} still />
+              </Pressable>
+            );
+          })}
+        </View>
 
         <Section label="Colour" />
         <View style={styles.swatches}>
@@ -383,6 +408,8 @@ const styles = StyleSheet.create({
   },
   tile: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   /** `.swatches{gap:10px; padding:6px 22px 0}`, seven to a row. */
+  shapes: { flexDirection: "row", justifyContent: "space-between", paddingTop: 6, paddingHorizontal: 20 },
+  shapeRing: { borderRadius: 18, borderWidth: 2, padding: 6 },
   swatches: { flexDirection: "row", flexWrap: "wrap", paddingTop: 6, paddingHorizontal: 17 },
   swatchCell: { width: `${100 / 7}%`, padding: 5 },
   swatchRing: { aspectRatio: 1, borderRadius: 999, borderWidth: 2, padding: 2 },

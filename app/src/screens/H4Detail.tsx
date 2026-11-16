@@ -33,7 +33,7 @@ import { OnboardingFrame } from "../onboarding/parts";
 import { Glyph, ICON } from "../ui/AlertFrame";
 import { Blob } from "../ui/Blob";
 import { type BotTheme } from "../ui/botTheme";
-import { botLook } from "../ui/botLook";
+import { useBotLook } from "../ui/useBotLook";
 import { Btn } from "../ui/Btn";
 import { Toast, useToast } from "../ui/Toast";
 import { useBotTheme, useTheme } from "../ui/theme";
@@ -138,7 +138,7 @@ function AlertBody({
   onRetry: () => void;
 }) {
   const t = useTheme().tokens;
-  const look = useMemo(() => botLook({ botId: alert.botId, botName: alert.botName }), [alert.botId, alert.botName]);
+  const look = useBotLook({ botId: alert.botId, botName: alert.botName });
   const bot = useBotTheme(look);
   const options = useMemo(() => optionRows(alert), [alert]);
   const timeline = useMemo(() => timelineRows(alert, now), [alert, now]);

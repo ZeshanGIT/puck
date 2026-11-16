@@ -1,13 +1,15 @@
 import { BOT_ID_PATTERN, PAIRING_KIND } from "@puck/shared";
 import { notificationData } from "./dismissPayload";
-import { requestedColour } from "./pairingModel";
+import { requestedColour, requestedShape } from "./pairingModel";
+import type { ShapeName } from "./ui/blobShapes";
 import type { PaletteName } from "./ui/botTheme";
 
-/** The data-only pairing push (N7): `{kind: "pairing", botId, botName, colour?, addedFrom?}`, no code. */
+/** The data-only pairing push (N7): `{kind: "pairing", botId, botName, colour?, shape?, addedFrom?}`, no code. */
 export interface PairingPush {
   botId: string;
   botName: string;
   colour: PaletteName | null;
+  shape: ShapeName | null;
   addedFrom: string | null;
 }
 
@@ -18,13 +20,14 @@ export interface PairingPush {
 export function pairingPush(payload: unknown): PairingPush | null {
   const data = notificationData(payload);
   if (!data || data.kind !== PAIRING_KIND) return null;
-  const { botId, botName, colour, addedFrom } = data;
+  const { botId, botName, colour, shape, addedFrom } = data;
   if (typeof botId !== "string" || !BOT_ID_PATTERN.test(botId)) return null;
   if (typeof botName !== "string" || botName.trim() === "") return null;
   return {
     botId,
     botName,
     colour: typeof colour === "string" ? requestedColour(colour) : null,
+    shape: typeof shape === "string" ? requestedShape(shape) : null,
     addedFrom: typeof addedFrom === "string" && addedFrom.trim() !== "" ? addedFrom : null,
   };
 }

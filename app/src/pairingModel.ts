@@ -3,9 +3,10 @@
  * with no React so it can be tested: the keypad, matching a typed code to a waiting request,
  * dropping expired requests, and the words the screens show.
  */
-import type { BlobBot } from "./ui/blobShapes";
+import type { BlobBot, ShapeName } from "./ui/blobShapes";
+import { isShapeName } from "./ui/botLookStore";
 import { botLook } from "./ui/botLook";
-import { PALETTE, type PaletteName } from "./ui/botTheme";
+import { isPaletteName, type PaletteName } from "./ui/botTheme";
 
 /** One open pairing request, as `bots.pairingRequests` returns it. */
 export interface PairingRequest {
@@ -13,6 +14,8 @@ export interface PairingRequest {
   name: string;
   /** The palette name `puck add --colour` gave, or null when it gave none. */
   colour: string | null;
+  /** The shape `puck add --shape` gave, or null when it gave none. */
+  shape?: string | null;
   /** The computer's name, or null. */
   addedFrom: string | null;
   /** The six digits to compare with the terminal. */
@@ -97,19 +100,26 @@ export function expiryText(expiresAt: number, now: number): string {
   return `Expires in ${minutes} min`;
 }
 
-function isPaletteName(value: string): value is PaletteName {
-  return PALETTE.some((entry) => entry.name === value);
-}
-
 /** The colour the request asked for, or null when it gave none (or one that is not in the palette). */
 export function requestedColour(colour: string | null): PaletteName | null {
   return colour !== null && isPaletteName(colour) ? colour : null;
 }
 
-/** How the bot looks: its own colour when it gave one, else the one Puck suggests (Q5). */
-export function requestLook(request: Pick<PairingRequest, "botId" | "name" | "colour">): BlobBot {
+/** The shape the request asked for, or null when it gave none (or one this build does not draw). */
+export function requestedShape(shape: string | null): ShapeName | null {
+  return shape !== null && isShapeName(shape) ? shape : null;
+}
+
+/** How the bot looks: its own colour and shape when it gave them, else the ones Puck suggests (Q5). */
+export function requestLook(request: Pick<PairingRequest, "botId" | "name" | "colour" | "shape">): BlobBot {
   const colour = requestedColour(request.colour);
-  return botLook({ botId: request.botId, botName: request.name, ...(colour === null ? {} : { colour }) });
+  const shape = requestedShape(request.shape ?? null);
+  return botLook({
+    botId: request.botId,
+    botName: request.name,
+    ...(colour === null ? {} : { colour }),
+    ...(shape === null ? {} : { shape }),
+  });
 }
 
 /** The Colour row of B4: the name, and whether Puck suggested it because the bot gave none. */
