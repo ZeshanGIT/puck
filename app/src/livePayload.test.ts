@@ -6,7 +6,7 @@ const PUSH = {
   activityId: "k17abc",
   botId: "sheldon-11019",
   botName: "Sheldon",
-  title: "Fixing the swipe arm bug",
+  taskTitle: "Fixing the swipe arm bug",
   currentStep: "Running the tests",
   state: "running",
   startedAt: "1731000000000",
@@ -17,6 +17,12 @@ const PUSH = {
 };
 
 describe("livePush", () => {
+  test("reads the task name from taskTitle, or title from an older backend", () => {
+    const { taskTitle, ...rest } = PUSH;
+    expect(livePush({ ...rest, title: taskTitle })?.title).toBe("Fixing the swipe arm bug");
+    expect(livePush(PUSH)?.title).toBe("Fixing the swipe arm bug");
+  });
+
   test("reads Expo's dataString, a nested data object and a bare payload", () => {
     const expected = {
       activityId: "k17abc",
@@ -55,7 +61,7 @@ describe("livePush", () => {
     expect(livePush({ ...PUSH, kind: "dismiss" })).toBeNull();
     expect(livePush({ ...PUSH, activityId: "" })).toBeNull();
     expect(livePush({ ...PUSH, botId: "nope" })).toBeNull();
-    expect(livePush({ ...PUSH, title: " " })).toBeNull();
+    expect(livePush({ ...PUSH, taskTitle: " " })).toBeNull();
     expect(livePush({ ...PUSH, state: "paused" })).toBeNull();
     expect(livePush({ ...PUSH, startedAt: "soon" })).toBeNull();
     expect(livePush({ ...PUSH, updatedAt: undefined })).toBeNull();

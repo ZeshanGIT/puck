@@ -30,7 +30,7 @@ describe("fcmLiveMessage", () => {
       activityId: "act_1",
       botId: "sheldon-23648",
       botName: "sheldon",
-      title: "Fix the build",
+      taskTitle: "Fix the build",
       currentStep: "Running the tests",
       state: "running",
       startedAt: String(NOW - 300_000),
@@ -44,8 +44,13 @@ describe("fcmLiveMessage", () => {
   test("leaves out the track fields for an activity without steps", () => {
     const body = fcmLiveMessage({ ...base, colour: null, stepIndex: null, stepCount: null });
     expect(Object.keys(body.message.data).sort()).toEqual(
-      ["activityId", "botId", "botName", "currentStep", "kind", "startedAt", "state", "title", "updatedAt"].sort(),
+      ["activityId", "botId", "botName", "currentStep", "kind", "startedAt", "state", "taskTitle", "updatedAt"].sort(),
     );
+  });
+
+  test("has no title, message or body key, which expo-notifications would show as its own notification", () => {
+    const data = fcmLiveMessage(base).message.data;
+    for (const key of ["title", "message", "body"]) expect(key in data).toBe(false);
   });
 
   test("never carries a secret or a webhook", () => {

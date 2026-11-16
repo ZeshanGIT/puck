@@ -39,7 +39,10 @@ function isLiveState(value: unknown): value is LiveState {
 export function livePush(payload: unknown): LivePush | null {
   const data = notificationData(payload);
   if (!data || data.kind !== LIVE_KIND) return null;
-  const { activityId, botId, botName, title, currentStep, state, colour } = data;
+  const { activityId, botId, botName, currentStep, state, colour } = data;
+  // `taskTitle` since 2026-11-16 (a `title` key made expo-notifications post its own notification);
+  // `title` from an older backend.
+  const title = data.taskTitle ?? data.title;
   if (typeof activityId !== "string" || activityId === "") return null;
   if (typeof botId !== "string" || !BOT_ID_PATTERN.test(botId)) return null;
   if (typeof botName !== "string" || botName.trim() === "") return null;

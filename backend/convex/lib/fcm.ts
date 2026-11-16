@@ -277,6 +277,10 @@ export interface LivePushInput {
  * Data-only live-activity update (N8). Normal priority and no notification block, so it never
  * rings or vibrates; the phone updates its ongoing notification in place. The phone can open the
  * full activity by `activityId`. Steps are not sent, to keep the message small.
+ *
+ * The task name travels as `taskTitle`, never `title`: expo-notifications shows any data message
+ * with a `title`, `message` or `body` key as a notification of its own while the app is in the
+ * background, which made one extra notification per update.
  */
 export function fcmLiveMessage(input: LivePushInput) {
   const data: Record<string, string> = {
@@ -284,7 +288,7 @@ export function fcmLiveMessage(input: LivePushInput) {
     activityId: input.activityId,
     botId: input.botId,
     botName: input.botName,
-    title: input.title,
+    taskTitle: input.title,
     currentStep: input.currentStep,
     state: input.state,
     startedAt: String(input.startedAt),
