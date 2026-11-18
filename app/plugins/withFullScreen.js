@@ -1,4 +1,4 @@
-const { AndroidConfig, withAndroidManifest } = require("expo/config-plugins");
+const { AndroidConfig, withAndroidManifest, withMainActivity } = require("expo/config-plugins");
 
 /**
  * Manifest flags for an urgent alert over the lock screen. android/ is generated.
@@ -13,6 +13,21 @@ function withFullScreen(config) {
     "android.permission.ACCESS_NOTIFICATION_POLICY",
     "android.permission.SYSTEM_ALERT_WINDOW",
   ]);
+  config = withMainActivity(config, (mod) => {
+    // The cover over an opening alert fades when Android's app-opening animation is over.
+    if (!mod.modResults.contents.includes("OpenAnimation")) {
+      mod.modResults.contents = mod.modResults.contents.replace(
+        "  override fun getMainComponentName",
+        `  override fun onEnterAnimationComplete() {
+    super.onEnterAnimationComplete()
+    puck.fullscreen.OpenAnimation.complete()
+  }
+
+  override fun getMainComponentName`,
+      );
+    }
+    return mod;
+  });
   return withAndroidManifest(config, (mod) => {
     const activity = AndroidConfig.Manifest.getMainActivityOrThrow(mod.modResults);
     activity.$["android:showWhenLocked"] = "true";

@@ -209,10 +209,10 @@ internal object OverlayCard {
   private var openingId: String? = null
   private var openingReady = false
   private var openingAnimating = false
-  /** When Puck was asked to open. Android's app-opening animation runs for a while after this. */
-  private var openLaunchedAt = 0L
-  /** The cover stays up at least this long after the launch, so Android's own animation never shows. */
-  private const val OPEN_HOLD_MS = 600L
+  /** Android finished its own app-opening animation (MainActivity reports it). */
+  private var openingEntered = false
+  /** If Android never reports it (no animation ran), the cover still goes after this. */
+  private const val ENTER_FAILSAFE_MS = 1000L
 
   fun peekOpened(): Opened? = pendingOpen?.takeIf {
     SystemClock.elapsedRealtime() - pendingAt < PENDING_OPEN_MS
@@ -224,11 +224,19 @@ internal object OverlayCard {
       pendingOpen = null
       openingReady = true
       if (!openingAnimating) cover?.let { sheet ->
-        // An alert that is ready at once still waits out Android's app-opening animation.
-        val wait = openLaunchedAt + OPEN_HOLD_MS - SystemClock.elapsedRealtime()
-        if (wait <= 0L) fadeOutCover(sheet)
-        else main.postDelayed({ if (cover === sheet) fadeOutCover(sheet) }, wait)
+        // The alert is drawn: the cover goes as soon as Android's app-opening animation is over too.
+        if (openingEntered) fadeOutCover(sheet)
+        else main.postDelayed({ if (cover === sheet && openingReady) fadeOutCover(sheet) }, ENTER_FAILSAFE_MS)
       }
+    }
+  }
+
+  /** MainActivity's enter animation ended: the cover can go if the alert is already drawn. */
+  fun enterAnimationComplete() {
+    main.post {
+      openingEntered = true
+      val sheet = cover ?: return@post
+      if (openingReady && !openingAnimating) fadeOutCover(sheet)
     }
   }
 
@@ -485,7 +493,7 @@ internal object OverlayCard {
     val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return
     openingId = questionId
     openingReady = false
-    openLaunchedAt = SystemClock.elapsedRealtime()
+    openingEntered = false
     var fresh: View? = null
     if (cover == null) {
       val sheet = FrameLayout(context).apply {
@@ -518,12 +526,7 @@ internal object OverlayCard {
     if (shown == null) {
       context.startActivity(launch)
     } else {
-      shown.postOnAnimation {
-        shown.postOnAnimation {
-          openLaunchedAt = SystemClock.elapsedRealtime()
-          context.startActivity(launch)
-        }
-      }
+      shown.postOnAnimation { shown.postOnAnimation { context.startActivity(launch) } }
     }
   }
 

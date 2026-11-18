@@ -4,7 +4,7 @@ Updated when product direction or alert presentation behavior changes. Vault `Pr
 
 ## Faster alert opening (2026-11-18)
 
-Opening an alert from the floating card or the lock screen no longer waits for history and the waiting list: the white cover fades once the alert itself can be drawn, and never sooner than 0.6 s after Puck is launched, so Android's app-opening animation stays hidden. Seshan confirmed both opens are much faster. The "Connecting" screen on the lock screen is still there. An earlier attempt to draw the alert from the push while the inbox loads is parked in `git stash` (it flashed a blank avatar screen and then "Connecting" on card taps).
+Opening an alert from the floating card or the lock screen no longer waits for history and the waiting list: the white cover fades once the alert itself can be drawn, and never before Android's own app-opening animation has ended (`MainActivity.onEnterAnimationComplete`, wired by `plugins/withFullScreen.js`), so that animation stays hidden. If Android never reports it, the cover goes after 1 s. The first launch after an install is a cold start and can flash; test after opening Puck once. Seshan confirmed both opens are much faster. The "Connecting" screen on the lock screen is still there. An earlier attempt to draw the alert from the push while the inbox loads is parked in `git stash` (it flashed a blank avatar screen and then "Connecting" on card taps).
 
 ## Show floating card button (2026-11-16)
 
