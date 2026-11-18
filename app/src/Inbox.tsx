@@ -293,7 +293,12 @@ function InboxBody({
     visible,
     deck.alert?.questionId ?? null,
   );
-  const ready = dataReady && launchSettled;
+  // A notification or card open shows its alert as soon as the inbox can draw it. History and the
+  // waiting list are only needed for Home, so the cover does not wait for them.
+  const alertIsVisible = launchOnDeck && launchInLive && snoozedOpen === null
+    && (!(stacking || wantsStack) || open.some((item) => item.questionId === openedId));
+  const hasRenderData = pending !== undefined && (!clientId || bots !== undefined);
+  const ready = (dataReady && launchSettled) || (hasRenderData && alertIsVisible);
   useEffect(() => {
     if (!rawOpenedId || !ready) return;
     // Two frames put the committed alert beneath the native cover before it fades.

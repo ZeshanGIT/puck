@@ -2,6 +2,10 @@
 
 Updated when product direction or alert presentation behavior changes. Vault `Projects/Puck/HANDOFF` remains the session log across repos.
 
+## Faster alert opening (2026-11-18)
+
+Opening an alert from the floating card or the lock screen no longer waits for history and the waiting list: the white cover fades once the alert itself can be drawn, and never sooner than 0.6 s after Puck is launched, so Android's app-opening animation stays hidden. Seshan confirmed both opens are much faster. The "Connecting" screen on the lock screen is still there. An earlier attempt to draw the alert from the push while the inbox loads is parked in `git stash` (it flashed a blank avatar screen and then "Connecting" on card taps).
+
 ## Show floating card button (2026-11-16)
 
 The live notification's "Show floating card" button was opening Notifee's `NotificationReceiverActivity`, which threw inside EventBus (`getClass()` on null) before any JavaScript handler ran, so `LiveFloat.restore` never happened. The button now sets `launchActivity` to `puck.fullscreen.ShowFloatActivity`: an invisible activity that calls `LiveFloat.restore` with the last saved update and finishes. Notifee still stacks its own receiver activity on that press (translucent, no history); the card comes back from ours even when that event fails. A notification posted before this build keeps the old button until the next live update. Release installed 12:39 IST, then rebuilt from `main` at `250646c` and installed again at 12:59 IST (data kept). Seshan checked the 12:39 build at 12:53 IST: hide and bring back works.

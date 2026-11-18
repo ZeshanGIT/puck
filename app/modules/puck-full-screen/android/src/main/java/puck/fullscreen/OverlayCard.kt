@@ -209,6 +209,10 @@ internal object OverlayCard {
   private var openingId: String? = null
   private var openingReady = false
   private var openingAnimating = false
+  /** When Puck was asked to open. Android's app-opening animation runs for a while after this. */
+  private var openLaunchedAt = 0L
+  /** The cover stays up at least this long after the launch, so Android's own animation never shows. */
+  private const val OPEN_HOLD_MS = 600L
 
   fun peekOpened(): Opened? = pendingOpen?.takeIf {
     SystemClock.elapsedRealtime() - pendingAt < PENDING_OPEN_MS
@@ -219,7 +223,12 @@ internal object OverlayCard {
       if (openingId != questionId) return@post
       pendingOpen = null
       openingReady = true
-      if (!openingAnimating) cover?.let { fadeOutCover(it) }
+      if (!openingAnimating) cover?.let { sheet ->
+        // An alert that is ready at once still waits out Android's app-opening animation.
+        val wait = openLaunchedAt + OPEN_HOLD_MS - SystemClock.elapsedRealtime()
+        if (wait <= 0L) fadeOutCover(sheet)
+        else main.postDelayed({ if (cover === sheet) fadeOutCover(sheet) }, wait)
+      }
     }
   }
 
@@ -476,6 +485,7 @@ internal object OverlayCard {
     val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return
     openingId = questionId
     openingReady = false
+    openLaunchedAt = SystemClock.elapsedRealtime()
     var fresh: View? = null
     if (cover == null) {
       val sheet = FrameLayout(context).apply {
@@ -508,7 +518,12 @@ internal object OverlayCard {
     if (shown == null) {
       context.startActivity(launch)
     } else {
-      shown.postOnAnimation { shown.postOnAnimation { context.startActivity(launch) } }
+      shown.postOnAnimation {
+        shown.postOnAnimation {
+          openLaunchedAt = SystemClock.elapsedRealtime()
+          context.startActivity(launch)
+        }
+      }
     }
   }
 
