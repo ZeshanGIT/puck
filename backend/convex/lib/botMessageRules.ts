@@ -3,7 +3,6 @@ import { deliveryRoute } from "./builtInBot";
 
 type Bot = Pick<Doc<"bots">, "userId" | "pairingState" | "removedAt" | "webhookUrl" | "builtIn">;
 
-export const BOT_MESSAGE_INTERVAL_MS = 10_000;
 
 export function botMessageAccess(sender: Bot | null, target: Bot | null) {
   if (!sender?.userId || sender.pairingState !== "paired" || sender.removedAt !== undefined) {
@@ -16,4 +15,12 @@ export function botMessageAccess(sender: Bot | null, target: Bot | null) {
     return { status: 409, error: "target bot has no webhook" } as const;
   }
   return null;
+}
+
+const PAGE_BURST = 12;
+const REFILL_MS = 5000;
+
+export function takePageToken(bucket: { tokens: number; at: number } | undefined, now: number) {
+  const tokens = bucket ? Math.min(PAGE_BURST, bucket.tokens + Math.max(0, now - bucket.at) / REFILL_MS) : PAGE_BURST;
+  return tokens < 1 ? null : { tokens: tokens - 1, at: now };
 }

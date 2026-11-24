@@ -1,6 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi, type FunctionReference } from "convex/server";
-import type { AlertExtras, AlertOption, LiveCommand, PairingInput } from "@puck/shared";
+import type { AlertExtras, AlertOption, BotPage, LiveCommand, PairingInput } from "@puck/shared";
 import { isQuestionId } from "@puck/shared";
 import { CliError, publicError, redact } from "./errors";
 
@@ -84,7 +84,7 @@ export interface Backend {
   updateWebhook(deploymentUrl: string, botId: string, input: Pick<PairingInput, "webhookUrl" | "webhookHeader">, token: string): Promise<void>;
   pairingStatus(deploymentUrl: string, botId: string, secret: string): Promise<PairingStatus>;
   postAlert(siteUrl: string, botId: string, secret: string, body: AlertBody): Promise<{ questionId: string }>;
-  postBotMessage(siteUrl: string, botId: string, secret: string, body: { to: string; message: string }): Promise<void>;
+  postBotMessage(siteUrl: string, botId: string, secret: string, body: BotPage): Promise<string>;
   /** `POST /status`: start, step, steps or end a live activity. */
   postStatus(siteUrl: string, botId: string, secret: string, body: LiveCommand): Promise<void>;
   listAlerts(siteUrl: string, botId: string, secret: string): Promise<ListedAlert[]>;
@@ -169,7 +169,10 @@ export const liveBackend: Backend = {
 
   async postBotMessage(siteUrl, botId, secret, body) {
     const result = await botRequest(siteUrl, "/bot-messages", "POST", botId, secret, body);
-    if (!isRecord(result) || result.queued !== true) throw new CliError("bot message was not queued");
+    if (!isRecord(result) || typeof result.alertId !== "string" || !isQuestionId(result.alertId)) {
+      throw new CliError("bot page response did not contain an alert id");
+    }
+    return result.alertId;
   },
 
   async postStatus(siteUrl, botId, secret, body) {
@@ -358,7 +361,7 @@ function parseAttachments(value: unknown): AlertAttachmentView[] {
   return files;
 }
 
-async function botRequest(siteUrl: string, path: string, method: "GET" | "POST", botId: string, secret: string, body?: { to: string; message: string }): Promise<unknown> {
+async function botRequest(siteUrl: string, path: string, method: "GET" | "POST", botId: string, secret: string, body?: BotPage): Promise<unknown> {
   let response: Response;
   try {
     response = await fetch(`${siteUrl}${path}`, {
@@ -373,7 +376,7 @@ async function botRequest(siteUrl: string, path: string, method: "GET" | "POST",
   } catch {
     throw new CliError("could not reach the deployment");
   }
-  const subject = body ? "bot message" : "alert";
+  const subject = body ? "bot page" : "alert";
   const text = await response.text();
   if (!response.ok) {
     let message = `${subject} was not accepted (${response.status})`;

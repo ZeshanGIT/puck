@@ -1,10 +1,22 @@
-/** Read the JSON accepted by targeted sends. */
-export function readBotMessage(value: unknown): string | null {
-  if (typeof value !== "object" || value === null || !("message" in value) || Object.keys(value).length !== 1) {
-    return null;
-  }
-  const message = typeof value.message === "string" ? value.message.trim() : "";
-  return message.length > 0 && message.length <= 4000 ? message : null;
-}
+import type { LiveCommand } from "./live";
+import type { CreateAlertInput } from "./model";
+import { AlertValidationError, validateAlertTiming, validateCreateAlert } from "./validate";
 
-export const BOT_MESSAGE_INPUT_ERROR = 'expected JSON with one "message" string (1–4000 characters)';
+export type BotAlert = CreateAlertInput & { replyTo?: string };
+export type BotPage = { to: string } & ({ alert: BotAlert } | { activity: LiveCommand });
+
+export function validateBotAlert(input: unknown, now: number): BotAlert {
+  const alert = validateCreateAlert(input);
+  const raw = input as Record<string, unknown>;
+  if (alert.scheduledFor !== null) throw new AlertValidationError("scheduledFor cannot be used with --to");
+  if (raw.snoozedUntil !== undefined || raw.snoozeUntil !== undefined) {
+    throw new AlertValidationError("snooze fields cannot be used with --to");
+  }
+  validateAlertTiming(alert, now);
+  const { replyTo } = raw;
+  if (replyTo === undefined) return alert;
+  if (typeof replyTo !== "string" || !replyTo.trim() || replyTo.length > 2048 || /[\u0000-\u001f\u007f]/.test(replyTo)) {
+    throw new AlertValidationError("replyTo must be a non-empty string of at most 2048 characters on one line");
+  }
+  return { ...alert, replyTo };
+}

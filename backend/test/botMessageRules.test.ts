@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { botMessageAccess } from "../convex/lib/botMessageRules";
+import { botMessageAccess, takePageToken } from "../convex/lib/botMessageRules";
 
 const bot = { userId: "owner", pairingState: "paired" as const, webhookUrl: "https://example.com" };
 
@@ -22,4 +22,15 @@ test("cross-account, unowned and unknown targets give the same rejection", () =>
 
 test("a same-account target needs a webhook", () => {
   expect(botMessageAccess(bot, { ...bot, webhookUrl: "" })?.status).toBe(409);
+});
+
+test("allows a burst of activity updates and replenishes the sender's allowance", () => {
+  let bucket: ReturnType<typeof takePageToken> | undefined;
+  for (let i = 0; i < 12; i++) {
+    bucket = takePageToken(bucket ?? undefined, 1000);
+    expect(bucket).not.toBeNull();
+  }
+  expect(takePageToken(bucket ?? undefined, 1000)).toBeNull();
+  expect(takePageToken(bucket ?? undefined, 5999)).toBeNull();
+  expect(takePageToken(bucket ?? undefined, 6000)).toEqual({ tokens: 0, at: 6000 });
 });

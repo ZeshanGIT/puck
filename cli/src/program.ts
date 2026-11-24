@@ -87,8 +87,9 @@ export function createProgram(runtime: Runtime = defaultRuntime()): Command {
     .option("--steps <a|b|c>", "steps, separated by |")
     .option("--link <url>", "a link for the task")
     .option("--note <text>", "what is happening now, in a line")
+    .option("--to <bot-id>", "page a bot on the same account with this activity update")
     .option("--bot <bot-id>", "bot id, or the default in config.json")
-    .action(async (options: { title: string; steps?: string; link?: string; note?: string; bot?: string }) => {
+    .action(async (options: { title: string; steps?: string; link?: string; note?: string; bot?: string; to?: string }) => {
       runtime.stdout(await statusCommand({ action: "start", ...options }, runtime));
     });
   status
@@ -96,24 +97,27 @@ export function createProgram(runtime: Runtime = defaultRuntime()): Command {
     .description("move to a step, adding it if it is new")
     .argument("<text>", "the step")
     .option("--note <text>", "what is happening now, in a line")
+    .option("--to <bot-id>", "page a bot on the same account with this activity update")
     .option("--bot <bot-id>", "bot id, or the default in config.json")
-    .action(async (text: string, options: { note?: string; bot?: string }) => {
+    .action(async (text: string, options: { note?: string; bot?: string; to?: string }) => {
       runtime.stdout(await statusCommand({ action: "step", text, ...options }, runtime));
     });
   status
     .command("note")
     .description("say what is happening now, on the current step (or the task, with no steps)")
     .argument("<text>", "the note, in a line")
+    .option("--to <bot-id>", "page a bot on the same account with this activity update")
     .option("--bot <bot-id>", "bot id, or the default in config.json")
-    .action(async (text: string, options: { bot?: string }) => {
+    .action(async (text: string, options: { bot?: string; to?: string }) => {
       runtime.stdout(await statusCommand({ action: "note", note: text, ...options }, runtime));
     });
   status
     .command("steps")
     .description("replace the list of steps")
     .argument("<list>", "steps separated by |")
+    .option("--to <bot-id>", "page a bot on the same account with this activity update")
     .option("--bot <bot-id>", "bot id, or the default in config.json")
-    .action(async (list: string, options: { bot?: string }) => {
+    .action(async (list: string, options: { bot?: string; to?: string }) => {
       runtime.stdout(await statusCommand({ action: "steps", steps: list, ...options }, runtime));
     });
   status
@@ -122,16 +126,17 @@ export function createProgram(runtime: Runtime = defaultRuntime()): Command {
     .option("--ok", "finished (the default)")
     .option("--failed", "finished with a failure")
     .option("--note <text>", "how it ended, in a line")
+    .option("--to <bot-id>", "page a bot on the same account with this activity update")
     .option("--bot <bot-id>", "bot id, or the default in config.json")
-    .action(async (options: { ok?: boolean; failed?: boolean; note?: string; bot?: string }) => {
+    .action(async (options: { ok?: boolean; failed?: boolean; note?: string; bot?: string; to?: string }) => {
       runtime.stdout(await statusCommand({ action: "end", ...options }, runtime));
     });
 
   program
     .command("send")
-    .description("send an alert and return its question id, or queue a message with --to")
+    .description("send an alert and return its id")
     .option("--file <path>", "JSON input file; stdin is used when omitted")
-    .option("--to <bot-id>", 'queue {"message":"..."} for a bot on the same account')
+    .option("--to <bot-id>", 'page a bot on the same account with this alert')
     .option("--bot <bot-id>", "bot id, or the default in config.json")
     .option("--at <time>", "ring at HH:MM instead of immediately")
     .option("--wait", "wait for the answer and print it as JSON (exit 0 answered, 3 snoozed, 4 cancelled, 5 timed out)")

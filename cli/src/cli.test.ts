@@ -560,14 +560,24 @@ describe("argument parsing", () => {
 });
 
 describe("puck send --to", () => {
-  test("queues a message for the target using the selected sender", async () => {
+  const alert = {
+    question: "Ship it?",
+    message: "Build finished.",
+    priority: "normal",
+    selectionMode: "single",
+    options: [{ id: "yes", label: "Yes" }, { id: "no", label: "No" }],
+  };
+  const alertId = "q_01HV7K3M2ZABCDEF";
+
+  test("queues a decision with replyTo and returns the alert id", async () => {
     const dir = await tempDir();
     try {
       const r = await answerRuntime(dir, view({}));
       const file = join(dir, "message.json");
-      await writeFile(file, JSON.stringify({ message: " Build finished. " }));
+      const replyTo = " t3-thread://example/thread ";
+      await writeFile(file, JSON.stringify({ ...alert, replyTo }));
       const sent: unknown[] = [];
-      r.backend.postBotMessage = async (...args) => { sent.push(args); };
+      r.backend.postBotMessage = async (...args) => { sent.push(args); return alertId; };
       const output: string[] = [];
       r.stdout = (line) => { output.push(line); };
 
@@ -576,24 +586,48 @@ describe("puck send --to", () => {
       ], { from: "user" });
 
       expect(sent).toEqual([
-        ["https://example.convex.site", "sheldon-23648", SECRET, { to: "puck-83123", message: "Build finished." }],
+        ["https://example.convex.site", "sheldon-23648", SECRET, {
+          to: "puck-83123", alert: { ...alert, replyTo, presentation: "choice", scheduledFor: null },
+        }],
       ]);
-      expect(output).toEqual(["bot message queued\n"]);
+      expect(output).toEqual([`${alertId}\n`]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  test("rejects decision fields and alert-only flags", async () => {
+  test("queues an FYI without replyTo and routes live updates through the bot endpoint", async () => {
     const dir = await tempDir();
     try {
       const r = await answerRuntime(dir, view({}));
       const file = join(dir, "message.json");
-      await writeFile(file, JSON.stringify({ message: "Build finished.", options: [] }));
-      const args = ["send", "--to", "puck-83123", "--file", file];
+      await writeFile(file, JSON.stringify({ ...alert, options: [] }));
+      const sent: unknown[] = [];
+      r.backend.postBotMessage = async (_site, _bot, _secret, body) => { sent.push(body); return alertId; };
+      await createProgram(r).parseAsync(["send", "--to", "puck-83123", "--bot", "sheldon-23648", "--file", file], { from: "user" });
+      await createProgram(r).parseAsync(["status", "note", "Testing", "--to", "puck-83123", "--bot", "sheldon-23648"], { from: "user" });
+      expect(sent).toEqual([
+        { to: "puck-83123", alert: { ...alert, options: [], presentation: "choice", scheduledFor: null } },
+        { to: "puck-83123", activity: { action: "note", note: "Testing" } },
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 
-      await expect(createProgram(r).parseAsync(args, { from: "user" })).rejects.toThrow('one "message" string');
-      await expect(createProgram(r).parseAsync([...args, "--wait"], { from: "user" })).rejects.toThrow("--to cannot be used");
+  test("rejects bare messages, scheduling fields and alert-only flags", async () => {
+    const dir = await tempDir();
+    try {
+      const r = await answerRuntime(dir, view({}));
+      const file = join(dir, "message.json");
+      const args = ["send", "--to", "puck-83123", "--file", file];
+      await writeFile(file, JSON.stringify({ message: "Build finished." }));
+      await expect(createProgram(r).parseAsync(args, { from: "user" })).rejects.toThrow("question");
+      await writeFile(file, JSON.stringify({ ...alert, scheduledFor: Date.now() + 60_000 }));
+      await expect(createProgram(r).parseAsync(args, { from: "user" })).rejects.toThrow("scheduledFor");
+      for (const flags of [["--wait"], ["--at", "10:30"], ["--through-snooze"], ["--timeout", "10s"]]) {
+        await expect(createProgram(r).parseAsync([...args, ...flags], { from: "user" })).rejects.toThrow("--to cannot be used");
+      }
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

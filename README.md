@@ -150,28 +150,29 @@ bun run build            # compile to cli/bin/puck (git-ignored)
 ./bin/puck --version
 ```
 
-### Send a message to a bot
+### Page a bot
+
+Use the same alert JSON as `puck send`, via stdin or `--file`. The title is `question`, and the optional body is `message`.
 
 ```sh
-printf '%s\n' '{"message":"The build passed."}' | puck send --bot sender-12345 --to receiver-23456
+printf '%s\n' '{"question":"Ship this build?","message":"All checks passed.","priority":"normal","selectionMode":"single","options":[{"id":"ship","label":"Ship"},{"id":"hold","label":"Hold"}],"replyTo":"your-t3-thread-id"}' |
+  puck send --bot sender-12345 --to receiver-23456
 ```
 
-Use stdin or `--file` with a JSON object containing a single `message` string. Puck trims surrounding whitespace and accepts up to 4,000 characters. Both bots must be paired from a signed-in CLI on the same account, and the receiver must have a webhook. Each sender can queue one bot message every 10 seconds.
+The sender and receiver must be paired from a signed-in CLI on the same account, and the receiver needs a webhook. The CLI prints the alert ID when Convex queues the webhook. The page does not create a phone alert. Include `replyTo` to request an out-of-band reply, for example via `t3 thread send <replyTo>`. Puck passes the string through unchanged. Omit it for an FYI. A bare `{"message":"..."}` is no longer accepted. Targeted alerts reject `--wait`, `--timeout`, `--at`, `--through-snooze`, and scheduling or snoozing fields.
 
-The CLI prints `bot message queued` once Convex accepts it. The receiver gets an authenticated webhook POST with the following payload.
+The receiver gets a webhook with `event: "bot_alert"`, `alertId`, `sender: { id, name }`, the validated alert in `alert`, optional `replyTo`, and an ISO UTC `sentAt`. Verify the configured Authorization header and return a 2xx response. Puck makes up to four delivery attempts. Deduplicate ordinary alerts by `alertId`.
 
-```json
-{
-  "event": "bot_message",
-  "messageId": "1c353cd1-7581-4b4f-bafa-a8571a3b69ea",
-  "sender": { "id": "sender-12345", "name": "Sender" },
-  "message": "The build passed.",
-  "sentAt": "2026-11-24T10:30:00.000Z"
-}
+For live activities, pass the same `--to` on each existing status command.
+
+```sh
+puck status start --bot sender-12345 --to receiver-23456 --title "Build" --steps "Compile|Test"
+puck status step Test --bot sender-12345 --to receiver-23456
+puck status note "All checks passed" --bot sender-12345 --to receiver-23456
+puck status end --bot sender-12345 --to receiver-23456
 ```
 
-Verify the configured Authorization header, dispatch on `event`, and use `messageId` to deduplicate delivery retries. Return a 2xx response to accept the message. Puck makes up to four delivery attempts with the same payload. Targeted sends skip phone notifications and cannot be combined with `--at`, `--wait`, `--timeout` or `--through-snooze`.
-
+Every accepted status command queues one webhook with the same activity `alertId` and an `activity` snapshot containing its title, state, track, note, link, update time, command action and increasing `sequence`. Use `(alertId, activity.sequence)` to deduplicate retries and handle out-of-order delivery. Each sender and receiver pair has its own activity. A new start replaces it, and it must be restarted after 30 minutes without updates. Targeted alerts and live updates share a per-sender allowance of 12 pages, replenished at one page per five seconds.
 
 ### Check an answer: `puck answer`
 

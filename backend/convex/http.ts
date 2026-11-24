@@ -1,7 +1,5 @@
 import {
   AlertValidationError,
-  BOT_MESSAGE_INPUT_ERROR,
-  readBotMessage,
   DEVICE_JWT_AUDIENCE,
   isBotId,
   isQuestionId,
@@ -141,14 +139,12 @@ http.route({
       return json({ error: "target bot id is not valid" }, 400);
     }
     const { to, ...input } = body;
-    const message = readBotMessage(input);
-    if (message === null) return json({ error: BOT_MESSAGE_INPUT_ERROR }, 400);
-    const denied = await ctx.runMutation(internal.botMessages.enqueue, {
+    const result = await ctx.runMutation(internal.botMessages.enqueue, {
       senderId: auth.botDocId,
       target: to,
-      message,
+      input: JSON.stringify(input),
     });
-    return denied ? json({ error: denied.error }, denied.status) : json({ queued: true }, 202);
+    return result.status !== undefined ? json({ error: result.error }, result.status) : json(result, 202);
   }),
 });
 

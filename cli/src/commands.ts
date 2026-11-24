@@ -2,8 +2,7 @@ import { hostname as osHostname } from "node:os";
 import type { Readable } from "node:stream";
 import {
   AlertValidationError,
-  BOT_MESSAGE_INPUT_ERROR,
-  readBotMessage,
+  validateBotAlert,
   BOT_COLOURS,
   BOT_SHAPES,
   isBotShape,
@@ -160,11 +159,17 @@ export async function sendBotMessage(
   runtime: Runtime,
 ): Promise<string> {
   if (!isBotId(input.to)) throw new CliError("target bot id is not valid");
-  const message = readBotMessage(await readAlertJson(input.file, process.stdin));
-  if (message === null) throw new CliError(BOT_MESSAGE_INPUT_ERROR);
+  const parsed = await readAlertJson(input.file, process.stdin);
+  let alert;
+  try {
+    alert = validateBotAlert(parsed, Date.now());
+  } catch (error) {
+    if (error instanceof AlertValidationError) throw new CliError(error.message);
+    throw error;
+  }
   const { config, botId, secret } = await openBot(input.bot, runtime);
-  await runtime.backend.postBotMessage(config.siteUrl, botId, secret, { to: input.to, message });
-  return "bot message queued\n";
+  const alertId = await runtime.backend.postBotMessage(config.siteUrl, botId, secret, { to: input.to, alert });
+  return `${alertId}\n`;
 }
 
 export async function sendAlert(
@@ -417,6 +422,7 @@ export interface StatusInput {
   /** What is happening now: on its own (note), or with start, step or end. */
   note?: string;
   bot?: string;
+  to?: string;
   title?: string;
   /** Steps separated by `|`, for start and steps. */
   steps?: string;
@@ -470,6 +476,11 @@ export async function statusCommand(input: StatusInput, runtime: Runtime): Promi
     throw error;
   }
   const { config, botId, secret } = await openBot(input.bot, runtime);
+  if (input.to !== undefined) {
+    if (!isBotId(input.to)) throw new CliError("target bot id is not valid");
+    const alertId = await runtime.backend.postBotMessage(config.siteUrl, botId, secret, { to: input.to, activity: command });
+    return `${alertId}\n`;
+  }
   await runtime.backend.postStatus(config.siteUrl, botId, secret, command);
   switch (command.action) {
     case "start":

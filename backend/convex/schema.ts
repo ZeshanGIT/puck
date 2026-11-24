@@ -107,7 +107,9 @@ export default defineSchema({
     // Owner settings (B1, B2). Epoch ms: while it is in the future the bot's alerts land under Needs you
     // with no push (no sound, heads-up or full screen).
     mutedUntil: v.optional(v.number()),
+    // Older bot rows may still have the previous per-sender cooldown field.
     lastBotMessageAt: v.optional(v.number()),
+    botPageBucket: v.optional(v.object({ tokens: v.number(), at: v.number() })),
     // Set by bots.remove. A removed bot cannot authenticate, is left out of bots.list, and keeps its history.
     removedAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -187,6 +189,27 @@ export default defineSchema({
   })
     .index("by_alert", ["alertId"])
     .index("by_questionId", ["questionId"]),
+
+  // The latest targeted activity for each sender and receiver, isolated from phone activities.
+  botActivities: defineTable({
+    senderId: v.id("bots"),
+    targetId: v.id("bots"),
+    activity: v.object({
+      alertId: v.string(),
+      sequence: v.number(),
+      title: v.string(),
+      link: v.union(v.string(), v.null()),
+      note: v.union(v.string(), v.null()),
+      track: v.object({
+        steps: v.union(v.array(v.string()), v.null()),
+        stepIndex: v.union(v.number(), v.null()),
+        currentStep: v.string(),
+        log: v.array(v.string()),
+      }),
+      state: v.union(v.literal("running"), v.literal("done"), v.literal("failed")),
+      updatedAt: v.number(),
+    }),
+  }).index("by_sender_target", ["senderId", "targetId"]),
 
   // A live activity (N8, H5): what a bot is working on. One per bot: a new start replaces the old
   // row. `steps` and `stepIndex` are the track when the bot gave one; `currentStep` is the step
