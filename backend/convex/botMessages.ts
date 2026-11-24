@@ -51,16 +51,17 @@ export const deliver = internalAction({
   args: { ...botIds, body: v.string(), attempt: v.number() },
   handler: async (ctx, { senderId, targetId, body, attempt }): Promise<null> => {
     const destination = await ctx.runQuery(internal.botMessages.destination, { senderId, targetId });
-    if (!destination) return null;
+    if (!destination) throw new Error("bot message destination is no longer available");
     const result = await postWebhook(destination.url, destination.header, body);
-    if (!result.ok) {
-      const delay = result.retry ? deliveryBackoffMs(attempt) : null;
-      if (delay !== null) {
-        await ctx.scheduler.runAfter(delay, internal.botMessages.deliver, {
-          senderId, targetId, body, attempt: attempt + 1,
-        });
-      }
+    if (result.ok) {
+      console.info(`bot message delivered on attempt ${attempt}`);
+      return null;
     }
+    const delay = result.retry ? deliveryBackoffMs(attempt) : null;
+    if (delay === null) throw new Error(`bot message delivery failed: ${result.error}`);
+    await ctx.scheduler.runAfter(delay, internal.botMessages.deliver, {
+      senderId, targetId, body, attempt: attempt + 1,
+    });
     return null;
   },
 });

@@ -162,7 +162,7 @@ describe("puck send --wait", () => {
       await createProgram(runtime(dir, backend(steps, seen), out)).parseAsync(["node", "puck", "send", "--file", file, "--bot", "sheldon-23648", ...args]);
       return { out, seen, exitCode: process.exitCode ?? 0 };
     } finally {
-      process.exitCode = before;
+      process.exitCode = before ?? 0;
     }
   }
 
