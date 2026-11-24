@@ -2,12 +2,11 @@ import type { BotCatalogItem } from "@puck/client";
 import type { DesktopResult, DesktopState } from "../protocol";
 import type { WorkspaceCommand } from "../workspaceProtocol";
 import type { WorkspaceActions } from "./workspaceActions";
-import { PALETTE, SHAPES, THEME_CHOICES, isThemePreference, type PaletteName, type ShapeName } from "@puck/appearance";
+import { PALETTE, SHAPES, THEME_CHOICES, type PaletteName, type ShapeName } from "@puck/appearance";
 import { alertTime, avatar, botAppearance, button, colourFor, element, notice } from "./elements";
 
 const COLOURS = PALETTE.map(entry => entry.name);
 const SHAPES_BY_NAME = Object.keys(SHAPES) as ShapeName[];
-const THEMES = THEME_CHOICES.map(choice => choice.id);
 const MUTE_CHOICES = ["hour", "morning", "week"] as const;
 const MUTE_LABELS = { hour: "For 1 hour", morning: "Until tomorrow", week: "For a week" };
 const SHAPE_LABELS: Partial<Record<ShapeName, string>> = { hex: "Hexagon", squircle: "Rounded square" };
@@ -381,11 +380,19 @@ export function renderSettings(state: DesktopState, actions: WorkspaceActions) {
     });
   }, ui.busy || state.session.status !== "ready");
   const accountRow = element("div", "confirmation row spread wrap", element("p", "", account), signOut);
-  const theme = select("settings-theme", THEMES, state.themePreference ?? "system", ui.busy);
-  theme.onchange = () => {
-    const value = theme.value;
-    if (isThemePreference(value)) void ui.run(() => actions.setThemePreference(value), "Theme saved.");
-  };
+  const theme = element("fieldset", "theme-picker", element("legend", "sr-only", "Theme"));
+  for (const { id, label } of THEME_CHOICES) {
+    const input = element("input", "sr-only");
+    input.type = "radio";
+    input.name = "appearance-theme";
+    input.id = `settings-theme-${id}`;
+    input.checked = id === (state.themePreference ?? "system");
+    input.disabled = ui.busy;
+    input.onchange = () => {
+      if (input.checked) void ui.run(() => actions.setThemePreference(id), "Theme saved.");
+    };
+    theme.append(element("label", "theme-option", input, element("span", "", label)));
+  }
 
   const clients = [...(workspace?.clients ?? [])].sort((a, b) =>
     Number(b.id === workspace?.clientId) - Number(a.id === workspace?.clientId) ||
@@ -428,7 +435,7 @@ export function renderSettings(state: DesktopState, actions: WorkspaceActions) {
 
   ui.pane.append(
     section("Account", accountRow),
-    section("Appearance", element("div", "confirmation row", field("Theme", theme))),
+    section("Appearance", element("div", "confirmation", theme)),
     section("Devices", ...dataset(workspace?.errors.clients, !!workspace?.clients, "No registered devices.", clients.length),
       ...deviceCards),
     section("Alerts", element("div", "confirmation row spread wrap",

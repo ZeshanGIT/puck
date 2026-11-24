@@ -122,7 +122,6 @@ svg { display: block; flex: none; }
 }
 .workspace-page { padding: clamp(16px, 3vw, 30px); }
 .workspace-page > * { max-width: 790px; margin-inline: auto; }
-.workspace-page > .notice { margin-bottom: 12px; }
 .detail-inner { max-width: 680px; margin-inline: auto; padding: clamp(16px, 3vw, 30px); }
 #close-detail { margin: -6px 0 8px -8px; }
 @media (min-width: 900px) {
@@ -261,3 +260,46 @@ html:has(.card-view) { background: var(--surface); }
 .management h1 { font-size: clamp(24px, 3vw, 32px); font-weight: 900; letter-spacing: -.025em; }
 .management h2 { font-size: 12.5px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; color: var(--caption); }
 .management .confirmation { border-color: var(--line); border-radius: var(--radius-card); padding: 14px; }
+
+
+.home-feedback.row {
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-row);
+  background: var(--sidebar);
+  color: var(--ink);
+}
+.home-feedback .icon-btn { min-width: 30px; font-size: 18px; line-height: 1; }
+.workspace-page > .activity-view:has(.empty):has(.home-feedback) {
+  grid-template-rows: auto auto 1fr;
+}
+
+.theme-picker {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-row);
+  background: var(--sidebar);
+}
+.theme-option { position: relative; text-align: center; cursor: pointer; }
+.theme-option span {
+  display: block;
+  padding: 7px clamp(7px, 2vw, 16px);
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius-row) - 4px);
+  color: var(--muted);
+  font-weight: 800;
+}
+.theme-option:hover span { color: var(--ink); }
+.theme-option input:checked + span {
+  color: var(--ink);
+  border-color: var(--line);
+  background: var(--surface);
+  box-shadow: 0 1px 0 var(--edge);
+}
+.theme-option input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: -2px; }
+.theme-option:has(input:disabled) { opacity: .6; cursor: default; }

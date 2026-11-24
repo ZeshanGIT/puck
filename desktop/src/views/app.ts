@@ -130,7 +130,13 @@ export function mount(view: View) {
           openReceipt(state, receiptId, workspaceActions);
         });
         receipt.id = "view-receipt";
-        return element("div", "row wrap", message, receipt);
+        const dismiss = button("×", () => {
+          feedback = null;
+          render("activity-heading");
+        }, "quiet icon-btn");
+        dismiss.setAttribute("aria-label", "Dismiss reply confirmation");
+        return element("div", "home-feedback row wrap",
+          element("span", "grow", feedback.text), receipt, dismiss);
       }
       return message;
     }
@@ -201,6 +207,7 @@ export function mount(view: View) {
       selectedId = null;
       preferredId = null;
     }
+    feedback = null;
     page = next;
     render(`nav-${page}`);
   }
@@ -258,7 +265,10 @@ export function mount(view: View) {
     }
     const feedbackNode = page === "home" && !selected ? feedbackFor() : null;
     const pageScroll = element("div", "workspace-page", content);
-    if (feedbackNode) pageScroll.prepend(feedbackNode);
+    if (feedbackNode) {
+      feedbackNode.classList.add("home-feedback");
+      content.querySelector("#activity-heading")?.after(feedbackNode);
+    }
     const main = element("main", "workspace-main", pageScroll);
     if (page === "home" && selected) {
       main.classList.add("with-reply");
