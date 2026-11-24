@@ -10,6 +10,7 @@
 
 import type * as alerts from "../alerts.js";
 import type * as answers from "../answers.js";
+import type * as botMessages from "../botMessages.js";
 import type * as bots from "../bots.js";
 import type * as clients from "../clients.js";
 import type * as delivery from "../delivery.js";
@@ -19,6 +20,7 @@ import type * as http from "../http.js";
 import type * as lib_alertFields from "../lib/alertFields.js";
 import type * as lib_alertHistory from "../lib/alertHistory.js";
 import type * as lib_attachments from "../lib/attachments.js";
+import type * as lib_botMessageRules from "../lib/botMessageRules.js";
 import type * as lib_botSettings from "../lib/botSettings.js";
 import type * as lib_builtInBot from "../lib/builtInBot.js";
 import type * as lib_clientAuth from "../lib/clientAuth.js";
@@ -42,6 +44,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   alerts: typeof alerts;
   answers: typeof answers;
+  botMessages: typeof botMessages;
   bots: typeof bots;
   clients: typeof clients;
   delivery: typeof delivery;
@@ -51,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   "lib/alertFields": typeof lib_alertFields;
   "lib/alertHistory": typeof lib_alertHistory;
   "lib/attachments": typeof lib_attachments;
+  "lib/botMessageRules": typeof lib_botMessageRules;
   "lib/botSettings": typeof lib_botSettings;
   "lib/builtInBot": typeof lib_builtInBot;
   "lib/clientAuth": typeof lib_clientAuth;

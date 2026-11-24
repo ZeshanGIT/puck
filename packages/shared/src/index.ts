@@ -130,3 +130,4 @@ export {
   signInWithGoogleOneTap,
 } from "./clerk";
 export type { ClerkAccount, ClerkSignInCode, ClerkTokenCode, GoogleSignInAttempt } from "./clerk";
+export { BOT_MESSAGE_INPUT_ERROR, readBotMessage } from "./botMessage";

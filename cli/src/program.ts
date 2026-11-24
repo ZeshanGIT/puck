@@ -9,6 +9,7 @@ import {
   listAlerts,
   scheduleAlert,
   sendAlert,
+  sendBotMessage,
   setBotWebhook,
   statusCommand,
   WAIT_DEFAULT_MS,
@@ -128,15 +129,23 @@ export function createProgram(runtime: Runtime = defaultRuntime()): Command {
 
   program
     .command("send")
-    .description("post an alert JSON file or stdin and return the question id")
-    .option("--file <path>", "alert JSON file; stdin is used when this is omitted")
+    .description("send an alert and return its question id, or queue a message with --to")
+    .option("--file <path>", "JSON input file; stdin is used when omitted")
+    .option("--to <bot-id>", 'queue {"message":"..."} for a bot on the same account')
     .option("--bot <bot-id>", "bot id, or the default in config.json")
     .option("--at <time>", "ring at HH:MM instead of immediately")
     .option("--wait", "wait for the answer and print it as JSON (exit 0 answered, 3 snoozed, 4 cancelled, 5 timed out)")
     .option("--timeout <duration>", "with --wait: how long to wait, such as 90s, 30m or 2h (default 30m)")
     .option("--through-snooze", "with --wait: keep waiting while the alert is snoozed")
     .action(
-      async (options: { file?: string; bot?: string; at?: string; wait?: boolean; timeout?: string; throughSnooze?: boolean }) => {
+      async (options: { file?: string; bot?: string; to?: string; at?: string; wait?: boolean; timeout?: string; throughSnooze?: boolean }) => {
+        if (options.to !== undefined) {
+          if (options.at !== undefined || options.wait || options.timeout !== undefined || options.throughSnooze) {
+            throw new CliError("--to cannot be used with --at, --wait, --timeout or --through-snooze");
+          }
+          runtime.stdout(await sendBotMessage({ ...options, to: options.to }, runtime));
+          return;
+        }
         if (!options.wait && (options.timeout !== undefined || options.throughSnooze)) {
           throw new CliError("--timeout and --through-snooze need --wait");
         }

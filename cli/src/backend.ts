@@ -84,6 +84,7 @@ export interface Backend {
   updateWebhook(deploymentUrl: string, botId: string, input: Pick<PairingInput, "webhookUrl" | "webhookHeader">, token: string): Promise<void>;
   pairingStatus(deploymentUrl: string, botId: string, secret: string): Promise<PairingStatus>;
   postAlert(siteUrl: string, botId: string, secret: string, body: AlertBody): Promise<{ questionId: string }>;
+  postBotMessage(siteUrl: string, botId: string, secret: string, body: { to: string; message: string }): Promise<void>;
   /** `POST /status`: start, step, steps or end a live activity. */
   postStatus(siteUrl: string, botId: string, secret: string, body: LiveCommand): Promise<void>;
   listAlerts(siteUrl: string, botId: string, secret: string): Promise<ListedAlert[]>;
@@ -164,6 +165,11 @@ export const liveBackend: Backend = {
       throw new CliError("pairing status was not returned");
     }
     return status;
+  },
+
+  async postBotMessage(siteUrl, botId, secret, body) {
+    const result = await botRequest(siteUrl, "/bot-messages", "POST", botId, secret, body);
+    if (!isRecord(result) || result.queued !== true) throw new CliError("bot message was not queued");
   },
 
   async postStatus(siteUrl, botId, secret, body) {
@@ -352,22 +358,25 @@ function parseAttachments(value: unknown): AlertAttachmentView[] {
   return files;
 }
 
-async function botRequest(siteUrl: string, path: string, method: "GET" | "POST", botId: string, secret: string): Promise<unknown> {
+async function botRequest(siteUrl: string, path: string, method: "GET" | "POST", botId: string, secret: string, body?: { to: string; message: string }): Promise<unknown> {
   let response: Response;
   try {
     response = await fetch(`${siteUrl}${path}`, {
       method,
       headers: {
+        ...(body && { "content-type": "application/json" }),
         "x-puck-bot-id": botId,
         authorization: `Bearer ${secret}`,
       },
+      body: body && JSON.stringify(body),
     });
   } catch {
     throw new CliError("could not reach the deployment");
   }
+  const subject = body ? "bot message" : "alert";
   const text = await response.text();
   if (!response.ok) {
-    let message = `alert was not accepted (${response.status})`;
+    let message = `${subject} was not accepted (${response.status})`;
     try {
       const parsed = JSON.parse(text) as unknown;
       if (isRecord(parsed) && typeof parsed.error === "string") message = parsed.error;
@@ -380,6 +389,6 @@ async function botRequest(siteUrl: string, path: string, method: "GET" | "POST",
   try {
     return JSON.parse(text) as unknown;
   } catch {
-    throw new CliError("alert response was not JSON");
+    throw new CliError(`${subject} response was not JSON`);
   }
 }

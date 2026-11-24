@@ -61,6 +61,7 @@ function backend(steps: (AlertStatusView | Error)[], seen: { reads: number; post
     createPairing: unused,
     updateWebhook: unused,
     postStatus: unused,
+    postBotMessage: unused,
     listAlerts: unused,
     cancelAlert: unused,
     async postAlert(_site, _bot, secret) {

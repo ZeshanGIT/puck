@@ -137,6 +137,7 @@ describe("login command", () => {
         postStatus: async () => {
           throw new Error("not used");
         },
+        async postBotMessage() { throw new Error("unexpected bot message"); },
         postAlert: async () => {
           throw new Error("backend");
         },

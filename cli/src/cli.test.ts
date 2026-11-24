@@ -121,6 +121,7 @@ describe("puck add", () => {
         async postStatus() {
           throw new Error("not used");
         },
+        async postBotMessage() { throw new Error("unexpected bot message"); },
         async postAlert() {
           throw new Error("not used");
         },
@@ -181,6 +182,7 @@ describe("puck send", () => {
         async postStatus() {
           throw new Error("not used");
         },
+        async postBotMessage() { throw new Error("unexpected bot message"); },
         async postAlert(_site, _bot, secret, posted) {
           auth = secret;
           body = posted;
@@ -226,6 +228,7 @@ describe("puck send", () => {
         async postStatus() {
           throw new Error("not used");
         },
+        async postBotMessage() { throw new Error("unexpected bot message"); },
         async postAlert(_site, _bot, _secret, posted) {
           body = posted;
           return { questionId: "q_01HV7K3M2ZABCDEF" };
@@ -271,6 +274,7 @@ describe("puck send", () => {
         async postStatus() {
           throw new Error("not used");
         },
+        async postBotMessage() { throw new Error("unexpected bot message"); },
         async postAlert(_site, _bot, _secret, posted) {
           body = posted;
           return { questionId: "q_01HV7K3M2ZABCDEF" };
@@ -324,6 +328,7 @@ describe("puck schedule", () => {
         async postStatus() {
           throw new Error("not used");
         },
+        async postBotMessage() { throw new Error("unexpected bot message"); },
         async postAlert(_site, _bot, _secret, posted) {
           body = posted;
           return { questionId: "q_01HV7K3M2ZABCDEF" };
@@ -387,6 +392,7 @@ async function answerRuntime(dir: string, alert: AlertStatusView, seen: string[]
     createPairing: unused,
     updateWebhook: unused,
     postStatus: unused,
+    async postBotMessage() { throw new Error("unexpected bot message"); },
     postAlert: unused,
     listAlerts: unused,
     cancelAlert: unused,
@@ -526,6 +532,7 @@ describe("argument parsing", () => {
         async postStatus() {
           throw new Error("not used");
         },
+        async postBotMessage() { throw new Error("unexpected bot message"); },
         async postAlert() {
           throw new Error("network");
         },
@@ -546,6 +553,47 @@ describe("argument parsing", () => {
       const parse = (argv: string[]) => createProgram(runtime(dir, backend)).parseAsync(argv, { from: "user" });
       await expect(parse(["ask", "Up yet?"])).rejects.toThrow(/unknown command/u);
       await expect(parse(["send", "--webhook", "https://example.com"])).rejects.toThrow(/unknown option/u);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("puck send --to", () => {
+  test("queues a message for the target using the selected sender", async () => {
+    const dir = await tempDir();
+    try {
+      const r = await answerRuntime(dir, view({}));
+      const file = join(dir, "message.json");
+      await writeFile(file, JSON.stringify({ message: " Build finished. " }));
+      const sent: unknown[] = [];
+      r.backend.postBotMessage = async (...args) => { sent.push(args); };
+      const output: string[] = [];
+      r.stdout = (line) => { output.push(line); };
+
+      await createProgram(r).parseAsync([
+        "send", "--bot", "sheldon-23648", "--to", "puck-83123", "--file", file,
+      ], { from: "user" });
+
+      expect(sent).toEqual([
+        ["https://example.convex.site", "sheldon-23648", SECRET, { to: "puck-83123", message: "Build finished." }],
+      ]);
+      expect(output).toEqual(["bot message queued\n"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects decision fields and alert-only flags", async () => {
+    const dir = await tempDir();
+    try {
+      const r = await answerRuntime(dir, view({}));
+      const file = join(dir, "message.json");
+      await writeFile(file, JSON.stringify({ message: "Build finished.", options: [] }));
+      const args = ["send", "--to", "puck-83123", "--file", file];
+
+      await expect(createProgram(r).parseAsync(args, { from: "user" })).rejects.toThrow('one "message" string');
+      await expect(createProgram(r).parseAsync([...args, "--wait"], { from: "user" })).rejects.toThrow("--to cannot be used");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

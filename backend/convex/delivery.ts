@@ -122,8 +122,8 @@ export const fail = internalMutationGeneric({
 
 type WebhookResult = { ok: true } | { ok: false; error: string; retry: boolean };
 
-/** POST one JSON body to a bot's webhook. Shared by answers and snoozed events. */
-async function postWebhook(webhookUrl: string, webhookHeader: string, body: string): Promise<WebhookResult> {
+/** POST one JSON body to a bot's webhook. Shared by all webhook events. */
+export async function postWebhook(webhookUrl: string, webhookHeader: string, body: string): Promise<WebhookResult> {
   try {
     const authorization = normalizeWebhookAuthorization(await decryptHeader(webhookHeader));
     const response = await fetch(webhookUrl, {

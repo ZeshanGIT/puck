@@ -150,7 +150,28 @@ bun run build            # compile to cli/bin/puck (git-ignored)
 ./bin/puck --version
 ```
 
-Commands (`send`, `ask`, `schedule`, `list`, `cancel`) are stubs that print "not implemented yet". The answer is not posted to a URL passed on the command line; Convex posts it to the webhook registered for that bot. Until the CLI calls the API, test the HTTP routes with `curl`.
+### Send a message to a bot
+
+```sh
+printf '%s\n' '{"message":"The build passed."}' | puck send --bot sender-12345 --to receiver-23456
+```
+
+Use stdin or `--file` with a JSON object containing a single `message` string. Puck trims surrounding whitespace and accepts up to 4,000 characters. Both bots must be paired from a signed-in CLI on the same account, and the receiver must have a webhook. Each sender can queue one bot message every 10 seconds.
+
+The CLI prints `bot message queued` once Convex accepts it. The receiver gets an authenticated webhook POST with the following payload.
+
+```json
+{
+  "event": "bot_message",
+  "messageId": "1c353cd1-7581-4b4f-bafa-a8571a3b69ea",
+  "sender": { "id": "sender-12345", "name": "Sender" },
+  "message": "The build passed.",
+  "sentAt": "2026-11-24T10:30:00.000Z"
+}
+```
+
+Verify the configured Authorization header, dispatch on `event`, and use `messageId` to deduplicate delivery retries. Return a 2xx response to accept the message. Puck makes up to four delivery attempts with the same payload. Targeted sends skip phone notifications and cannot be combined with `--at`, `--wait`, `--timeout` or `--through-snooze`.
+
 
 ### Check an answer: `puck answer`
 

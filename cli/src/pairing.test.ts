@@ -40,6 +40,7 @@ function fakeBackend(
     async postStatus() {
       throw new Error("not used");
     },
+    async postBotMessage() { throw new Error("unexpected bot message"); },
     async postAlert() {
       throw new Error("not used");
     },

@@ -1,5 +1,7 @@
 import {
   AlertValidationError,
+  BOT_MESSAGE_INPUT_ERROR,
+  readBotMessage,
   DEVICE_JWT_AUDIENCE,
   isBotId,
   isQuestionId,
@@ -120,6 +122,33 @@ http.route({
       if (error instanceof DeviceAuthError) return json({ error: "unauthorized" }, 401);
       throw error;
     }
+  }),
+});
+
+http.route({
+  path: "/bot-messages",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const auth = await authenticate(ctx, request);
+    if (auth instanceof Response) return auth;
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: "body must be JSON" }, 400);
+    }
+    if (typeof body !== "object" || body === null || !("to" in body) || typeof body.to !== "string" || !isBotId(body.to)) {
+      return json({ error: "target bot id is not valid" }, 400);
+    }
+    const { to, ...input } = body;
+    const message = readBotMessage(input);
+    if (message === null) return json({ error: BOT_MESSAGE_INPUT_ERROR }, 400);
+    const denied = await ctx.runMutation(internal.botMessages.enqueue, {
+      senderId: auth.botDocId,
+      target: to,
+      message,
+    });
+    return denied ? json({ error: denied.error }, denied.status) : json({ queued: true }, 202);
   }),
 });
 

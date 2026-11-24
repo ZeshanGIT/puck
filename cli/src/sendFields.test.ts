@@ -36,6 +36,7 @@ async function postedBody(alert: unknown): Promise<AlertBody> {
       async postStatus() {
         throw new Error("not used");
       },
+      async postBotMessage() { throw new Error("unexpected bot message"); },
       async postAlert(_site, _bot, _secret, posted) {
         body = posted;
         return { questionId: "q_01HV7K3M2ZABCDEF" };

@@ -2,6 +2,8 @@ import { hostname as osHostname } from "node:os";
 import type { Readable } from "node:stream";
 import {
   AlertValidationError,
+  BOT_MESSAGE_INPUT_ERROR,
+  readBotMessage,
   BOT_COLOURS,
   BOT_SHAPES,
   isBotShape,
@@ -151,6 +153,18 @@ async function openBot(bot: string | undefined, runtime: Runtime) {
   if (!isBotId(botId)) throw new CliError("bot id is not valid");
   const secret = await readBotKey(runtime.configDir, botId);
   return { config, botId, secret };
+}
+
+export async function sendBotMessage(
+  input: { to: string; bot?: string; file?: string },
+  runtime: Runtime,
+): Promise<string> {
+  if (!isBotId(input.to)) throw new CliError("target bot id is not valid");
+  const message = readBotMessage(await readAlertJson(input.file, process.stdin));
+  if (message === null) throw new CliError(BOT_MESSAGE_INPUT_ERROR);
+  const { config, botId, secret } = await openBot(input.bot, runtime);
+  await runtime.backend.postBotMessage(config.siteUrl, botId, secret, { to: input.to, message });
+  return "bot message queued\n";
 }
 
 export async function sendAlert(

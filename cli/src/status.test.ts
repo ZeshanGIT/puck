@@ -36,6 +36,7 @@ function fake(posted: LiveCommand[]): Backend {
       expect(secret).toBe(SECRET);
       posted.push(body);
     },
+    async postBotMessage() { throw new Error("unexpected bot message"); },
     async postAlert() {
       throw new Error("not used");
     },
