@@ -3,6 +3,7 @@
  * `vault/Projects/Puck/mockups/Puck prototype.html`. Plain TypeScript, no React.
  */
 import { ensureContrast, over } from "./contrast";
+import { darkTokens } from "./tokens";
 
 export type PaletteName =
   | "black"
@@ -119,7 +120,7 @@ const BLACK_DARK_BODY = "#2A2826";
 const BLACK_DARK_RIM = "#8E8984";
 
 /** Dark surfaces an armed option face can sit on: `bg`, `card`, the night face and the night screen. */
-const DARK_FACE_BASES = ["#141312", "#1F1D1B", "#1C1A18", "#100F0E"] as const;
+const DARK_FACE_BASES = [darkTokens.bg, darkTokens.card, "#1C1A18", "#100F0E"] as const;
 
 function findPalette(name: PaletteName): PaletteEntry {
   const entry = PALETTE.find((p) => p.name === name);

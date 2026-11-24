@@ -1,31 +1,42 @@
 import Electrobun, { ApplicationMenu, BrowserView, BrowserWindow, Screen, Utils } from "electrobun/bun";
+import { isThemePreference } from "@puck/appearance";
 import { clientApi } from "@puck/client";
 import { AlertValidationError, validateAnswer } from "@puck/shared";
 import { floatingCard } from "../floatingCardMachine";
 import type { DesktopAlert, DesktopResult, DesktopRPC, DesktopState } from "../protocol";
+import { ReplyAttachments } from "./attachments";
 import { keychain, signInWithBrowser } from "./auth";
 import { DesktopInbox } from "./inbox";
+import { readThemePreference, writeThemePreference } from "./preferences";
 import type { DesktopAccount } from "./keychain";
 
 const ok = { ok: true } as const;
-const failure = (error: string): DesktopResult => ({ ok: false, error });
+const failure = (error: string) => ({ ok: false, error } as const);
 const cardSize = { width: 384, height: 440 };
 type ViewName = "inbox" | "card";
 
-let state: DesktopState = { session: { status: "loading" }, alerts: [], cardId: null, connection: "connecting" };
+let state: DesktopState = { session: { status: "loading" }, alerts: [], cardId: null, connection: "connecting", themePreference: readThemePreference() };
 let inbox: DesktopInbox | undefined;
 let expiryTimer: ReturnType<typeof setTimeout> | undefined;
 let inboxFocused = false;
 let selection: string | undefined;
 let cardState = floatingCard.initial;
+const attachments = new ReplyAttachments();
 const views: Partial<Record<ViewName, ReturnType<typeof createView>>> = {};
+
+function stateForView(name: ViewName): DesktopState {
+  if (name === "inbox") return state;
+  const { workspace: _, ...card } = state;
+  return card;
+}
 
 function publish(next: DesktopState): void {
   const cardChanged = next.cardId !== state.cardId;
   state = next;
   if (cardChanged && !state.cardId) views.card?.window.hide();
-  for (const view of Object.values(views)) {
-    if (view.ready) view.rpc.send.stateChanged(state);
+  for (const name of ["inbox", "card"] as const) {
+    const view = views[name];
+    if (view?.ready) view.rpc.send.stateChanged(stateForView(name));
   }
   if (cardChanged && state.cardId) {
     const card = views.card ??= createView("card");
@@ -70,25 +81,53 @@ function createView(name: ViewName) {
           view.ready = true;
           if (isCard && state.cardId) showCard(view.window);
           if (!isCard) setTimeout(sendSelection, 0);
-          return state;
+          return stateForView(name);
+        },
+        workspaceCommand: (command) => {
+          if (isCard || !inbox?.workspace || state.connection !== "online") return failure("The Puck inbox is offline.");
+          return inbox.workspace.run(command);
+        },
+        setThemePreference: ({ preference }) => {
+          if (isCard || !isThemePreference(preference)) return failure("Choose a valid appearance.");
+          try {
+            writeThemePreference(preference);
+            publish({ ...state, themePreference: preference });
+            return ok;
+          } catch {
+            return failure("Puck couldn’t save the appearance setting.");
+          }
         },
         signIn: () => isCard ? failure("Open the inbox to sign in.") : signIn(),
         signOut: () => isCard ? failure("Open the inbox to sign out.") : signOut(),
-        answer: ({ questionId, optionIds, customReply, confirmDestructive }) =>
+        chooseAttachments: ({ questionId, selectedIds }) => {
+          const session = inbox;
+          const stillPending = () => !!session && session === inbox && !!findAlert(questionId)
+            && (!isCard || state.cardId === questionId);
+          if (!stillPending()) return failure("This alert is no longer open.");
+          return attachments.pick(questionId, selectedIds, stillPending);
+        },
+        answer: ({ questionId, optionIds, customReply, confirmDestructive, attachmentIds = [] }) =>
           performAction(name, questionId, async (client, clientId, alert) => {
             if (!confirmDestructive && (alert.requiresUnlock || alert.options.some((option) => optionIds.includes(option.id) && option.tone === "destructive"))) {
               return failure("Confirm this reply before sending.");
             }
-            const answer = validateAnswer({ selectionMode: alert.selectionMode, options: alert.options, optionIds, customReply });
+            const answer = validateAnswer({
+              selectionMode: alert.selectionMode, options: alert.options, optionIds, customReply,
+              hasAttachments: attachmentIds.length > 0,
+            });
+            const stillPending = () => client === inbox?.client && !!findAlert(questionId);
+            const uploaded = await attachments.upload(client, clientId, questionId, attachmentIds, stillPending);
+            if (!stillPending()) return failure("This alert is no longer pending.");
             await client.mutation(clientApi.answers.record, {
               questionId, clientId, optionIds: answer.answers.map(({ id }) => id),
               ...(answer.customReply !== null ? { customReply: answer.customReply } : {}),
+              ...(uploaded.length ? { attachments: uploaded } : {}),
             });
             return ok;
           }),
         snooze: ({ questionId, minutes }) => performAction(name, questionId, async (client, clientId) => {
-          if (!Number.isInteger(minutes) || minutes < 1 || minutes > 24 * 60) return failure("Choose a valid snooze duration.");
-          await client.mutation(clientApi.answers.snooze, { questionId, clientId, until: Date.now() + minutes * 60_000 });
+          if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1 || minutes > 24 * 60)) return failure("Choose a valid snooze duration.");
+          await client.mutation(clientApi.answers.snooze, { questionId, clientId, until: minutes === null ? null : Date.now() + minutes * 60_000 });
           return ok;
         }),
         openLink: ({ questionId }) => openLink(questionId),
@@ -121,6 +160,7 @@ function createView(name: ViewName) {
     window.on("focus", () => {
       inboxFocused = true;
       hideCards();
+      void inbox?.workspace?.run({ type: "wake" });
     });
     window.on("blur", () => { inboxFocused = false; });
   }
@@ -134,10 +174,10 @@ function createView(name: ViewName) {
 
 function sendSelection(): void {
   const view = views.inbox;
-  if (!view?.ready || !selection) return;
+  if (!view?.ready || !selection || !findAlert(selection)) return;
   const questionId = selection;
   selection = undefined;
-  if (findAlert(questionId)) view.rpc.send.selectAlert({ questionId });
+  view.rpc.send.selectAlert({ questionId });
 }
 
 function openInbox(questionId?: string): void {
@@ -155,7 +195,10 @@ function findAlert(questionId: string): DesktopAlert | undefined {
 }
 
 function openLink(questionId: string): DesktopResult {
-  const raw = findAlert(questionId)?.link?.url;
+  return openExternalLink(findAlert(questionId)?.link?.url);
+}
+
+function openExternalLink(raw: string | undefined): DesktopResult {
   if (raw) {
     try {
       const url = new URL(raw);
@@ -190,6 +233,7 @@ function applyAlerts(alerts: DesktopAlert[], mayNotify: boolean): void {
   clearTimeout(expiryTimer);
   const now = Date.now();
   const current = alerts.filter((alert) => alert.expiresAt === undefined || alert.expiresAt > now);
+  attachments.retain(current.map((alert) => alert.questionId));
   const eligible = mayNotify && !inboxFocused
     ? current.filter((alert) => (alert.botMutedUntil ?? 0) <= now)
       .sort((a, b) => Number(b.priority === "urgent") - Number(a.priority === "urgent"))
@@ -206,11 +250,15 @@ function applyAlerts(alerts: DesktopAlert[], mayNotify: boolean): void {
     expiryTimer = setTimeout(() => applyAlerts(current, false), Math.min(nextExpiry - now, 2_147_483_647));
   }
   publish({ ...state, alerts: current, cardId: cardState.queue[0] ?? null });
+  sendSelection();
 }
 
 function connect(account: DesktopAccount): void {
   inbox = new DesktopInbox(account, {
     alerts: applyAlerts,
+    workspace: (workspace) => publish({ ...state, workspace }),
+    openLink: openExternalLink,
+    showTest: openInbox,
     connection: (connection, error) => {
       if (connection !== state.connection || error !== state.error) {
         if (connection !== "online") hideCards();
@@ -227,7 +275,7 @@ function connect(account: DesktopAccount): void {
       disconnect("Your session expired. Sign in again.");
     },
   });
-  publish({ session: { status: "ready", account: account.email }, alerts: [], cardId: null, connection: "connecting" });
+  publish({ ...state, workspace: undefined, session: { status: "ready", account: account.email }, alerts: [], cardId: null, connection: "connecting" });
   inbox.start();
 }
 
@@ -236,7 +284,9 @@ function disconnect(error?: string): void {
   inbox = undefined;
   clearTimeout(expiryTimer);
   cardState = floatingCard.transition(cardState, { type: "reset" });
-  publish({ session: { status: "signed-out", error }, alerts: [], cardId: null, connection: "connecting" });
+  attachments.retain([]);
+  selection = undefined;
+  publish({ ...state, workspace: undefined, error: undefined, session: { status: "signed-out", error }, alerts: [], cardId: null, connection: "connecting" });
 }
 
 function signIn(): DesktopResult {

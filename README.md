@@ -35,7 +35,7 @@ A TypeScript monorepo managed with [Bun workspaces](https://bun.sh/docs/install/
 - `cli/` (`@puck/cli`) - `puck` CLI in TypeScript (Commander, compiled to a single executable with `bun build --compile`)
 - `packages/shared/` (`@puck/shared`) - alert and reply types shared by the app, backend and CLI
 - `packages/client/` (`@puck/client`) - Convex client operations, registration, and reply rules used by Android and Mac. A separate loopback entry point shares system-browser sign-in with the CLI.
-- `packages/appearance/` (`@puck/appearance`) - bot colours, contrast rules, and avatar geometry shared by Android and Mac
+- `packages/appearance/` (`@puck/appearance`) - light and dark theme tokens, bot appearance, and avatar geometry shared by Android and Mac
 - `tsconfig.base.json` - shared compiler options for the desktop app, CLI, and workspace packages
 
 ## Requirements
@@ -62,6 +62,12 @@ bun run desktop:dev
 ```
 
 Sign in using the same Google account as Android. Puck adds this Mac as a device. New alerts show in a floating card while Puck is running, even after you close the inbox window. The card opens without taking keyboard focus. Answer with options or text, snooze, or dismiss the card to return to it later in the inbox. Use **Puck → Quit Puck** or **⌘Q** to stop receiving alerts on the Mac.
+
+
+- **Home** shows pending alerts, snoozed alerts, and live task progress.
+- **Bots** shows paired bots for this account, pairing requests, and bot appearance and mute settings.
+- **Archive** shows alert history, reply receipts, delivery retry, and finished task timelines.
+- **Settings** has System, Light, and Dark themes, device management, and a test alert for this Mac. Replies can include files selected through the macOS picker.
 
 `bun run desktop:build` writes a local, unsigned macOS app bundle under `desktop/build/`. Sign-in uses the development deployment by default.
 

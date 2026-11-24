@@ -14,14 +14,26 @@ export const clientApi = {
   },
   bots: {
     list: api.bots.list,
+    update: api.bots.update,
+    remove: api.bots.remove,
+    pairingRequests: api.bots.pairingRequests,
+    approvePairing: api.bots.approvePairing,
+    rejectPairing: api.bots.rejectPairing,
   },
   alerts: {
     pending: api.alerts.pending,
     get: api.alerts.get,
     state: api.alerts.state,
     waiting: api.alerts.waiting,
+    history: api.alerts.history,
+    sendTest: api.alerts.sendTest,
     wakeSnoozed: api.alerts.wakeSnoozed,
   },
+  live: {
+    forUser: api.live.forUser,
+    archive: api.live.archive,
+  },
+  files: { generateUploadUrl: api.files.generateUploadUrl },
   answers: {
     record: api.answers.record,
     snooze: api.answers.snooze,
@@ -53,3 +65,4 @@ export {
   type RegistrationDeps,
   type RegistrationOutcome,
 } from "./registration";
+export { receiptLine, type ReceiptLine, type ReceiptLineOptions, type ReceiptViewState, type StatusTone } from "./receiptCopy";

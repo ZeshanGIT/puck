@@ -8,20 +8,26 @@ import {
   type RegistrationDeps,
 } from "@puck/client";
 import { BOT_COLOURS, BOT_SHAPES, ClerkTokenError, endClerkSession, fetchConvexToken } from "@puck/shared";
-import type { DesktopAlert, DesktopState } from "../protocol";
+import type { DesktopAlert, DesktopResult, DesktopState } from "../protocol";
 import { convexUrl, frontendApi, keychain, timedFetch } from "./auth";
+import type { WorkspaceState } from "../workspaceProtocol";
+import { DesktopWorkspace } from "./workspace";
 import type { DesktopAccount } from "./keychain";
 
 type InboxEvents = {
   alerts: (alerts: DesktopAlert[], mayNotify: boolean) => void;
   connection: (connection: DesktopState["connection"], error?: string) => void;
   expired: () => void;
+  workspace: (workspace: WorkspaceState) => void;
+  openLink: (url: string | undefined) => DesktopResult;
+  showTest: (questionId: string) => void;
 };
 
 export class DesktopInbox {
   readonly client = new ConvexClient(convexUrl, { logger: false });
   private retryTimer?: ReturnType<typeof setTimeout>;
   private closed = false;
+  workspace?: DesktopWorkspace;
 
   constructor(readonly account: DesktopAccount, private readonly events: InboxEvents) {}
 
@@ -124,14 +130,16 @@ export class DesktopInbox {
         };
       }), mayNotify);
     };
-    this.client.onUpdate(clientApi.bots.list, args, (catalog) => {
+    this.workspace = new DesktopWorkspace(this.client, registration.clientId, (workspace) => {
       if (this.closed) return;
-      bots = new Map(catalog.map((bot) => [bot.botId, bot]));
+      this.events.workspace(workspace);
+      if (workspace.bots === lastCatalog) return;
+      lastCatalog = workspace.bots;
+      bots = new Map((lastCatalog ?? []).map((bot) => [bot.botId, bot]));
       emitAlerts(false);
-    }, () => {
-      bots.clear();
-      emitAlerts(false);
-    });
+    }, { openLink: this.events.openLink, showTest: this.events.showTest });
+    let lastCatalog: BotCatalogItem[] | undefined;
+    this.workspace.start();
 
     this.client.subscribeToConnectionState((connection) => {
       if (this.closed) return;

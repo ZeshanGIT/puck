@@ -1,24 +1,27 @@
 import { NOTICE_REPLY } from "@puck/client";
-import type { DesktopAlert, DesktopRPC } from "../protocol";
-import { alertTime, avatar, button, colourFor, element, notice, setBotTheme } from "./elements";
+import { MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES } from "@puck/shared";
+import type { DesktopAlert, DesktopAttachment, DesktopRPC } from "../protocol";
+import { alertTime, avatar, botAppearance, button, element, notice, setBotTheme } from "./elements";
 
 type AnswerParams = DesktopRPC["bun"]["requests"]["answer"]["params"];
 
 export interface Draft {
   optionIds: string[];
+  attachments: DesktopAttachment[];
   text: string;
-  snoozeMinutes: number;
+  snoozeMinutes: number | null;
   detailsOpen: boolean;
   confirmation: AnswerParams | null;
 }
 
 export function newDraft(): Draft {
-  return { optionIds: [], text: "", snoozeMinutes: 10, detailsOpen: false, confirmation: null };
+  return { optionIds: [], attachments: [], text: "", snoozeMinutes: 10, detailsOpen: false, confirmation: null };
 }
 
 interface ReplyActions {
   answer: (params: AnswerParams) => void;
-  snooze: (minutes: number) => void;
+  chooseAttachments: (selectedIds: string[]) => void;
+  snooze: (minutes: number | null) => void;
   openLink: () => void;
   refresh: (focus?: string) => void;
 }
@@ -31,10 +34,10 @@ export function replyEditor(
   busy: boolean,
 ) {
   const root = element("article", "");
-  const colour = colourFor(alert.botColour);
+  const { colour, shape, tilt } = botAppearance(alert.botId, alert.botName, alert.botColour, alert.botShape);
   setBotTheme(root, colour);
   const identity = element(
-    "div", "identity row wrap", avatar(colour, alert.botShape ?? "round", 34),
+    "div", "identity row wrap", avatar(colour, alert.botShape ?? "round", 38, false, 0, true),
     element("strong", "", alert.botName), alertTime(alert.createdAt),
   );
   if (alert.priority === "urgent") identity.append(element("span", "badge urgent", "Urgent"));
@@ -109,6 +112,34 @@ export function replyEditor(
   };
   form.append(element("label", "reply-label", choices ? "Add a message" : "Reply", text));
 
+  const files = element("section", "reply-files stack");
+  files.setAttribute("aria-label", "Reply attachments");
+  const attach = button("Attach file", () => actions.chooseAttachments(draft.attachments.map(file => file.id)));
+  attach.id = "attach-files";
+  attach.disabled = locked || draft.confirmation !== null || draft.attachments.length >= MAX_ATTACHMENTS;
+  const limits = element("span", "muted attachment-limits",
+    `Up to ${MAX_ATTACHMENTS} files · ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB each`);
+  files.append(element("div", "row wrap", attach, limits));
+  if (draft.attachments.length) {
+    const list = element("ul", "attachment-list row wrap");
+    const sizes = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
+    for (const [index, file] of draft.attachments.entries()) {
+      const remove = button("×", () => {
+        draft.attachments = draft.attachments.filter(item => item.id !== file.id);
+        actions.refresh("attach-files");
+      }, "quiet remove-file");
+      remove.id = `remove-file-${index}`;
+      remove.disabled = busy || draft.confirmation !== null;
+      remove.setAttribute("aria-label", `Remove ${file.name}`);
+      const size = file.size >= 1024 * 1024 ? `${sizes.format(file.size / (1024 * 1024))} MB`
+        : file.size >= 1024 ? `${sizes.format(file.size / 1024)} KB` : `${file.size} B`;
+      list.append(element("li", "attachment-chip row",
+        element("span", "", file.name), element("small", "muted", size), remove));
+    }
+    files.append(list);
+  }
+  form.append(files);
+
   const duration = element("select");
   duration.id = "snooze-duration";
   duration.setAttribute("aria-label", "Snooze duration");
@@ -117,8 +148,9 @@ export function replyEditor(
     option.value = String(minutes);
     duration.append(option);
   }
-  duration.value = String(draft.snoozeMinutes);
-  duration.onchange = () => { draft.snoozeMinutes = Number(duration.value); };
+  duration.add(new Option("Until I’m back", "back"));
+  duration.value = draft.snoozeMinutes === null ? "back" : String(draft.snoozeMinutes);
+  duration.onchange = () => { draft.snoozeMinutes = duration.value === "back" ? null : Number(duration.value); };
 
   const snooze = button("Snooze", () => actions.snooze(draft.snoozeMinutes));
   snooze.id = "snooze";
@@ -131,8 +163,9 @@ export function replyEditor(
   function update() {
     const optionIds = alert.options.filter(option => draft.optionIds.includes(option.id)).map(option => option.id);
     const message = draft.text.trim();
-    send.textContent = !choices && !message ? NOTICE_REPLY : "Send reply";
-    send.disabled = locked || draft.confirmation !== null || Boolean(choices && !message && !optionIds.length);
+    const hasReply = Boolean(message || optionIds.length || draft.attachments.length);
+    send.textContent = !choices && !hasReply ? NOTICE_REPLY : "Send reply";
+    send.disabled = locked || draft.confirmation !== null || Boolean(choices && !hasReply);
     duration.disabled = snooze.disabled = locked || draft.confirmation !== null;
   }
 
@@ -140,11 +173,13 @@ export function replyEditor(
     event.preventDefault();
     if (locked || send.disabled || draft.confirmation) return;
     const selected = alert.options.filter(option => draft.optionIds.includes(option.id));
-    const text = draft.text.trim() || (choices ? undefined : NOTICE_REPLY);
+    const attachmentIds = draft.attachments.map(file => file.id);
+    const text = draft.text.trim() || (choices || attachmentIds.length ? undefined : NOTICE_REPLY);
     const params: AnswerParams = {
       questionId: alert.questionId,
       optionIds: selected.map(option => option.id),
       ...(text ? { customReply: text } : {}),
+      ...(attachmentIds.length ? { attachmentIds } : {}),
     };
     if (alert.requiresUnlock || selected.some(option => option.tone === "destructive")) {
       draft.confirmation = { ...params, confirmDestructive: true };

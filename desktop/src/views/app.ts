@@ -1,7 +1,11 @@
+import { openReceipt } from "./activity";
 import { Electroview } from "electrobun/view";
 import type { DesktopAlert, DesktopResult, DesktopRPC, DesktopState } from "../protocol";
-import { alertTime, avatar, brand, button, colourFor, darkMode, element, empty, notice } from "./elements";
+import type { WorkspacePage } from "../workspaceProtocol";
+import { applyTheme, brand, button, darkMode, element, empty, notice } from "./elements";
 import { newDraft, replyEditor, type Draft } from "./reply";
+import { renderWorkspace, workspaceNavigation } from "./workspace";
+import type { WorkspaceActions } from "./workspaceActions";
 
 type View = "card" | "inbox";
 
@@ -9,6 +13,7 @@ const CONNECTION_LABEL = { connecting: "Connecting", online: "Connected", offlin
 const WORKING_LABEL = {
   answer: "Sending reply…",
   snooze: "Snoozing…",
+  attachments: "Choosing attachments…",
   other: "Working…",
 } as const;
 
@@ -18,10 +23,11 @@ export function mount(view: View) {
   let state: DesktopState = {
     session: { status: "loading" }, alerts: [], cardId: null, connection: "connecting",
   };
+  let page: WorkspacePage = "home";
   let selectedId: string | null = null;
   let preferredId: string | null = null;
   let operation: keyof typeof WORKING_LABEL | null = null;
-  let feedback: { text: string; error?: boolean; id?: string } | null = null;
+  let feedback: { text: string; error?: boolean; id?: string; receiptId?: string } | null = null;
   let snapshotSequence = 0;
   let operationFocus: string | null = null;
   const drafts = new Map<string, Draft>();
@@ -31,8 +37,14 @@ export function mount(view: View) {
     ++snapshotSequence;
     if (JSON.stringify(next) === JSON.stringify(state)) return;
     const oldSession = state.session;
-    if (next.session.status === "ready" &&
-      (oldSession.status !== "ready" || oldSession.account !== next.session.account)) {
+    const oldAccount = oldSession.status === "ready" ? oldSession.account : null;
+    const nextAccount = next.session.status === "ready" ? next.session.account : null;
+    if (oldAccount !== nextAccount) {
+      if (oldAccount !== null) {
+        selectedId = null;
+        preferredId = null;
+        page = "home";
+      }
       drafts.clear();
       completed.clear();
       feedback = null;
@@ -52,9 +64,7 @@ export function mount(view: View) {
       messages: {
         stateChanged: applyState,
         selectAlert: ({ questionId }) => {
-          if (view !== "inbox") return;
-          preferredId = questionId;
-          render("detail-heading");
+          if (view === "inbox") openAlert(questionId);
         },
       },
     },
@@ -87,7 +97,7 @@ export function mount(view: View) {
       if (!result.ok) {
         feedback = { text: result.error, error: true, id: context?.id };
       } else if (context?.success) {
-        feedback = { text: context.success };
+        feedback = { text: context.success, receiptId: kind === "answer" ? context.id : undefined };
         if (state.alerts.some(alert => alert.questionId === context.id)) completed.add(context.id);
         drafts.delete(context.id);
       }
@@ -97,7 +107,7 @@ export function mount(view: View) {
       speak(feedback.text);
     } finally {
       operation = null;
-      const focus = feedback?.error ? operationFocus ?? undefined
+      const focus = feedback?.error || kind === "attachments" ? operationFocus ?? undefined
         : context?.success ? "detail-heading" : undefined;
       operationFocus = null;
       render(focus);
@@ -111,7 +121,19 @@ export function mount(view: View) {
   }
 
   function feedbackFor(id?: string) {
-    if (feedback && (!feedback.id || feedback.id === id)) return notice(feedback.text, feedback.error);
+    if (feedback && (!feedback.id || feedback.id === id)) {
+      const message = notice(feedback.text, feedback.error);
+      const receiptId = feedback.receiptId;
+      if (view === "inbox" && receiptId) {
+        const receipt = button("View receipt", () => {
+          navigate("archive");
+          openReceipt(state, receiptId, workspaceActions);
+        });
+        receipt.id = "view-receipt";
+        return element("div", "row wrap", message, receipt);
+      }
+      return message;
+    }
     if (operation) return notice(WORKING_LABEL[operation]);
     return null;
   }
@@ -155,6 +177,11 @@ export function mount(view: View) {
       : "Connecting to Puck…";
     const editor = replyEditor(alert, draft, {
       answer: params => void act(() => rpc.request.answer(params), "answer", { id, success: "Reply saved." }),
+      chooseAttachments: selectedIds => void act(async () => {
+        const result = await rpc.request.chooseAttachments({ questionId: id, selectedIds });
+        if (result.ok) draft.attachments = result.attachments;
+        return result;
+      }, "attachments", { id }),
       snooze: minutes => void act(
         () => rpc.request.snooze({ questionId: id, minutes }), "snooze", { id, success: "Alert snoozed." },
       ),
@@ -169,73 +196,80 @@ export function mount(view: View) {
     return editor;
   }
 
+  function navigate(next: WorkspacePage) {
+    if (next === "home") {
+      selectedId = null;
+      preferredId = null;
+    }
+    page = next;
+    render(`nav-${page}`);
+  }
+
+  function openAlert(questionId: string) {
+    page = "home";
+    preferredId = questionId;
+    selectedId = null;
+    feedback = null;
+    render("detail-heading");
+  }
+
+  async function workspaceRequest(task: () => Promise<DesktopResult>): Promise<DesktopResult> {
+    try {
+      return await task();
+    } catch {
+      return { ok: false, error: "Puck could not complete that action. Try again." };
+    }
+  }
+
+  const workspaceActions: WorkspaceActions = {
+    command: command => workspaceRequest(() => rpc.request.workspaceCommand(command)),
+    setThemePreference: preference => workspaceRequest(() => rpc.request.setThemePreference({ preference })),
+    signOut: () => workspaceRequest(() => rpc.request.signOut()),
+    navigate,
+    openAlert,
+    refresh: () => render(),
+  };
+
   function inbox(alerts: DesktopAlert[]) {
     if (state.session.status !== "ready") {
       return element("main", "sign-in",
         element("header", "toolbar row spread", brand(), connection()), signInView());
     }
-    const signOut = button("Sign out", () => void act(() => rpc.request.signOut()), "quiet");
-    signOut.id = "sign-out";
-    signOut.disabled = operation !== null;
-    const account = element("span", "account", state.session.account);
-    account.title = state.session.account;
-    const toolbar = element("header", "toolbar row spread",
-      brand(), element("div", "toolbar-actions row", connection(), account, signOut));
-    const list = element("ul", "alert-list");
     const requested = alerts.find(alert => alert.questionId === preferredId);
     if (requested) {
       selectedId = requested.questionId;
       preferredId = null;
     }
-    const selected = alerts.find(alert => alert.questionId === selectedId) ?? alerts[0];
-    selectedId = selected?.questionId ?? null;
-    for (const [index, alert] of alerts.entries()) {
-      const row = element("button", "alert-row row",
-        avatar(colourFor(alert.botColour), alert.botShape ?? "round", 32),
-        element("div", "grow",
-          element("div", "alert-meta row spread",
-            element("span", "sender", alert.botName),
-            alert.priority === "urgent" ? element("span", "badge urgent", "Urgent") : alertTime(alert.createdAt),
-          ),
-          element("div", "alert-title", alert.question),
-        ),
-      );
-      row.type = "button";
-      row.id = `alert-row-${alert.questionId}`;
-      row.setAttribute("aria-current", String(alert === selected));
-      row.onclick = () => {
-        preferredId = null;
-        selectedId = alert.questionId;
-        feedback = null;
-        render("detail-heading");
+    const selected = page === "home" ? alerts.find(alert => alert.questionId === selectedId) : undefined;
+    if (page === "home") selectedId = selected?.questionId ?? null;
+
+    const navigation = element("aside", "workspace-sidebar",
+      element("header", "sidebar-brand", brand()),
+      workspaceNavigation(page, navigate), connection());
+    const visibleState = { ...state, alerts };
+    if (state.workspace?.waiting && completed.size) {
+      visibleState.workspace = {
+        ...state.workspace, waiting: state.workspace.waiting.filter(alert => !completed.has(alert.questionId)),
       };
-      row.onkeydown = event => {
-        if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-        event.preventDefault();
-        const next = event.key === "Home" ? 0 : event.key === "End" ? alerts.length - 1
-          : Math.min(alerts.length - 1, Math.max(0, index + (event.key === "ArrowDown" ? 1 : -1)));
-        document.getElementById(`alert-row-${alerts[next]?.questionId}`)?.focus();
-      };
-      list.append(element("li", "", row));
     }
-    const heading = element("h1", "", "Inbox");
-    heading.id = "inbox-heading";
-    heading.tabIndex = -1;
-    const sidebar = element("nav", "inbox-list",
-      element("div", "list-heading row spread", heading, element("span", "count", String(alerts.length))), list);
-    sidebar.setAttribute("aria-label", "Waiting alerts");
-    const detail = element("main", "detail-pane");
-    if (selected) {
-      detail.append(element("div", "detail-inner", reply(selected)));
-    } else {
-      const status = feedbackFor();
-      const title = state.connection === "online" ? "All quiet" : CONNECTION_LABEL[state.connection];
-      const description = status?.textContent ?? (state.connection === "online"
-        ? "Nothing is waiting for your response."
-        : state.error ?? "Waiting for a connection to your inbox.");
-      detail.append(empty(title, description));
+    const content = renderWorkspace(page, visibleState, workspaceActions);
+    if (page === "home" && selected) {
+      content.querySelector(`#activity-row-${CSS.escape(selected.questionId)}`)?.setAttribute("aria-current", "true");
     }
-    return element("div", "inbox-shell", toolbar, sidebar, detail);
+    const feedbackNode = page === "home" && !selected ? feedbackFor() : null;
+    const pageScroll = element("div", "workspace-page", content);
+    if (feedbackNode) pageScroll.prepend(feedbackNode);
+    const main = element("main", "workspace-main", pageScroll);
+    if (page === "home" && selected) {
+      main.classList.add("with-reply");
+      const back = button("Back to Home", () => navigate("home"), "quiet");
+      back.id = "close-detail";
+      const detail = element("section", "detail-pane",
+        element("div", "detail-inner", back, reply(selected)));
+      detail.setAttribute("aria-labelledby", "detail-heading");
+      main.append(detail);
+    }
+    return element("div", "inbox-shell", navigation, main);
   }
 
   function dismiss() {
@@ -265,33 +299,38 @@ export function mount(view: View) {
   }
 
   function render(focus?: string) {
+    applyTheme(state.themePreference);
     const active = document.activeElement;
     const oldFocus = active?.id || (active?.closest(".more") ? "alert-details-summary" : "");
     const selection = active instanceof HTMLInputElement && active.type === "text"
       ? [active.selectionStart, active.selectionEnd] as const : null;
     const paneSelector = view === "inbox" ? ".detail-pane" : ".card-scroll";
-    const previousId = view === "inbox" ? selectedId : root.dataset.cardId;
+    const previousId = root.dataset.detailId;
     const detailScroll = root.querySelector(paneSelector)?.scrollTop ?? 0;
-    const listScroll = root.querySelector(".alert-list")?.scrollTop ?? 0;
+    const previousPage = root.dataset.page;
+    const pageScroll = root.querySelector(".workspace-page")?.scrollTop ?? 0;
     const alerts = state.session.status === "ready"
       ? state.alerts.filter(alert => !completed.has(alert.questionId)).sort((a, b) =>
         Number(b.priority === "urgent") - Number(a.priority === "urgent") || b.createdAt - a.createdAt)
       : [];
-    if (view === "card") root.dataset.cardId = state.cardId ?? "";
     root.replaceChildren(view === "inbox" ? inbox(alerts) : card(alerts));
-    if (previousId === (view === "inbox" ? selectedId : root.dataset.cardId)) {
+    const detailId = view === "card" ? state.cardId : page === "home" ? selectedId : null;
+    root.dataset.detailId = detailId ?? "";
+    if (previousId === root.dataset.detailId) {
       root.querySelector(paneSelector)?.scrollTo(0, detailScroll);
     }
-    root.querySelector(".alert-list")?.scrollTo(0, listScroll);
-    const next = document.getElementById(focus ?? oldFocus);
+    if (previousPage === page) root.querySelector(".workspace-page")?.scrollTo(0, pageScroll);
+    root.dataset.page = page;
+    const detailArrived = previousId !== root.dataset.detailId && Boolean(root.dataset.detailId);
+    const focusId = focus ?? (view === "inbox" && detailArrived ? "detail-heading" : oldFocus);
+    const next = document.getElementById(focusId);
     if (next) {
       next.focus({ preventScroll: focus === undefined });
       if (selection && next instanceof HTMLInputElement && next.type === "text") {
         next.setSelectionRange(...selection);
       }
     } else if (view === "inbox" && (oldFocus || focus === "detail-heading")) {
-      const fallback = selectedId ? `alert-row-${selectedId}` : "inbox-heading";
-      (document.getElementById(fallback) ?? document.getElementById("sign-in"))?.focus();
+      (document.getElementById(`nav-${page}`) ?? document.getElementById("sign-in"))?.focus();
     }
   }
 
@@ -312,6 +351,9 @@ export function mount(view: View) {
     if (cancel) {
       event.preventDefault();
       cancel.click();
+    } else if (view === "inbox" && page === "home" && selectedId) {
+      event.preventDefault();
+      navigate("home");
     } else if (view === "card" && state.cardId) {
       event.preventDefault();
       dismiss();
