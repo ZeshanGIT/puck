@@ -19,7 +19,7 @@
  * no backend. `ConnectedH1Home` reads `alerts.waiting` and `alerts.history` from Convex and works
  * out the banners from the phone's real states.
  */
-import { anyApi } from "convex/server";
+import { clientApi } from "@puck/client";
 import { useQuery } from "convex/react";
 import { hasDndAccess } from "puck-full-screen";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
@@ -39,7 +39,6 @@ import {
   type BannerId,
   type HistoryRowModel,
   type NeedItem,
-  type WaitingAlert,
 } from "../homeModel";
 import { loadLocalSettings } from "../localSettings";
 import { formatCode, fromText, requestLook, type PairingRequest } from "../pairingModel";
@@ -450,7 +449,7 @@ export function ConnectedH1Home(props: ConnectedH1HomeProps) {
   const pairings = usePairingRequests(clientId);
   const live = useLiveActivities(clientId);
 
-  const waiting = useQuery(anyApi.alerts.waiting, clientId ? { clientId } : "skip") as WaitingAlert[] | undefined;
+  const waiting = useQuery(clientApi.alerts.waiting, clientId ? { clientId } : "skip");
 
   const queuedKey = (waiting ?? []).map((alert) => (isQueuedLocally(alert.questionId) ? alert.questionId : "")).join("|");
   const needs = useMemo(() => {

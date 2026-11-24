@@ -1,4 +1,4 @@
-import { anyApi } from "convex/server";
+import { clientApi } from "@puck/client";
 import { useQuery } from "convex/react";
 import type { BotListItem } from "./botsModel";
 
@@ -7,5 +7,5 @@ import type { BotListItem } from "./botsModel";
  * Undefined while they load or with no client id (the legacy device path has no list).
  */
 export function useBots(clientId: string | null | undefined): BotListItem[] | undefined {
-  return useQuery(anyApi.bots.list, clientId ? { clientId } : "skip") as BotListItem[] | undefined;
+  return useQuery(clientApi.bots.list, clientId ? { clientId } : "skip");
 }

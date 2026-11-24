@@ -3,8 +3,8 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { clerkPublishableKey, DEV_CLERK_FRONTEND_API, type ClerkAccount } from "@puck/shared";
-import { login, logout, readSession, runClerkLogin, whoami, writeSession } from "./account";
-import { callbackBridgeHtml, loginPageHtml } from "./loginPage";
+import { login, logout, readSession, whoami, writeSession } from "./account";
+import { callbackBridgeHtml, loginPageHtml, runClerkLogin } from "@puck/client/loopback";
 import { createProgram } from "./program";
 import type { Runtime } from "./commands";
 

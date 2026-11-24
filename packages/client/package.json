@@ -1,0 +1,23 @@
+{
+  "name": "@puck/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./loopback": "./src/loopback.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@puck/shared": "workspace:*",
+    "convex": "1.48.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "~6.0.3"
+  }
+}

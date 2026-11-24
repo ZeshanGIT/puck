@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { PALETTE } from "../../appearance/src/botTheme";
 import { BOT_COLOURS } from "./model";
 import {
   AlertValidationError,
@@ -523,10 +523,7 @@ describe("bot colours", () => {
     expect(BOT_COLOURS[0]).toBe("black");
   });
 
-  test("matches the PaletteName union in the app's botTheme", () => {
-    const source = readFileSync(`${import.meta.dir}/../../../app/src/ui/botTheme.ts`, "utf8");
-    const union = /export type PaletteName =([\s\S]*?);/u.exec(source)?.[1] ?? "";
-    const appNames = [...union.matchAll(/"([a-z]+)"/gu)].map((match) => match[1]);
-    expect(appNames).toEqual([...BOT_COLOURS]);
+  test("matches the palette used by Android and Mac", () => {
+    expect(PALETTE.map(({ name }) => name)).toEqual([...BOT_COLOURS]);
   });
 });

@@ -1,3 +1,4 @@
+import { clientApi } from "@puck/client";
 import { anyApi } from "convex/server";
 import { useConvex } from "convex/react";
 import { canUseFullScreenIntent } from "puck-full-screen";
@@ -18,7 +19,7 @@ export function useFullScreenAccess(): { allowed: boolean | null; refresh: () =>
     setAllowed(next);
     try {
       const clientId = await readClientId();
-      if (clientId) await client.mutation(anyApi.clients.setFlags, { clientId, fullScreenAllowed: next });
+      if (clientId) await client.mutation(clientApi.clients.setFlags, { clientId, fullScreenAllowed: next });
       else await client.mutation(anyApi.device.setFullScreenAllowed, { allowed: next });
     } catch (error) {
       console.error(readableError(error));

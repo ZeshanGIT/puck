@@ -1,3 +1,4 @@
+import { clientApi } from "@puck/client";
 import { anyApi } from "convex/server";
 import { useConvex } from "convex/react";
 import { AppState } from "react-native";
@@ -23,7 +24,7 @@ export function usePushRegistration(enabled: boolean): boolean | null {
     // Signed-in installs register the token on their client row; old installs use the device row.
     async function registerToken(token: string) {
       const clientId = await readClientId();
-      if (clientId) await client.mutation(anyApi.clients.setPushToken, { clientId, token });
+      if (clientId) await client.mutation(clientApi.clients.setPushToken, { clientId, token });
       else await client.mutation(anyApi.device.registerPushToken, { token });
     }
 

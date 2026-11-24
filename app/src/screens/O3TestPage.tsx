@@ -6,11 +6,11 @@
  * existing alert screens show it here (a lock-screen page opens the app on this step). The step
  * is done once an alert that appeared has been answered and nothing is pending any more.
  */
+import { clientApi } from "@puck/client";
 import { anyApi } from "convex/server";
 import { useConvex, useQuery } from "convex/react";
 import { useEffect, useReducer, useRef } from "react";
 import { StyleSheet, View } from "react-native";
-import type { PendingAlert } from "../ChoiceScreen";
 import { syncClientFullScreen, syncClientPushToken } from "../clientAuth";
 import { HeroText, OnboardingFrame, WaitingLine } from "../onboarding/parts";
 import { readableError } from "../session";
@@ -32,7 +32,7 @@ export function O3TestPage({ clientId, onContinue }: { clientId: string; onConti
   // Test pages left from an earlier try are cancelled first, so one never greets the person
   // before they tap Send. The pending query waits for that.
   const [{ cleared, send, error, done }, dispatch] = useReducer(testPage.transition, testPage.initial);
-  const pending = useQuery(anyApi.alerts.pending, cleared ? { clientId } : "skip") as PendingAlert[] | undefined;
+  const pending = useQuery(clientApi.alerts.pending, cleared ? { clientId } : "skip");
 
   useEffect(() => {
     let alive = true;

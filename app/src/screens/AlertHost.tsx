@@ -22,7 +22,7 @@
  * Convex hooks, a fixed receipt ("Delivered" once `onAnswer` has returned), and `onSnooze` (a Toast
  * in `App.tsx`) in place of `answers.snooze`.
  */
-import { anyApi } from "convex/server";
+import { clientApi } from "@puck/client";
 import { useMutation, useQuery } from "convex/react";
 import { goBack, isLocked, leaveIfLocked } from "puck-full-screen";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -157,7 +157,7 @@ export function answerPayloadFor(
       });
 }
 
-/** `answers.record` as `deliverAnswer` calls it (`useMutation(anyApi.answers.record)` fits). */
+/** `answers.record` as `deliverAnswer` calls it (`useMutation(clientApi.answers.record)` fits). */
 export type RecordAnswer = (args: {
   questionId: string;
   clientId?: string;
@@ -272,8 +272,8 @@ function ConnectedAlertHost({
   onRelease?: () => void;
 }) {
   const { questionId } = alert;
-  const record = useMutation(anyApi.answers.record);
-  const snooze = useMutation(anyApi.answers.snooze);
+  const record = useMutation(clientApi.answers.record);
+  const snooze = useMutation(clientApi.answers.snooze);
   const online = useOnline();
   const onlineRef = useRef(online);
   onlineRef.current = online;
@@ -285,7 +285,7 @@ function ConnectedAlertHost({
       .then(setClientId)
       .catch(() => setClientId(null));
   }, []);
-  const clients = useQuery(anyApi.clients.list, clientId ? {} : "skip") as { id: string; name: string }[] | undefined;
+  const clients = useQuery(clientApi.clients.list, clientId ? {} : "skip");
   const ownName = clients?.find((client) => client.id === clientId)?.name ?? null;
 
   const [answered, setAnswered] = useState<AnsweredView | null>(null);

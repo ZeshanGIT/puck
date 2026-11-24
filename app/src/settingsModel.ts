@@ -7,6 +7,7 @@
  * Where each setting lives (Protocol changes section 6): the bypass modes, the ringtones and the
  * reminder interval stay on the phone (`localSettings.ts`); the client list, names and flags are on the backend.
  */
+import { CLIENT_NAME_MAX, type ClientPlatform } from "@puck/client";
 import { dateText } from "./botsModel";
 
 /* ------------------------------------------------------------------- S7 about */
@@ -40,7 +41,7 @@ export function backendName(url: string): string {
 export interface ClientItem {
   id: string;
   name: string;
-  platform: "android" | "cli";
+  platform: ClientPlatform;
   fullScreenAllowed?: boolean;
   dndAccess?: boolean;
   /** Whether a push token is stored. Undefined from a backend that does not say yet. */
@@ -77,7 +78,7 @@ export function registeredText(createdAt: number, now: number): string {
 export interface ClientRowModel {
   id: string;
   name: string;
-  platform: "android" | "cli";
+  platform: ClientPlatform;
   isThis: boolean;
   /** "This phone", or "Last seen 4 min ago". */
   subtitle: string;
@@ -118,7 +119,7 @@ export function thisClient(clients: readonly ClientItem[] | undefined, thisClien
 }
 
 /** Same rules as `validateClientName` on the backend: trimmed, 1 to 40 characters, one line. */
-export const CLIENT_NAME_MAX = 40;
+export { CLIENT_NAME_MAX };
 const NOT_ONE_LINE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u;
 
 export type RenameCheck = { ok: true; name: string } | { ok: false; message: string };

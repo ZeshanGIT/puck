@@ -1,5 +1,5 @@
 import type { AlertExtras, AlertOption } from "@puck/shared";
-import { anyApi } from "convex/server";
+import { clientApi } from "@puck/client";
 import { useMutation } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
@@ -27,7 +27,7 @@ export interface PendingAlert extends AlertExtras {
 }
 
 export function ChoiceScreen({ alert, waiting }: { alert: PendingAlert; waiting: number }) {
-  const record = useMutation(anyApi.answers.record);
+  const record = useMutation(clientApi.answers.record);
   const clientIdRef = useRef<string | null>(null);
   const [choice, setChoice] = useState<ChoiceState>(emptyChoice);
   const [customReply, setCustomReply] = useState("");

@@ -1,6 +1,6 @@
 import type { ClerkAccount } from "@puck/shared";
 import { ConvexProvider, useConvex } from "convex/react";
-import { anyApi } from "convex/server";
+import { clientApi } from "@puck/client";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Linking, StyleSheet, View } from "react-native";
@@ -628,7 +628,7 @@ function AppBody({
       await signOutPhone({
         removeClient: async () => {
           const clientId = await readClientId();
-          if (clientId) await convexClient.mutation(anyApi.clients.remove, { clientId });
+          if (clientId) await convexClient.mutation(clientApi.clients.remove, { clientId });
         },
         clearLocal: async () => {
           dispatch({ type: "localCleared" });

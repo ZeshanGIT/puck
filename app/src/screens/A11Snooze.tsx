@@ -8,7 +8,7 @@
  * resolves; if it rejects, the sheet stays open and shows the error so he can try again.
  * The same sheet serves the one-option swipe, whose Snooze sits on the track (Q17).
  */
-import { anyApi } from "convex/server";
+import { clientApi } from "@puck/client";
 import { useConvex } from "convex/react";
 import { useEffect, useState } from "react";
 import { AppState, StyleSheet } from "react-native";
@@ -100,7 +100,7 @@ export function useWakeSnoozed(clientId: string | null): void {
   useEffect(() => {
     if (!clientId) return;
     const wake = () => {
-      client.mutation(anyApi.alerts.wakeSnoozed, { clientId }).catch(() => {});
+      client.mutation(clientApi.alerts.wakeSnoozed, { clientId }).catch(() => {});
     };
     wake();
     const subscription = AppState.addEventListener("change", (next) => {

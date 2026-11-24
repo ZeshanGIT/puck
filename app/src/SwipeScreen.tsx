@@ -1,4 +1,4 @@
-import { anyApi } from "convex/server";
+import { clientApi } from "@puck/client";
 import { useMutation } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 import { Animated, PanResponder, StyleSheet, View } from "react-native";
@@ -11,7 +11,7 @@ import { swipeCanBegin, swipeChoice } from "./swipe";
 import { clearDisplayedAlert } from "./urgentDisplay";
 
 export function SwipeScreen({ alert, waiting }: { alert: PendingAlert; waiting: number }) {
-  const record = useMutation(anyApi.answers.record);
+  const record = useMutation(clientApi.answers.record);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [latched, setLatched] = useState<string | null>(null);

@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@puck/client": "workspace:*",
     "@puck/shared": "workspace:*",
     "commander": "^15.0.0",
     "convex": "^1.48.0"

@@ -12,7 +12,14 @@
  * the setup-code screen that still reaches it.
  */
 import { ClerkTokenError, fetchConvexToken, type ClerkAccount } from "@puck/shared";
-import { anyApi } from "convex/server";
+import {
+  clientApi,
+  ensureClientRegistered,
+  registerAnotherName,
+  replaceClient,
+  type RegistrationDeps,
+  type RegistrationOutcome,
+} from "@puck/client";
 import { useConvex, type ConvexReactClient } from "convex/react";
 import * as Device from "expo-device";
 import { canUseFullScreenIntent } from "puck-full-screen";
@@ -25,8 +32,6 @@ import { loadNotificationsModule, readNotificationPermission, registerPushTokenW
 
 /** Used when the phone reports no model name. */
 export const FALLBACK_CLIENT_NAME = "Android phone";
-/** Convex limit on a client name (`CLIENT_NAME_MAX` in the backend). */
-const CLIENT_NAME_MAX = 40;
 /** A cached Clerk token is reused until it has this long left. */
 const TOKEN_REUSE_MARGIN_MS = 15_000;
 
@@ -114,77 +119,6 @@ export function createClerkTokenFetcher(options: {
   };
 }
 
-/* ---------- registration ---------- */
-
-type RegisterStatus = "created" | "exists" | "replaced";
-export interface RegisterResult {
-  status: RegisterStatus;
-  clientId: string;
-}
-export interface ClientSummary {
-  id: string;
-}
-
-/** The Convex calls and the stored client id that registration needs; injected so it stays testable. */
-export interface RegistrationDeps {
-  readClientId: () => Promise<string | null>;
-  saveClientId: (id: string) => Promise<void>;
-  clearClientId: () => Promise<void>;
-  listClients: () => Promise<ClientSummary[]>;
-  register: (args: { name: string; platform: "android"; replace?: boolean }) => Promise<RegisterResult>;
-  touch: (clientId: string) => Promise<void>;
-}
-
-export type RegistrationOutcome =
-  | { kind: "ready"; clientId: string }
-  | { kind: "conflict"; name: string };
-
-/**
- * After sign-in: if this install already has a client row on the account, use it. Otherwise
- * register under `name`. A same-name client that is not ours is reported as a `conflict`
- * (the app asks "Replace?") and nothing changes.
- */
-export async function ensureClientRegistered(deps: RegistrationDeps, name: string): Promise<RegistrationOutcome> {
-  const stored = await deps.readClientId();
-  if (stored) {
-    const clients = await deps.listClients();
-    if (clients.some((client) => client.id === stored)) {
-      await deps.touch(stored).catch(() => {});
-      return { kind: "ready", clientId: stored };
-    }
-    // The row is gone, or it belongs to another account.
-    await deps.clearClientId();
-  }
-  const result = await deps.register({ name, platform: "android" });
-  if (result.status === "exists") return { kind: "conflict", name };
-  await deps.saveClientId(result.clientId);
-  return { kind: "ready", clientId: result.clientId };
-}
-
-/** Replace the same-name client (its push token is cleared) and keep its row id. */
-export async function replaceClient(deps: RegistrationDeps, name: string): Promise<RegistrationOutcome> {
-  const result = await deps.register({ name, platform: "android", replace: true });
-  await deps.saveClientId(result.clientId);
-  return { kind: "ready", clientId: result.clientId };
-}
-
-/** "Pixel 7 (2)", "Pixel 7 (3)" and so on, whichever is free. */
-export function alternativeName(name: string, n: number): string {
-  const suffix = ` (${n})`;
-  return `${[...name].slice(0, CLIENT_NAME_MAX - suffix.length).join("").trimEnd()}${suffix}`;
-}
-
-export async function registerAnotherName(deps: RegistrationDeps, name: string): Promise<RegistrationOutcome> {
-  for (let n = 2; n <= 9; n += 1) {
-    const result = await deps.register({ name: alternativeName(name, n), platform: "android" });
-    if (result.status === "created") {
-      await deps.saveClientId(result.clientId);
-      return { kind: "ready", clientId: result.clientId };
-    }
-  }
-  throw new Error("Too many clients share this name. Remove an old one and try again.");
-}
-
 /**
  * Saves this phone's push token on its client row. Only when notifications are already allowed,
  * so it never raises a permission prompt on its own. Best effort.
@@ -194,7 +128,7 @@ export async function syncClientPushToken(client: ConvexReactClient, clientId: s
   const Notifications = await loadNotificationsModule();
   if (!Notifications) return;
   await registerPushTokenWithConvex(Notifications, async (token) => {
-    await client.mutation(anyApi.clients.setPushToken, { clientId, token });
+    await client.mutation(clientApi.clients.setPushToken, { clientId, token });
   });
 }
 
@@ -203,7 +137,7 @@ export async function syncClientPushToken(client: ConvexReactClient, clientId: s
  * sends an urgent alert as a plain notification (no ring). Best effort.
  */
 export async function syncClientFullScreen(client: ConvexReactClient, clientId: string): Promise<void> {
-  await client.mutation(anyApi.clients.setFlags, { clientId, fullScreenAllowed: canUseFullScreenIntent() });
+  await client.mutation(clientApi.clients.setFlags, { clientId, fullScreenAllowed: canUseFullScreenIntent() });
 }
 
 /* ---------- the hook ---------- */
@@ -243,14 +177,13 @@ export function useClientSession(options: {
 
   const deps = useCallback(
     (): RegistrationDeps => ({
+      platform: "android",
       readClientId,
       saveClientId,
       clearClientId,
-      listClients: async () => (await client.query(anyApi.clients.list, {})) as ClientSummary[],
-      register: async (args) => (await client.mutation(anyApi.clients.register, args)) as RegisterResult,
-      touch: async (clientId) => {
-        await client.mutation(anyApi.clients.touch, { clientId });
-      },
+      listClients: () => client.query(clientApi.clients.list, {}),
+      register: (args) => client.mutation(clientApi.clients.register, args),
+      touch: (clientId) => client.mutation(clientApi.clients.touch, { clientId }),
     }),
     [client],
   );

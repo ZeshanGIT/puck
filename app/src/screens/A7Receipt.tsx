@@ -16,9 +16,8 @@
  * with the local facts into a `state`. It needs the Convex provider; the dev sample route has none
  * and should pass a fixed `state` instead.
  */
-import { anyApi } from "convex/server";
+import { clientApi } from "@puck/client";
 import { useQuery } from "convex/react";
-import type { ReceiptState } from "@puck/shared";
 import { useCallback, useEffect, useRef } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Text } from "../ui/Text";
@@ -175,9 +174,9 @@ export function useAnswerReceipt(input: {
   sentLocally: boolean;
 }): { state: ReceiptViewState; botName: string | null; deliveryExhausted: boolean } {
   const result = useQuery(
-    anyApi.answers.receipt,
+    clientApi.answers.receipt,
     input.clientId && !input.queued ? { clientId: input.clientId, questionId: input.questionId } : "skip",
-  ) as { state: ReceiptState; botName: string; attempts: number; exhausted: boolean } | null | undefined;
+  );
   return {
     state: receiptViewState({
       queued: input.queued,

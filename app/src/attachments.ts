@@ -6,6 +6,7 @@
  * this file. The pickers load their Expo modules when used. `expo-file-system` is not installed,
  * so a picked file is read with `fetch(uri).blob()` and sent with `XMLHttpRequest` (for progress).
  */
+import type { RecordAnswerArgs } from "@puck/client";
 import { MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, type AttachmentType } from "@puck/shared";
 
 export { MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES };
@@ -25,13 +26,7 @@ export interface PickedFile {
 }
 
 /** An uploaded file: the Convex storage id and its metadata, in the shape `answers.record` takes. */
-export interface UploadedAttachment {
-  storageId: string;
-  type: AttachmentType;
-  name: string;
-  mime: string;
-  size: number;
-}
+export type UploadedAttachment = NonNullable<RecordAnswerArgs["attachments"]>[number] & { type: AttachmentType };
 
 export type PickResult =
   | { status: "ok"; files: PickedFile[] }
@@ -149,10 +144,10 @@ export function canSend(input: {
 }
 
 /** The `storageId` in Convex's upload response, or null when the body is not what it promises. */
-export function storageIdFrom(body: unknown): string | null {
+export function storageIdFrom(body: unknown): UploadedAttachment["storageId"] | null {
   if (typeof body !== "object" || body === null) return null;
   const id = (body as { storageId?: unknown }).storageId;
-  return typeof id === "string" && id !== "" ? id : null;
+  return typeof id === "string" && id !== "" ? (id as UploadedAttachment["storageId"]) : null;
 }
 
 /** Picks from the camera. The photo is full size (Q22). */
@@ -214,7 +209,7 @@ function postToStorage(
   mime: string,
   onProgress: (fraction: number) => void,
   signal?: AbortSignal,
-): Promise<string> {
+): Promise<UploadedAttachment["storageId"]> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", uploadUrl);

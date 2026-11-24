@@ -11,9 +11,9 @@
  * It closes on a tap of Continue, as the doc says ("after a tap"). `autoCloseMs` also closes it by
  * itself after that long, for a host that wants it (an alert over the lock screen).
  */
-import { anyApi } from "convex/server";
+import { clientApi } from "@puck/client";
 import { useQuery } from "convex/react";
-import { goneReason, type AlertStatus } from "@puck/shared";
+import { goneReason } from "@puck/shared";
 import { useEffect, useRef, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { Text } from "../ui/Text";
@@ -124,12 +124,9 @@ export function useAlertGone(input: {
   now?: number;
 }): { gone: AlertGoneState | null; loading: boolean } {
   const state = useQuery(
-    anyApi.alerts.state,
+    clientApi.alerts.state,
     input.clientId ? { clientId: input.clientId, questionId: input.questionId } : "skip",
-  ) as
-    | { status: AlertStatus; answeredByClientName: string | null; expiresAt: number | null; answerLabels?: string[] }
-    | null
-    | undefined;
+  );
   if (state === undefined) return { gone: null, loading: input.clientId !== null };
   if (state === null) return { gone: null, loading: false };
   const reason = goneReason({

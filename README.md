@@ -15,7 +15,7 @@ Puck is a pager for AI agents: an agent sends an alert, your phone rings with a 
 ## How it works
 
 1. An agent pages you with the `puck` CLI or the HTTP API. The call returns at once with a question id.
-2. Your Android phone shows a full-screen, call-style alert in the bot's colour, over the lock screen when it is urgent.
+2. Your Android phone shows a call-style alert. On Mac, Puck shows a floating reply card over your current app.
 3. You answer deliberately: tap an option twice, check several and send, drag the bot past a line, or type a reply.
 4. Puck posts the answer to that bot's own webhook, with stable option ids it can act on, and shows you when it was delivered.
 
@@ -23,17 +23,20 @@ Every bot pairs with a six-digit code you approve on the phone, and has its own 
 
 ## Status
 
-A personal project in active development, used daily on one Pixel 7. Android only for now, with no store build: releases are debug-signed and point at a development backend. iPhone, spoken alarms and a hosted version are not built.
+A personal project in active development, used daily on one Pixel 7. Puck for Mac is available as a local development build. Both apps use the same development backend.
 
 ## Layout
 
 A TypeScript monorepo managed with [Bun workspaces](https://bun.sh/docs/install/workspaces):
 
 - `app/` (`@puck/app`) - mobile app in React Native with Expo (Android first)
+- `desktop/` (`@puck/desktop`) - macOS app in Electrobun
 - `backend/` (`@puck/backend`) - Convex backend: database and HTTP endpoints; Firebase Cloud Messaging is used only for push
 - `cli/` (`@puck/cli`) - `puck` CLI in TypeScript (Commander, compiled to a single executable with `bun build --compile`)
 - `packages/shared/` (`@puck/shared`) - alert and reply types shared by the app, backend and CLI
-- `tsconfig.base.json` - shared compiler options for `cli/` and `packages/shared/` (the app uses Expo's base config, the backend Convex's)
+- `packages/client/` (`@puck/client`) - Convex client operations, registration, and reply rules used by Android and Mac. A separate loopback entry point shares system-browser sign-in with the CLI.
+- `packages/appearance/` (`@puck/appearance`) - bot colours, contrast rules, and avatar geometry shared by Android and Mac
+- `tsconfig.base.json` - shared compiler options for the desktop app, CLI, and workspace packages
 
 ## Requirements
 
@@ -48,6 +51,19 @@ bun install          # from the repo root; installs every workspace. Needs Bun 1
 bun run typecheck    # typechecks all workspaces
 bun test             # unit tests for hashing, validation and the answer payload
 ```
+
+## Mac app (`desktop/`)
+
+On macOS, install Bun and Xcode Command Line Tools, then run from the repo root:
+
+```sh
+bun install
+bun run desktop:dev
+```
+
+Sign in using the same Google account as Android. Puck adds this Mac as a device. New alerts show in a floating card while Puck is running, even after you close the inbox window. The card opens without taking keyboard focus. Answer with options or text, snooze, or dismiss the card to return to it later in the inbox. Use **Puck → Quit Puck** or **⌘Q** to stop receiving alerts on the Mac.
+
+`bun run desktop:build` writes a local, unsigned macOS app bundle under `desktop/build/`. Sign-in uses the development deployment by default.
 
 ## App (`app/`)
 

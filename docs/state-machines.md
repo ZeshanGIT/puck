@@ -4,10 +4,10 @@ Puck's flows with more than one moving part are explicit machines: one state typ
 
 ## The convention
 
-- A machine lives in a `*Machine.ts` file (`app/src/`) or beside the shared model (`packages/shared/src/`), and is built with `defineMachine` from `@puck/shared` (`packages/shared/src/machine.ts`).
+- A machine lives in a `*Machine.ts` file (`app/src/` or `desktop/src/`) or beside the shared model (`packages/shared/src/`), and is built with `defineMachine` from `@puck/shared` (`packages/shared/src/machine.ts`).
 - It declares: `name`, `summary`, `usedBy`, `initial`, `transition`, `label` (the control phase, used for diagrams), an `invariant` (impossible states) and `samples` (one state per phase, one event per type, JSON only).
 - Effects a transition wants (toasts, writes, timers) are returned as data in the state, and the component performs them. The transition never does I/O.
-- Register it in `app/src/machines.ts` (or `packages/shared/src/machines.ts`). `app/src/machines.test.ts` fails if a `*Machine.ts` file is not registered, and runs `checkMachine` on every machine: no throw, no input mutation, deterministic, invariant holds after every sample state meets every sample event.
+- Register it in the owning package’s `src/machines.ts`. `app/src/machines.test.ts` fails if a `*Machine.ts` file is not registered, and runs `checkMachine` on every machine: no throw, no input mutation, deterministic, invariant holds after every sample state meets every sample event.
 - Regenerate the tables below with `bun run machines:doc`; `bun run machines:check` fails when they are stale.
 - A new flow that has two or more flags which must agree is a machine. Write the transition first, test it, then wire the screen.
 
@@ -281,5 +281,29 @@ stateDiagram-v2
 | sent | alertsChanged | alertShown |
 | alertShown | sendStarted | sending |
 | alertShown | alertsChanged | done |
+
+## Desktop (desktop/src)
+
+### floating-reply-card
+
+Queue new alerts while the inbox is in the background. Keep the open reply in place and remove alerts as they leave the pending list.
+
+Used by: `desktop/src/main/index.ts`
+
+Events: `snapshot`, `dismiss`, `hide`, `reset`
+
+```mermaid
+stateDiagram-v2
+  [*] --> hidden
+  hidden --> showing: snapshot
+  showing --> hidden: hide
+  showing --> hidden: reset
+```
+
+| From | Event | To |
+| --- | --- | --- |
+| hidden | snapshot | showing |
+| showing | hide | hidden |
+| showing | reset | hidden |
 
 <!-- machines:end -->

@@ -1,0 +1,22 @@
+{
+  "name": "@puck/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electrobun dev",
+    "build": "electrobun build",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@puck/appearance": "workspace:*",
+    "@puck/client": "workspace:*",
+    "@puck/shared": "workspace:*",
+    "convex": "^1.48.0",
+    "electrobun": "1.18.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "~6.0.3"
+  }
+}

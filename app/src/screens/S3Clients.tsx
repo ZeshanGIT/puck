@@ -1,5 +1,5 @@
 /**
- * S3 Other clients: every phone and CLI session signed in as him, with a name and when it was last
+ * S3 Other clients: every phone, Mac, and CLI session signed in as him, with a name and when it was last
  * seen; this phone is marked, the others have Remove (tap twice; the removed client stops getting
  * alerts and has to sign in again). Prototype: `SCREENS.clients` (`vault/Projects/Puck/mockups/Puck
  * prototype.html`); `App screens.md` S3.
@@ -62,7 +62,7 @@ function ClientRow({ row, busy, onRemove }: { row: ClientRowModel; busy: boolean
   const lines = useLines(1);
   return (
     <View style={styles.row} testID={botTestId("client-row", row.name)}>
-      <IconTile icon={row.platform === "cli" ? "laptop" : "phone"} />
+      <IconTile icon={row.platform === "android" ? "phone" : "laptop"} />
       <View style={styles.main}>
         <Text numberOfLines={lines} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[styles.name, { color: t.ink }]}>
           {row.name}

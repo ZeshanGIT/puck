@@ -26,7 +26,7 @@
  *
  * It needs the Convex provider. The dev sample route uses `AStack` and `StackSummary` directly.
  */
-import { anyApi } from "convex/server";
+import { clientApi } from "@puck/client";
 import { useMutation, useQuery } from "convex/react";
 import { goBack, leaveIfLocked } from "puck-full-screen";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -84,8 +84,8 @@ interface WatchReport {
 const STATE_WAIT_MS = 2500;
 
 export function StackHost({ alerts, launchedByAlert, onClose }: StackHostProps) {
-  const record = useMutation(anyApi.answers.record);
-  const snooze = useMutation(anyApi.answers.snooze);
+  const record = useMutation(clientApi.answers.record);
+  const snooze = useMutation(clientApi.answers.snooze);
   const online = useOnline();
   const onlineRef = useRef(online);
   onlineRef.current = online;
@@ -99,7 +99,7 @@ export function StackHost({ alerts, launchedByAlert, onClose }: StackHostProps) 
       .then(setClientId)
       .catch(() => setClientId(null));
   }, []);
-  const clients = useQuery(anyApi.clients.list, clientId ? {} : "skip") as { id: string; name: string }[] | undefined;
+  const clients = useQuery(clientApi.clients.list, clientId ? {} : "skip");
   const ownName = clients?.find((client) => client.id === clientId)?.name ?? null;
 
   // ---- the held list

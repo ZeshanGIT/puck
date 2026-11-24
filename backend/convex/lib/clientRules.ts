@@ -1,7 +1,7 @@
 // Pure rules for `clients`: name validation, the register decision, the cap.
 // No Convex imports, so `bun test` can run them.
 
-export const CLIENT_PLATFORMS = ["android", "cli"] as const;
+export const CLIENT_PLATFORMS = ["android", "cli", "macos"] as const;
 export type ClientPlatform = (typeof CLIENT_PLATFORMS)[number];
 
 export const CLIENT_NAME_MAX = 40;

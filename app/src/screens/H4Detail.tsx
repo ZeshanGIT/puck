@@ -8,7 +8,7 @@
  * `H4DetailView` only draws: it is given the alert and callbacks, so the dev sample route can show it
  * with no backend. `H4Detail` reads `alerts.get` and `answers.retryDelivery` for the screen.
  */
-import { anyApi } from "convex/server";
+import { clientApi, type RetryDeliveryArgs } from "@puck/client";
 import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BackHandler, Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -306,17 +306,15 @@ export function H4Detail({ questionId, onBack }: H4DetailProps) {
       .catch(() => setClientId(null));
   }, []);
   const now = useNow();
-  const alert = useQuery(anyApi.alerts.get, clientId ? { clientId, questionId } : "skip") as
-    | AlertDetail
-    | null
-    | undefined;
-  const retryDelivery = useMutation(anyApi.answers.retryDelivery);
+  const alert = useQuery(clientApi.alerts.get, clientId ? { clientId, questionId } : "skip");
+  const retryDelivery = useMutation(clientApi.answers.retryDelivery);
 
   const onRetry = useCallback(async (): Promise<string | null> => {
     const answerId = alert?.answer?.answerId;
     if (!clientId || !answerId) return null;
     try {
-      await retryDelivery({ clientId, answerId });
+      // Alert details expose the answer document id as a string.
+      await retryDelivery({ clientId, answerId: answerId as RetryDeliveryArgs["answerId"] });
       return null;
     } catch (error) {
       return retryErrorMessage(error);

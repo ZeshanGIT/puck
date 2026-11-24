@@ -63,3 +63,7 @@ cli/bin/
 
 # Device screenshots (bun run shot)
 .shots/
+
+# Electrobun desktop artifacts
+desktop/artifacts/
+desktop/icon.iconset/

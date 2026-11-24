@@ -58,12 +58,12 @@ async function defaultClientId(): Promise<string | null> {
 
 async function defaultRecord(args: CardReplyRecord): Promise<unknown> {
   const { convex } = await import("./client");
-  const { anyApi } = await import("convex/server");
+  const { clientApi } = await import("@puck/client");
   // Puck may be running without its screens (a push woke it): sign in from the stored account,
   // so the answer goes now rather than when Puck is next opened.
   const { ensureBackgroundAuth } = await import("./clientAuth");
   ensureBackgroundAuth(convex);
-  return convex.mutation(anyApi.answers.record, args);
+  return convex.mutation(clientApi.answers.record, args);
 }
 
 /**

@@ -6,7 +6,7 @@
  * Do Not Disturb access has no JS check in our dependencies, so that row ticks as "asked" when
  * the person returns from the system screen, whether or not they turned it on.
  */
-import { anyApi } from "convex/server";
+import { clientApi } from "@puck/client";
 import { useConvex } from "convex/react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Linking, Pressable, StyleSheet, View } from "react-native";
@@ -55,10 +55,10 @@ export function O2Permissions({ clientId, onContinue }: { clientId: string; onCo
           syncClientPushToken(client, clientId).catch(report);
           return;
         case "syncDndFlag":
-          client.mutation(anyApi.clients.setFlags, { clientId, dndAccess: effect.value }).catch(report);
+          client.mutation(clientApi.clients.setFlags, { clientId, dndAccess: effect.value }).catch(report);
           return;
         case "syncFullScreenFlag":
-          client.mutation(anyApi.clients.setFlags, { clientId, fullScreenAllowed: effect.value }).catch(report);
+          client.mutation(clientApi.clients.setFlags, { clientId, fullScreenAllowed: effect.value }).catch(report);
           return;
       }
     },

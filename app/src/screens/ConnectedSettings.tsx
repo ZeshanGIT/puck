@@ -4,6 +4,7 @@
  * settings (`localSettings.ts`), and the notification, full-screen and Do Not Disturb states
  * (`usePhoneStates`). The screens themselves are in `SettingsHost`.
  */
+import { clientApi } from "@puck/client";
 import { anyApi } from "convex/server";
 import { useConvex, useQuery } from "convex/react";
 import Constants from "expo-constants";
@@ -30,9 +31,7 @@ import {
   clientHealth,
   testPageStatus,
   versionText,
-  type ClientItem,
   type HealthSnapshot,
-  type TestAlertView,
   type TestPageStatus,
 } from "../settingsModel";
 import { usePhoneStates } from "../usePhoneStates";
@@ -56,7 +55,7 @@ export function ConnectedSettingsHost({
 }) {
   const client = useConvex();
   const id = clientId ?? null;
-  const clients = useQuery(anyApi.clients.list, id ? {} : "skip") as ClientItem[] | undefined;
+  const clients = useQuery(clientApi.clients.list, id ? {} : "skip");
   const online = useOnline();
   const phone = usePhoneStates();
   const [settings, setSettings] = useState<LocalSettings>(DEFAULT_LOCAL_SETTINGS);
@@ -81,7 +80,7 @@ export function ConnectedSettingsHost({
     if (synced.current === key) return;
     synced.current = key;
     client
-      .mutation(anyApi.clients.setFlags, {
+      .mutation(clientApi.clients.setFlags, {
         clientId: id,
         fullScreenAllowed: phone.states.fullScreen,
         ...(phone.states.dndAccess === null ? {} : { dndAccess: phone.states.dndAccess }),
@@ -134,10 +133,10 @@ export function ConnectedSettingsHost({
         setSettings(await saveLocalSettings(change));
       },
       rename: async (name) => {
-        await client.mutation(anyApi.clients.rename, { clientId: needClient(), name });
+        await client.mutation(clientApi.clients.rename, { clientId: needClient(), name });
       },
       removeClient: async (clientToRemove) => {
-        await client.mutation(anyApi.clients.remove, { clientId: clientToRemove });
+        await client.mutation(clientApi.clients.remove, { clientId: clientToRemove });
       },
       pickRingtone: chooseRingtone,
       fix: async (fix) => {
@@ -173,10 +172,7 @@ export function ConnectedSettingsHost({
   }, [client, id, email, clients, settings, health, about, refresh, onSignOut]);
 
   // What became of the test page S5 sent. While the alert is on screen it is answered there.
-  const alert = useQuery(anyApi.alerts.get, id && nav.testId ? { clientId: id, questionId: nav.testId } : "skip") as
-    | TestAlertView
-    | null
-    | undefined;
+  const alert = useQuery(clientApi.alerts.get, id && nav.testId ? { clientId: id, questionId: nav.testId } : "skip");
   const testStatus: TestPageStatus = nav.testId === null ? { kind: "idle" } : testPageStatus(alert);
 
   const onNavStable = useCallback((next: SettingsNav) => onNav(next), [onNav]);

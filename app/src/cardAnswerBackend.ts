@@ -11,22 +11,19 @@ const FETCH_TIMEOUT_MS = 8_000;
 /** The alert's answers for the card, or null when they cannot be read now. Never throws. */
 export async function fetchCardChoices(questionId: string): Promise<CardChoice[] | null> {
   try {
-    const [{ convex }, { anyApi }, { readClientId }, { ensureBackgroundAuth }] = await Promise.all([
+    const [{ convex }, { clientApi }, { readClientId }, { ensureBackgroundAuth }] = await Promise.all([
       import("./client"),
-      import("convex/server"),
+      import("@puck/client"),
       import("./clientStore"),
       import("./clientAuth"),
     ]);
     const clientId = await readClientId();
     if (!clientId) return null;
     ensureBackgroundAuth(convex);
-    const alert = (await Promise.race([
-      convex.query(anyApi.alerts.get, { clientId, questionId }),
+    const alert = await Promise.race([
+      convex.query(clientApi.alerts.get, { clientId, questionId }),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), FETCH_TIMEOUT_MS)),
-    ])) as {
-      selectionMode: string;
-      options: { id: string; label: string; tone?: string | null; desc?: string | null; rec?: boolean | null }[];
-    } | null;
+    ]);
     return alert ? cardChoices(alert) : null;
   } catch {
     return null;

@@ -6,7 +6,7 @@
  * The receipt for a queued answer is `A7Receipt` with `state="queued"`. The webhook-failing half
  * of A10 is `A7Receipt`'s `failed` state.
  */
-import { anyApi } from "convex/server";
+import { clientApi } from "@puck/client";
 import { type ConvexReactClient, useConvex } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 import { flushAnswerQueue, loadAnswerQueue, type QueuedAnswer } from "../answerQueue";
@@ -60,7 +60,7 @@ export function useAnswerQueueFlush(
 
 /** `answers.record` as `useAnswerQueueFlush` needs it, for a host that has the Convex client at hand. */
 export function recordQueuedAnswer(client: ConvexReactClient, clientId: string, item: QueuedAnswer): Promise<unknown> {
-  return client.mutation(anyApi.answers.record, {
+  return client.mutation(clientApi.answers.record, {
     questionId: item.questionId,
     clientId,
     optionIds: item.optionIds,

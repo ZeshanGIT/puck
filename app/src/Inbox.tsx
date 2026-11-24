@@ -1,5 +1,5 @@
 import { overlayAlertReady } from "puck-full-screen";
-import { anyApi } from "convex/server";
+import { clientApi } from "@puck/client";
 import { useQuery } from "convex/react";
 import { Component, type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { AppState, StyleSheet, View } from "react-native";
@@ -91,11 +91,12 @@ function InboxBody({
       .catch(() => setClientId(null));
   }, []);
   const pending = useQuery(
-    anyApi.alerts.pending,
+    clientApi.alerts.pending,
     clientId === undefined ? "skip" : clientId ? { clientId } : {},
-  ) as PendingAlert[] | undefined;
+  );
   // Waiting alerts in full (the same fields as `pending`), so a snoozed one can open from Needs you.
-  const rawWaiting = useQuery(anyApi.alerts.waiting, clientId ? { clientId } : "skip") as WaitingWireAlert[] | undefined;
+  // The waiting validator accepts strings for fields the query loads from the enum-typed alert row.
+  const rawWaiting = useQuery(clientApi.alerts.waiting, clientId ? { clientId } : "skip") as WaitingWireAlert[] | undefined;
   // Convex sends "no expiry" as null; the alert screens read it as undefined (see `alertExpiry.ts`).
   const waiting = useMemo(() => rawWaiting?.map((alert) => normalizeExpiry(alert)), [rawWaiting]);
   // The alert a notification opened. `alertLaunchMachine` applies it on every render (so a launch is

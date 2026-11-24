@@ -148,7 +148,7 @@ describe("clients", () => {
   test("clientRows puts this phone first, then the most recently seen, and only others can be removed", () => {
     const rows = clientRows(
       [
-        client({ id: "mac", name: "MacBook · CLI", platform: "cli", lastSeenAt: NOW - 4 * MINUTE }),
+        client({ id: "mac", name: "MacBook", platform: "macos", lastSeenAt: NOW - 4 * MINUTE }),
         client({ id: "old", name: "Old phone", lastSeenAt: NOW - 30 * HOUR }),
         client({ id: "me", name: "Pixel 7" }),
       ],
@@ -157,7 +157,7 @@ describe("clients", () => {
     );
     expect(rows.map((row) => row.id)).toEqual(["me", "mac", "old"]);
     expect(rows[0]).toMatchObject({ isThis: true, subtitle: "This phone", removable: false });
-    expect(rows[1]).toMatchObject({ isThis: false, subtitle: "Last seen 4 min ago", removable: true });
+    expect(rows[1]).toMatchObject({ platform: "macos", isThis: false, subtitle: "Last seen 4 min ago", removable: true });
     expect(rows[2]?.subtitle).toBe("Last seen 1 d ago");
   });
 

@@ -6,6 +6,8 @@
     "@clerk/expo-google-signin": "^1.1.0",
     "@expo-google-fonts/nunito": "^0.4.2",
     "@notifee/react-native": "^9.1.8",
+    "@puck/appearance": "workspace:*",
+    "@puck/client": "workspace:*",
     "@puck/shared": "workspace:*",
     "babel-preset-expo": "~58.0.0",
     "convex": "1.48.0",
