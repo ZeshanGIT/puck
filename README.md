@@ -23,13 +23,13 @@ Every bot pairs with a six-digit code you approve on the phone, and has its own 
 
 ## Status
 
-A personal project in active development, used daily on one Pixel 7. Puck for Mac is available as a local development build and uses the development backend. Test releases of the Android app and the `puck` CLI use a separate production backend.
+A personal project in active development, used daily on one Pixel 7. Puck for Mac is available as a local development build and uses the development backend. Test releases of the Android app and the `puck` CLI use a separate production backend, which the owner and testers share; each Google account sees only its own bots and alerts.
 
 ## Try Puck (testers)
 
 > The first test release is not published yet. These steps apply once it appears on the [Releases page](https://github.com/ZeshanGIT/puck/releases).
 
-You need an Android phone (Android 7 or newer) and a Mac (Apple Silicon or Intel) or a Linux x64 machine for the CLI. Use the same Google account on both. While Puck is in testing, the owner has to add your Google account first, so send it to the owner before you start.
+You need an Android phone (Android 7 or newer) and a Mac (Apple Silicon or Intel) or a Linux x64 machine for the CLI. Use the same Google account on both. Your bots and alerts are private to your account: other people testing on the same server never see them.
 
 ### 1. Install the Android app
 
@@ -204,7 +204,7 @@ Test releases are built by hand on a Mac and published to GitHub Releases. Two *
 | --- | --- | --- |
 | Convex | `usable-mule-44` | the production deployment |
 | Clerk | `in-lemming-9901.clerk.accounts.dev` | the same instance for now |
-| Who uses it | local and Pixel builds, `bun run dev` CLI | testers: the released APK and CLI binaries |
+| Who uses it | local and Pixel builds, `bun run dev` CLI | testers and the owner: the released APK and CLI binaries |
 
 The profile is chosen explicitly at build time, never by editing code:
 
@@ -248,6 +248,8 @@ It checks the build's commit is on `origin/main` and the checksums match, then c
 ## Backend (`backend/`)
 
 The Convex project stores bots, alerts and answers (`convex/schema.ts`) and serves `GET /health`, `POST /alerts` and `GET /alerts/<questionId>`. The dev deployment is `usable-mule-44` (team `sthx-sthx`, project `puck`): the client URL is `https://usable-mule-44.convex.cloud` and HTTP actions are at `https://usable-mule-44.convex.site`. `convex/http.ts` uses the generated `httpAction`, and internal calls use `internal` from `convex/_generated/api`.
+
+Several people can share one deployment. Each alert belongs to its bot's owner (the Google account that paired the bot), and the backend shows, pushes and accepts answers for an alert only on that owner's devices. Another person's question id behaves like one that doesn't exist. Data from before this change is stamped by internal migrations in `convex/migrations.ts`, each with a `dryRun` mode; see `docs/multi-user.md`.
 
 `POST /alerts` and `GET /alerts/<questionId>` authenticate with the headers `X-Puck-Bot-Id` (the public id, such as `sheldon-23648`) and `Authorization: Bearer <secret>`. The secret is hashed and compared with `bots.secretHash`. A paired bot's `POST /alerts` returns `{ "questionId": "q_..." }` immediately. The body is a question, `priority` (`normal` or `urgent`), `selectionMode` (`single` or `multi`) and `options` (`id`, `label`, optional `icon`).
 
