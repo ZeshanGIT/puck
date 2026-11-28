@@ -565,6 +565,34 @@ describe("migrations", () => {
     expect(again.skipped.find((s) => s.botId === looseId)?.reason).toBe("already owned by this user");
   });
 
+  test("reassignOwner moves one user's bots, alerts and nothing else; dry run writes nothing", async () => {
+    const { t, botA, botB } = world;
+    const pendingB = await addBot(t, { userId: "user_b", pairingState: "pending" });
+    const builtIn = await addBot(t, { builtIn: true, id: "puck-builtin" });
+    const alertB = await addAlert(t, botB, { userId: "user_b" });
+    const alertA = await addAlert(t, botA, { userId: "user_a" });
+    const [botBId, pendingBId] = await botIds(t, [botB, pendingB]);
+    const owner = async (id: Id<"bots"> | Id<"alerts">) => (await t.run((ctx) => ctx.db.get(id)))?.userId;
+
+    const dry = await t.mutation(internal.migrations.reassignOwner, { fromUserId: "user_b", toUserId: "user_a", dryRun: true });
+    expect(dry).toEqual({ dryRun: true, bots: [botBId, pendingBId].sort(), alerts: 1, moreAlerts: false, liveActivities: 0 });
+    expect(await owner(botB)).toBe("user_b");
+    expect(await owner(alertB.id)).toBe("user_b");
+
+    const real = await t.mutation(internal.migrations.reassignOwner, { fromUserId: "user_b", toUserId: "user_a", dryRun: false });
+    expect(real.bots).toEqual([botBId, pendingBId].sort());
+    expect(await owner(botB)).toBe("user_a");
+    expect(await owner(pendingB)).toBe("user_a");
+    expect(await owner(alertB.id)).toBe("user_a");
+    expect(await owner(alertA.id)).toBe("user_a");
+    expect(await owner(builtIn)).toBeUndefined();
+    const again = await t.mutation(internal.migrations.reassignOwner, { fromUserId: "user_b", toUserId: "user_a", dryRun: false });
+    expect(again).toMatchObject({ bots: [], alerts: 0 });
+    await expect(
+      t.mutation(internal.migrations.reassignOwner, { fromUserId: "user_a", toUserId: "user_a", dryRun: true }),
+    ).rejects.toThrow("the same");
+  });
+
   test("backfillAlertOwners stamps derived owners, reports unresolved ones, and is paginated and idempotent", async () => {
     const { t, botA, botB, clientA } = world;
     const builtIn = await addBot(t, { builtIn: true, id: "puck-builtin" });

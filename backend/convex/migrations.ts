@@ -100,3 +100,58 @@ export const backfillAlertOwners = internalMutationGeneric({
     };
   },
 });
+
+const REASSIGN_ALERT_BATCH = 500;
+
+/**
+ * Moves everything one Clerk user owns to another: their bots (paired and pending, never the
+ * built-in bot), the alerts stamped with their `userId`, and their live activities. Clients are
+ * left alone (a client belongs to the account that signed in on it). Used on dev to keep every
+ * existing bot paging the owner's current account. Reversible by running it the other way with
+ * the bot ids it returns. Alerts move in batches: call again until `moreAlerts` is false.
+ */
+export const reassignOwner = internalMutationGeneric({
+  args: { fromUserId: v.string(), toUserId: v.string(), dryRun: v.boolean() },
+  returns: v.object({
+    dryRun: v.boolean(),
+    bots: v.array(v.string()),
+    alerts: v.number(),
+    moreAlerts: v.boolean(),
+    liveActivities: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const from = args.fromUserId.trim();
+    const to = args.toUserId.trim();
+    if (from === "" || to === "") throw new Error("fromUserId and toUserId are required");
+    if (from === to) throw new Error("fromUserId and toUserId are the same");
+    const bots: string[] = [];
+    // Every pairing state: the index's first field alone covers paired and pending rows.
+    const rows = await ctx.db
+      .query("bots")
+      .withIndex("by_user_pairing", (q) => q.eq("userId", from))
+      .collect();
+    for (const bot of rows) {
+      if (bot.builtIn === true) continue;
+      if (!args.dryRun) await ctx.db.patch(bot._id, { userId: to });
+      bots.push(bot.id);
+    }
+    const alerts = await ctx.db
+      .query("alerts")
+      .withIndex("by_user", (q) => q.eq("userId", from))
+      .take(REASSIGN_ALERT_BATCH + 1);
+    const moving = alerts.slice(0, REASSIGN_ALERT_BATCH);
+    if (!args.dryRun) for (const alert of moving) await ctx.db.patch(alert._id, { userId: to });
+    const live = await ctx.db
+      .query("liveActivities")
+      .withIndex("by_user", (q) => q.eq("userId", from))
+      .collect();
+    if (!args.dryRun) for (const row of live) await ctx.db.patch(row._id, { userId: to });
+    return {
+      dryRun: args.dryRun,
+      bots: bots.sort(),
+      alerts: moving.length,
+      moreAlerts: alerts.length > REASSIGN_ALERT_BATCH,
+      liveActivities: live.length,
+    };
+  },
+});
