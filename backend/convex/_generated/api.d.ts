@@ -17,6 +17,7 @@ import type * as delivery from "../delivery.js";
 import type * as device from "../device.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
+import type * as lib_alertAccess from "../lib/alertAccess.js";
 import type * as lib_alertFields from "../lib/alertFields.js";
 import type * as lib_alertHistory from "../lib/alertHistory.js";
 import type * as lib_attachments from "../lib/attachments.js";
@@ -31,9 +32,11 @@ import type * as lib_deliveryRetry from "../lib/deliveryRetry.js";
 import type * as lib_deviceAuth from "../lib/deviceAuth.js";
 import type * as lib_fcm from "../lib/fcm.js";
 import type * as lib_liveRules from "../lib/liveRules.js";
+import type * as lib_ownership from "../lib/ownership.js";
 import type * as lib_pairingRules from "../lib/pairingRules.js";
 import type * as lib_pushTargets from "../lib/pushTargets.js";
 import type * as live from "../live.js";
+import type * as migrations from "../migrations.js";
 import type * as push from "../push.js";
 
 import type {
@@ -52,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   device: typeof device;
   files: typeof files;
   http: typeof http;
+  "lib/alertAccess": typeof lib_alertAccess;
   "lib/alertFields": typeof lib_alertFields;
   "lib/alertHistory": typeof lib_alertHistory;
   "lib/attachments": typeof lib_attachments;
@@ -66,9 +70,11 @@ declare const fullApi: ApiFromModules<{
   "lib/deviceAuth": typeof lib_deviceAuth;
   "lib/fcm": typeof lib_fcm;
   "lib/liveRules": typeof lib_liveRules;
+  "lib/ownership": typeof lib_ownership;
   "lib/pairingRules": typeof lib_pairingRules;
   "lib/pushTargets": typeof lib_pushTargets;
   live: typeof live;
+  migrations: typeof migrations;
   push: typeof push;
 }>;
 

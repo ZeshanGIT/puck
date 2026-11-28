@@ -14,6 +14,8 @@ import { requireDevice } from "./device";
 import { assertDistinctStorageIds, reconcileAttachment } from "./lib/attachments";
 import { requireClient } from "./lib/clientAuth";
 import { decideRetry } from "./lib/deliveryRetry";
+import { viewerMayAccess } from "./lib/alertAccess";
+import type { Viewer } from "./lib/ownership";
 import { alertIsForClient } from "./lib/pushTargets";
 import { storedAttachment } from "./schema";
 
@@ -41,11 +43,13 @@ export const record = mutationGeneric({
   handler: async (ctx, args) => {
     const client = args.clientId === undefined ? null : await requireClient(ctx, args.clientId);
     if (!client) await requireDevice(ctx);
+    const viewer: Viewer = client ? { kind: "user", userId: client.userId } : { kind: "device" };
     const alert = await ctx.db
       .query("alerts")
       .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))
       .unique();
-    if (!alert) throw new Error("alert not found");
+    // Another user's alert is "not found", the same as a missing one, so ids do not leak.
+    if (!alert || !(await viewerMayAccess(ctx, alert, viewer))) throw new Error("alert not found");
     const decision = decideAlert(alert.status, { type: "answer" });
     if (decision.rejection !== null) throw new Error(decision.rejection);
     const now = Date.now();
@@ -129,7 +133,9 @@ export const snooze = mutationGeneric({
       .query("alerts")
       .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))
       .unique();
-    if (!alert) throw new Error("alert not found");
+    if (!alert || !(await viewerMayAccess(ctx, alert, { kind: "user", userId: client.userId }))) {
+      throw new Error("alert not found");
+    }
     const decision = decideAlert(alert.status, { type: "snooze" });
     if (decision.rejection !== null) throw new Error(decision.rejection);
     const now = Date.now();
@@ -182,12 +188,12 @@ export const receipt = queryGeneric({
     v.object({ state: RECEIPT_STATES, botName: v.string(), attempts: v.number(), exhausted: v.boolean() }),
   ),
   handler: async (ctx, args) => {
-    await requireClient(ctx, args.clientId);
+    const client = await requireClient(ctx, args.clientId);
     const alert = await ctx.db
       .query("alerts")
       .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))
       .unique();
-    if (!alert) return null;
+    if (!alert || !(await viewerMayAccess(ctx, alert, { kind: "user", userId: client.userId }))) return null;
     const bot = await ctx.db.get(alert.botId);
     const answer = await ctx.db
       .query("answers")
@@ -216,7 +222,13 @@ export const retryDelivery = mutationGeneric({
     const answer = await ctx.db.get(args.answerId);
     if (!answer) throw new Error("answer not found");
     const alert = await ctx.db.get(answer.alertId);
-    if (!alert || !alertIsForClient(alert.targetClientId, client._id)) throw new Error("answer not found");
+    if (
+      !alert ||
+      !(await viewerMayAccess(ctx, alert, { kind: "user", userId: client.userId })) ||
+      !alertIsForClient(alert.targetClientId, client._id)
+    ) {
+      throw new Error("answer not found");
+    }
     const now = Date.now();
     const decision = decideRetry(
       { deliveryStatus: answer.deliveryStatus, lastRetryAt: answer.lastRetryAt ?? null },

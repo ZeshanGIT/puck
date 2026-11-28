@@ -23,9 +23,17 @@ export function isOpenRequestFor(bot: PairingBot, userId: string, now: number): 
   return pairingStatusOf(bot, now) === "pending" && bot.userId === userId;
 }
 
-/** Whether a pending bot counts against the pending cap (rejected requests do not). */
-export function countsTowardPendingCap(bot: { pairingState: "pending" | "paired"; rejectedAt?: number }): boolean {
-  return bot.pairingState === "pending" && bot.rejectedAt === undefined;
+/**
+ * Whether a pending bot counts against the pending cap: rejected requests do not, and with `now`
+ * neither do expired ones (a request nobody approved in time must not lock the owner out).
+ */
+export function countsTowardPendingCap(
+  bot: { pairingState: "pending" | "paired"; rejectedAt?: number; pairingCodeExpiresAt?: number },
+  now?: number,
+): boolean {
+  if (bot.pairingState !== "pending" || bot.rejectedAt !== undefined) return false;
+  if (now === undefined) return true;
+  return bot.pairingCodeExpiresAt !== undefined && bot.pairingCodeExpiresAt >= now;
 }
 
 /** Why `approvePairing` refuses a code (plain errors for the app and CLI). */
@@ -52,6 +60,9 @@ export function approvePairingBlock(
     return { kind: "already_used" };
   }
   if (bot.pairingState !== "pending") return { kind: "not_found" };
+  // The legacy device (no user) may only approve a request that has no owner; a signed-in
+  // owner's request is theirs alone.
+  if (callerUserId === null && bot.userId !== undefined) return { kind: "not_found" };
   if (callerUserId !== null && bot.userId !== undefined && bot.userId !== callerUserId) {
     return { kind: "wrong_owner" };
   }

@@ -10,7 +10,7 @@ import {
 import { internalMutationGeneric, internalQueryGeneric, mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { clerkIssuer, requireClient, requireUser } from "./lib/clientAuth";
 import { clerkSubject } from "./lib/clientRules";
 import { requireDevice } from "./device";
@@ -26,8 +26,33 @@ import {
   pairingStatusOf,
 } from "./lib/pairingRules";
 import { tallyWaiting, validateBotColour, validateBotShape, validateMutedUntil } from "./lib/botSettings";
+import { alertsByStatusFor } from "./lib/alertAccess";
 import { selectPushTargets } from "./lib/pushTargets";
 
+// Loose field types, like the rest of this file's rows (the `...Generic` handlers see `any` fields).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BotRow = { [K in keyof Doc<"bots">]: any };
+
+/**
+ * A user's pending pairing rows, newest first (`userId` undefined is the ownerless set: anonymous
+ * CLI and legacy rows). Through the owner index, so one user's pile never hides another's.
+ */
+async function pendingFor(ctx: QueryCtx | MutationCtx, userId: string | undefined): Promise<BotRow[]> {
+  return await ctx.db
+    .query("bots")
+    .withIndex("by_user_pairing", (q) => q.eq("userId", userId).eq("pairingState", "pending"))
+    .order("desc")
+    .take(PENDING_BOT_CAP * 10);
+}
+
+async function pairedFor(ctx: QueryCtx, userId: string): Promise<BotRow[]> {
+  return await ctx.db
+    .query("bots")
+    .withIndex("by_user_pairing", (q) => q.eq("userId", userId).eq("pairingState", "paired"))
+    .take(LIST_SCAN);
+}
+
+const LIST_SCAN = 200;
 const PAIRING_TTL_MS = 15 * 60 * 1000;
 const MAX_OWNER_CLIENTS = 50;
 const DUMMY_HASH = "0".repeat(64);
@@ -74,11 +99,16 @@ export const createPairing = mutationGeneric({
     pairingCode: v.string(),
   }),
   handler: async (ctx, args) => {
-    const pending = await ctx.db
-      .query("bots")
-      .withIndex("by_pairingState", (q) => q.eq("pairingState", "pending"))
-      .take(PENDING_BOT_CAP);
-    if (tooManyPendingBots(pending.filter(countsTowardPendingCap).length)) throw new Error(TOO_MANY_PENDING_BOTS);
+    // The cap is per owner: a signed-in CLI counts its own user's open requests, an anonymous one
+    // counts the ownerless ones. Expired and rejected requests do not count. TTL is the same for
+    // every request, so the newest rows are the unexpired ones; the window is wide enough to see past
+    // a few rejected rows.
+    const userId = await signedInUserId(ctx);
+    const pending = await pendingFor(ctx, userId ?? undefined);
+    const nowForCap = Date.now();
+    if (tooManyPendingBots(pending.filter((bot) => countsTowardPendingCap(bot, nowForCap)).length)) {
+      throw new Error(TOO_MANY_PENDING_BOTS);
+    }
     let pairing;
     try {
       pairing = validatePairingInput(args);
@@ -123,7 +153,6 @@ export const createPairing = mutationGeneric({
 
     // Signed in: the request belongs to this user, and their phone gets the pairing push. The code
     // is kept encrypted so their phone can show it for comparing with the terminal.
-    const userId = await signedInUserId(ctx);
     const botDocId = await ctx.db.insert("bots", {
       id: botId,
       name: pairing.name,
@@ -169,7 +198,8 @@ export const approvePairing = mutationGeneric({
     const block = approvePairingBlock(bot, callerUserId, now);
     if (block.kind === "adopt_paired") {
       if (!bot) throw new Error("pairing approval invariant");
-      await ctx.db.patch(bot._id, { userId: callerUserId! });
+      // Adopted: the code is spent, so it cannot be used a second time.
+      await ctx.db.patch(bot._id, { userId: callerUserId!, pairingCodeHash: undefined });
       return { botId: bot.id };
     }
     if (block.kind !== "ok_pending") failApprovePairing(block);
@@ -177,6 +207,8 @@ export const approvePairing = mutationGeneric({
     await ctx.db.patch(bot._id, {
       pairingState: "paired",
       pairingCodeCipher: undefined,
+      // The code works once.
+      pairingCodeHash: undefined,
       ...(callerUserId !== null && bot.userId === undefined ? { userId: callerUserId } : {}),
     });
     return { botId: bot.id };
@@ -285,10 +317,7 @@ export const pairingRequests = queryGeneric({
   handler: async (ctx, args) => {
     const client = await requireClient(ctx, args.clientId);
     const now = Date.now();
-    const rows = await ctx.db
-      .query("bots")
-      .withIndex("by_pairingState", (q) => q.eq("pairingState", "pending"))
-      .take(PENDING_BOT_CAP * 10);
+    const rows = await pendingFor(ctx, client.userId);
     const views = [];
     for (const bot of rows) {
       if (!isOpenRequestFor(bot, client.userId, now) || bot.pairingCodeCipher === undefined) continue;
@@ -386,7 +415,6 @@ export const loadPairingPush = internalQueryGeneric({
 
 /* ------------------------------------------------------------ owner settings (B1, B2) */
 
-const LIST_SCAN = 200;
 const MAX_OWNED_BOTS = 50;
 const RECENT_PER_BOT = 1;
 
@@ -438,22 +466,14 @@ export const list = queryGeneric({
   handler: async (ctx, args) => {
     const client = await requireClient(ctx, args.clientId);
     const now = Date.now();
-    const scanned = await ctx.db
-      .query("bots")
-      .withIndex("by_pairingState", (q) => q.eq("pairingState", "paired"))
-      .take(LIST_SCAN);
+    const scanned = await pairedFor(ctx, client.userId);
     const mine = scanned
-      .filter((bot) => bot.userId === client.userId && bot.builtIn !== true && bot.removedAt === undefined)
+      .filter((bot) => bot.builtIn !== true && bot.removedAt === undefined)
       .slice(0, MAX_OWNED_BOTS);
+    const viewer = { kind: "user", userId: client.userId } as const;
     const waiting = [
-      ...(await ctx.db
-        .query("alerts")
-        .withIndex("by_status", (q) => q.eq("status", "pending"))
-        .take(LIST_SCAN)),
-      ...(await ctx.db
-        .query("alerts")
-        .withIndex("by_status", (q) => q.eq("status", "snoozed"))
-        .take(LIST_SCAN)),
+      ...(await alertsByStatusFor(ctx, viewer, "pending", LIST_SCAN)),
+      ...(await alertsByStatusFor(ctx, viewer, "snoozed", LIST_SCAN)),
     ];
     const waitingCounts = tallyWaiting(
       waiting.map((alert) => ({ botId: alert.botId as string, status: alert.status, expiresAt: alert.expiresAt })),

@@ -29,6 +29,8 @@ import { requireClient } from "./lib/clientAuth";
 import { pickAlertExtras, storedOption, type StoredOptionInput } from "./lib/alertFields";
 import { newQuestionId } from "./lib/crypto";
 import { selectDismissTargets } from "./lib/fcm";
+import { alertsByStatusFor, alertOwner, newOwnerCache, viewerMayAccess } from "./lib/alertAccess";
+import { deriveAlertOwner, type Viewer } from "./lib/ownership";
 import { alertIsForClient, selectPushTargets } from "./lib/pushTargets";
 import {
   alertExtraFields,
@@ -58,6 +60,8 @@ interface NewAlert extends AlertExtras {
   options: StoredOptionInput[];
   scheduledFor: number | null;
   targetClientId?: string;
+  /** The target client's user, for a built-in test page (the built-in bot has no owner of its own). */
+  ownerUserId?: string;
 }
 
 /** Allocates a question id, inserts the alert and schedules its push (or its release). */
@@ -81,6 +85,12 @@ async function insertAlert(ctx: MutationCtx, botDocId: Id<"bots">, args: NewAler
   if (!questionId) throw new Error("could not allocate a question id");
 
   const now = Date.now();
+  // The alert's owner: the bot's owner, or for the built-in bot the target client's user.
+  const owner = deriveAlertOwner({
+    alertUserId: null,
+    bot,
+    targetClientUserId: bot.builtIn === true ? (args.ownerUserId ?? null) : null,
+  });
   const scheduledFor = args.scheduledFor === null ? undefined : args.scheduledFor;
   const status = initialAlertStatus(scheduledFor ?? null, now);
   const alertId = await ctx.db.insert("alerts", {
@@ -95,6 +105,7 @@ async function insertAlert(ctx: MutationCtx, botDocId: Id<"bots">, args: NewAler
     ...(scheduledFor === undefined ? {} : { scheduledFor }),
     ...(args.targetClientId ? { targetClientId: args.targetClientId } : {}),
     ...pickAlertExtras(args),
+    ...(owner === null ? {} : { userId: owner }),
     createdAt: now,
     updatedAt: now,
   });
@@ -140,9 +151,11 @@ export const cancelTests = mutationGeneric({
   handler: async (ctx, args) => {
     const client = await requireClient(ctx, args.clientId);
     const botDocId = await getOrCreateBuiltInBot(ctx);
+    const viewer: Viewer = { kind: "user", userId: client.userId };
+    const cache = newOwnerCache();
     let cancelled = 0;
     for (const status of ["pending", "scheduled"] as const) {
-      const rows = await ctx.db.query("alerts").withIndex("by_status", (q) => q.eq("status", status)).take(100);
+      const rows = await alertsByStatusFor(ctx, viewer, status, 100, cache);
       for (const alert of rows) {
         if (alert.botId !== botDocId || alert.targetClientId !== client._id) continue;
         await ctx.db.patch(alert._id, { status: "cancelled", updatedAt: Date.now() });
@@ -163,10 +176,10 @@ export const sendTest = mutationGeneric({
     // same scheduler as `puck schedule`. A delayed page replaces any unanswered one.
     const delayMs = Math.min(60, Math.max(0, Math.floor(args.delaySeconds ?? 0))) * 1000;
     const statuses = delayMs > 0 ? (["pending", "scheduled"] as const) : (["pending"] as const);
+    const viewer: Viewer = { kind: "user", userId: client.userId };
+    const cache = newOwnerCache();
     const rows = [];
-    for (const status of statuses) {
-      rows.push(...(await ctx.db.query("alerts").withIndex("by_status", (q) => q.eq("status", status)).take(100)));
-    }
+    for (const status of statuses) rows.push(...(await alertsByStatusFor(ctx, viewer, status, 100, cache)));
     const mine = rows.filter((alert) => alert.botId === botDocId && alert.targetClientId === client._id);
     if (delayMs > 0) {
       for (const alert of mine) await ctx.db.patch(alert._id, { status: "cancelled", updatedAt: Date.now() });
@@ -178,6 +191,7 @@ export const sendTest = mutationGeneric({
         options: [...TEST_PAGE_OPTIONS],
         scheduledFor: Date.now() + delayMs,
         targetClientId: client._id,
+        ownerUserId: client.userId,
       });
     }
     const decision = decideTestPage(
@@ -198,6 +212,7 @@ export const sendTest = mutationGeneric({
       options: [...TEST_PAGE_OPTIONS],
       scheduledFor: null,
       targetClientId: client._id,
+      ownerUserId: client.userId,
     });
   },
 });
@@ -256,10 +271,7 @@ export const wakeSnoozed = mutationGeneric({
   returns: v.object({ woken: v.number() }),
   handler: async (ctx, args) => {
     const client = await requireClient(ctx, args.clientId);
-    const rows = await ctx.db
-      .query("alerts")
-      .withIndex("by_status", (q) => q.eq("status", "snoozed"))
-      .take(100);
+    const rows = await alertsByStatusFor(ctx, { kind: "user", userId: client.userId }, "snoozed", 100);
     let woken = 0;
     for (const alert of rows) {
       if (alert.snoozedByClientId !== client._id) continue;
@@ -294,12 +306,12 @@ export const state = queryGeneric({
     }),
   ),
   handler: async (ctx, args) => {
-    await requireClient(ctx, args.clientId);
+    const client = await requireClient(ctx, args.clientId);
     const alert = await ctx.db
       .query("alerts")
       .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))
       .unique();
-    if (!alert) return null;
+    if (!alert || !(await viewerMayAccess(ctx, alert, { kind: "user", userId: client.userId }))) return null;
     const answeredBy = alert.answeredByClientId ? await ctx.db.get(alert.answeredByClientId) : null;
     const answer =
       alert.status === "answered"
@@ -319,11 +331,26 @@ export const state = queryGeneric({
 
 /** Push tokens that should drop an alert someone else answered or snoozed. Tokens stay out of logs. */
 export const loadDismissTargets = internalQueryGeneric({
-  args: { exceptClientId: v.optional(v.string()) },
+  args: { exceptClientId: v.optional(v.string()), questionId: v.optional(v.string()) },
   returns: v.array(v.string()),
   handler: async (ctx, args) => {
-    const clients = await ctx.db.query("clients").take(MAX_PUSH_CLIENTS);
-    const device = await ctx.db.query("device").first();
+    // Only the alert's owner's clients drop it (the legacy device only for an ownerless alert).
+    // With no question id, or an alert that is gone, nobody is told: fail closed.
+    if (args.questionId === undefined) return [];
+    const alert = await ctx.db
+      .query("alerts")
+      .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId!))
+      .unique();
+    if (!alert) return [];
+    const owner = await alertOwner(ctx, alert);
+    const clients =
+      owner === null
+        ? []
+        : await ctx.db
+            .query("clients")
+            .withIndex("by_userId", (q) => q.eq("userId", owner))
+            .take(MAX_PUSH_CLIENTS);
+    const device = owner === null ? await ctx.db.query("device").first() : null;
     return selectDismissTargets({
       clients: clients.map((row) => ({
         id: row._id as string,
@@ -369,20 +396,18 @@ export const listForBot = internalQueryGeneric({
   args: { botDocId: v.id("bots") },
   returns: v.array(listedAlert),
   handler: async (ctx, args) => {
-    const pending = await ctx.db
-      .query("alerts")
-      .withIndex("by_status", (q) => q.eq("status", "pending"))
-      .take(50);
-    const scheduled = await ctx.db
-      .query("alerts")
-      .withIndex("by_status", (q) => q.eq("status", "scheduled"))
-      .take(50);
-    const snoozed = await ctx.db
-      .query("alerts")
-      .withIndex("by_status", (q) => q.eq("status", "snoozed"))
-      .take(50);
-    return [...pending, ...scheduled, ...snoozed]
-      .filter((alert) => alert.botId === args.botDocId)
+    // Through the bot's own index, so another bot's (or user's) alerts never crowd these out.
+    const rows = [];
+    for (const status of ["pending", "scheduled", "snoozed"] as const) {
+      rows.push(
+        ...(await ctx.db
+          .query("alerts")
+          .withIndex("by_bot", (q) => q.eq("botId", args.botDocId))
+          .filter((q) => q.eq(q.field("status"), status))
+          .take(50)),
+      );
+    }
+    return rows
       .map((alert) => ({
         questionId: alert.questionId,
         question: alert.question,
@@ -418,10 +443,9 @@ export const pending = queryGeneric({
   handler: async (ctx, args) => {
     const client = args.clientId === undefined ? null : await requireClient(ctx, args.clientId);
     if (!client) await requireDevice(ctx);
-    const rows = await ctx.db
-      .query("alerts")
-      .withIndex("by_status", (q) => q.eq("status", "pending"))
-      .take(32);
+    // A signed-in client reads its own user's alerts; the legacy device reads only ownerless ones.
+    const viewer: Viewer = client ? { kind: "user", userId: client.userId } : { kind: "device" };
+    const rows = await alertsByStatusFor(ctx, viewer, "pending", 100);
     const views = [];
     for (const alert of rows) {
       if (client && !alertIsForClient(alert.targetClientId, client._id)) continue;
@@ -484,9 +508,16 @@ export const loadForPush = internalQueryGeneric({
     }
     // A muted bot's alert still lands under Needs you (alerts.pending and waiting), with no push.
     if (alertPushMode(bot, Date.now()) === "muted") return { send: false as const, reason: "muted" as const };
-    // The app is single-user for now, so every client is a target. The bot's owner arrives with pairing.
-    const clients = await ctx.db.query("clients").take(MAX_PUSH_CLIENTS);
-    const device = await ctx.db.query("device").first();
+    // Only the owner's clients are targets; the legacy device only gets an ownerless alert.
+    const owner = await alertOwner(ctx, alert);
+    const clients =
+      owner === null
+        ? []
+        : await ctx.db
+            .query("clients")
+            .withIndex("by_userId", (q) => q.eq("userId", owner))
+            .take(MAX_PUSH_CLIENTS);
+    const device = owner === null ? await ctx.db.query("device").first() : null;
     const targets = selectPushTargets({
       clients: clients.map((row) => ({
         id: row._id as string,
@@ -633,12 +664,11 @@ export const waiting = queryGeneric({
   handler: async (ctx, args) => {
     const client = await requireClient(ctx, args.clientId);
     const now = Date.now();
+    const viewer: Viewer = { kind: "user", userId: client.userId };
+    const cache = newOwnerCache();
     const views: Array<{ status: "pending" | "snoozed"; view: WaitingView }> = [];
     for (const status of ["pending", "snoozed"] as const) {
-      const rows = await ctx.db
-        .query("alerts")
-        .withIndex("by_status", (q) => q.eq("status", status))
-        .take(100);
+      const rows = await alertsByStatusFor(ctx, viewer, status, 100, cache);
       const found: WaitingView[] = [];
       for (const alert of rows) {
         if (!alertIsForClient(alert.targetClientId, client._id)) continue;
@@ -701,10 +731,27 @@ export const history = queryGeneric({
   handler: async (ctx, args) => {
     const client = await requireClient(ctx, args.clientId);
     const now = Date.now();
-    // Pages are picked out of creation order per client; a per-client index is needed for many users.
-    const result = await ctx.db.query("alerts").order("desc").paginate(args.paginationOpts);
+    // Pages come from this user's index, newest first. Legacy rows with no `userId` yet (before the
+    // backfill) are older than every stamped row, so the owner's ones are added on the last page.
+    const result = await ctx.db
+      .query("alerts")
+      .withIndex("by_user", (q) => q.eq("userId", client.userId))
+      .order("desc")
+      .paginate(args.paginationOpts);
+    const rows = [...result.page];
+    if (result.isDone) {
+      const cache = newOwnerCache();
+      const legacy = await ctx.db
+        .query("alerts")
+        .withIndex("by_user", (q) => q.eq("userId", undefined))
+        .order("desc")
+        .take(100);
+      for (const alert of legacy) {
+        if (await viewerMayAccess(ctx, alert, { kind: "user", userId: client.userId }, cache)) rows.push(alert);
+      }
+    }
     const page = [];
-    for (const alert of result.page) {
+    for (const alert of rows) {
       if (!alertIsForClient(alert.targetClientId, client._id)) continue;
       const outcome = historyOutcome({ status: alert.status, expiresAt: alert.expiresAt ?? null }, now);
       if (outcome === null) continue;
@@ -800,7 +847,8 @@ export const get = queryGeneric({
       .query("alerts")
       .withIndex("by_questionId", (q) => q.eq("questionId", args.questionId))
       .unique();
-    if (!alert || !alertIsForClient(alert.targetClientId, client._id)) return null;
+    if (!alert || !(await viewerMayAccess(ctx, alert, { kind: "user", userId: client.userId }))) return null;
+    if (!alertIsForClient(alert.targetClientId, client._id)) return null;
     const bot = await ctx.db.get(alert.botId);
     if (!bot) return null;
     const now = Date.now();

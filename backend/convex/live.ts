@@ -293,12 +293,14 @@ export const forUser = queryGeneric({
   handler: async (ctx, args) => {
     const client = await requireClient(ctx, args.clientId);
     const now = Date.now();
+    // Through the user's own index: another user's busy bots never crowd these out of a global window.
     const rows = await ctx.db
       .query("liveActivities")
-      .withIndex("by_state", (q) => q.eq("state", "running"))
+      .withIndex("by_user", (q) => q.eq("userId", client.userId))
+      .order("desc")
       .take(SCAN);
     const mine = rows
-      .filter((row) => row.userId === client.userId && effectiveState(row, now) === "running")
+      .filter((row) => row.state === "running" && effectiveState(row, now) === "running")
       .sort((a, b) => a.startedAt - b.startedAt)
       .slice(0, MAX_LIST);
     const views = [];

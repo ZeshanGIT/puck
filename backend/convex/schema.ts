@@ -116,7 +116,9 @@ export default defineSchema({
   })
     .index("by_publicId", ["id"])
     .index("by_pairingCodeHash", ["pairingCodeHash"])
-    .index("by_pairingState", ["pairingState"]),
+    .index("by_pairingState", ["pairingState"])
+    // Per-owner pairing cap and lists. `userId` undefined is the ownerless (anonymous CLI or legacy) set.
+    .index("by_user_pairing", ["userId", "pairingState"]),
 
   // One phone. The secret is stored only as a hash. A second claim is rejected.
   // pushToken is the FCM registration token. Logs must not print it.
@@ -163,12 +165,18 @@ export default defineSchema({
     snoozedUntil: v.optional(v.number()),
     snoozedByClientId: v.optional(v.id("clients")),
     ...alertExtraFields,
+    // The Clerk user that owns the alert (the bot's owner, or for a built-in test page the target
+    // client's user). Optional so older rows stay valid until `migrations.backfillAlertOwners` has
+    // run; readers fall back to the derived owner (`lib/ownership.ts`). Release plan: widen, migrate, narrow.
+    userId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_questionId", ["questionId"])
     .index("by_bot", ["botId"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_user", ["userId"]),
 
   answers: defineTable({
     alertId: v.id("alerts"),

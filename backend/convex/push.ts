@@ -115,6 +115,7 @@ export const sendDismiss = internalActionGeneric({
   returns: v.null(),
   handler: async (ctx, args) => {
     const tokens = await ctx.runQuery(internal.alerts.loadDismissTargets, {
+      questionId: args.questionId,
       ...(args.exceptClientId === undefined ? {} : { exceptClientId: args.exceptClientId }),
     });
     if (tokens.length === 0) return null;

@@ -72,6 +72,15 @@ describe("approvePairingBlock", () => {
     });
   });
 
+  test("the legacy device (no user) cannot approve a request that has an owner", () => {
+    expect(approvePairingBlock(open, null, NOW)).toEqual({ kind: "not_found" });
+  });
+
+  test("the legacy device can still approve an ownerless pending request", () => {
+    const unsigned = { pairingState: "pending" as const, pairingCodeExpiresAt: NOW + 60_000 };
+    expect(approvePairingBlock(unsigned, null, NOW)).toEqual({ kind: "ok_pending" });
+  });
+
   test("errors are plain sentences", () => {
     expect(approvePairingError({ kind: "already_used" })).toBe("pairing code was already used");
     expect(approvePairingError({ kind: "expired" })).toBe("pairing code has expired");
@@ -83,6 +92,13 @@ describe("countsTowardPendingCap", () => {
     expect(countsTowardPendingCap({ pairingState: "pending" })).toBe(true);
     expect(countsTowardPendingCap({ pairingState: "pending", rejectedAt: NOW })).toBe(false);
     expect(countsTowardPendingCap({ pairingState: "paired" })).toBe(false);
+  });
+
+  test("with a clock, expired requests free their slot too", () => {
+    expect(countsTowardPendingCap({ pairingState: "pending", pairingCodeExpiresAt: NOW + 1 }, NOW)).toBe(true);
+    expect(countsTowardPendingCap({ pairingState: "pending", pairingCodeExpiresAt: NOW }, NOW)).toBe(true);
+    expect(countsTowardPendingCap({ pairingState: "pending", pairingCodeExpiresAt: NOW - 1 }, NOW)).toBe(false);
+    expect(countsTowardPendingCap({ pairingState: "pending" }, NOW)).toBe(false);
   });
 });
 
