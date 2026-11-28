@@ -8,11 +8,12 @@ import {
 } from "@puck/shared";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from "react";
+import { endpoints } from "./deployment";
 
 const ACCOUNT_KEY = "puck.clerkAccount";
 const PENDING_KEY = "puck.clerkPending";
 
-export const clerkHost = clerkFrontendApi(process.env.EXPO_PUBLIC_CLERK_FRONTEND_API);
+export const clerkHost = clerkFrontendApi(endpoints.clerkFrontendApi);
 
 export type ClerkView = "unknown" | "out" | "in";
 

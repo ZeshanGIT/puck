@@ -18,6 +18,7 @@
       ],
       "./plugins/withFullScreen",
       "./plugins/withWorkManagerProguard",
+      "./plugins/withReleaseSigning",
       "expo-font",
       [
         "expo-speech-recognition",
