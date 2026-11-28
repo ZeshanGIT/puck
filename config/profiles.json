@@ -1,0 +1,15 @@
+{
+  "$comment": "Public endpoints per build profile, read by scripts/release-build.ts. Nothing secret belongs here. The Google web client ID comes from EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID or app/.env.local.",
+  "dev": {
+    "convexUrl": "https://usable-mule-44.convex.cloud",
+    "convexSiteUrl": "https://usable-mule-44.convex.site",
+    "clerkFrontendApi": "in-lemming-9901.clerk.accounts.dev",
+    "releaseCertSha256": ""
+  },
+  "prod": {
+    "convexUrl": "",
+    "convexSiteUrl": "",
+    "clerkFrontendApi": "in-lemming-9901.clerk.accounts.dev",
+    "releaseCertSha256": ""
+  }
+}

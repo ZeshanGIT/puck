@@ -18,7 +18,8 @@
     "desktop:dev": "bun run --filter @puck/desktop dev",
     "desktop:build": "bun run --filter @puck/desktop build",
     "cli:build": "bun run --filter @puck/cli build",
-    "release:install": "bun run --filter @puck/app release:install"
+    "release:install": "bun run --filter @puck/app release:install",
+    "release:build": "bun scripts/release-build.mjs"
   },
   "devDependencies": {
     "typescript": "~6.0.3"
