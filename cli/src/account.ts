@@ -10,6 +10,7 @@ import {
   readClerkAccount,
   type ClerkAccount,
 } from "@puck/shared";
+import { buildDefaults } from "./build";
 import { CliError } from "./errors";
 
 const SESSION_FILE = "session.json";
@@ -120,7 +121,7 @@ function accountLines(account: ClerkAccount): string {
 
 function clerkHost(env: NodeJS.ProcessEnv): string {
   try {
-    return clerkFrontendApi(env.PUCK_CLERK_FRONTEND_API);
+    return clerkFrontendApi(env.PUCK_CLERK_FRONTEND_API?.trim() || buildDefaults?.clerkFrontendApi);
   } catch (error) {
     throw asCli(error);
   }

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { buildDefaults, type BuildDefaults } from "./build";
 import { CliError } from "./errors";
 
 export interface PuckConfig {
@@ -41,7 +42,15 @@ function httpsOrigin(value: string, field: string): string {
   return parsed.origin;
 }
 
-export async function loadConfig(configDir: string, env: NodeJS.ProcessEnv): Promise<PuckConfig> {
+/**
+ * Where the deployment comes from, first match wins: PUCK_DEPLOYMENT_URL, then config.json, then the
+ * default a release binary was built with. A source run has no built-in default.
+ */
+export async function loadConfig(
+  configDir: string,
+  env: NodeJS.ProcessEnv,
+  defaults: BuildDefaults | undefined = buildDefaults,
+): Promise<PuckConfig> {
   const path = join(configDir, "config.json");
   let file: FileConfig = {};
   try {
@@ -54,12 +63,16 @@ export async function loadConfig(configDir: string, env: NodeJS.ProcessEnv): Pro
     throw new CliError("config.json must be a JSON object");
   }
 
-  const deploymentRaw = env.PUCK_DEPLOYMENT_URL?.trim() || (typeof file.deploymentUrl === "string" ? file.deploymentUrl.trim() : "");
+  const explicitDeployment =
+    env.PUCK_DEPLOYMENT_URL?.trim() || (typeof file.deploymentUrl === "string" ? file.deploymentUrl.trim() : "");
+  const deploymentRaw = explicitDeployment || defaults?.deploymentUrl.trim() || "";
   if (!deploymentRaw) {
     throw new CliError("Set deploymentUrl in ~/.config/puck/config.json or PUCK_DEPLOYMENT_URL.");
   }
   const deploymentUrl = httpsOrigin(deploymentRaw, "deployment URL");
-  const siteRaw = env.PUCK_SITE_URL?.trim() || (typeof file.siteUrl === "string" ? file.siteUrl.trim() : "");
+  const explicitSite = env.PUCK_SITE_URL?.trim() || (typeof file.siteUrl === "string" ? file.siteUrl.trim() : "");
+  // The built-in site URL belongs to the built-in deployment only.
+  const siteRaw = explicitSite || (explicitDeployment ? "" : defaults?.siteUrl.trim() || "");
   const siteUrl = siteRaw ? httpsOrigin(siteRaw, "site URL") : siteUrlFromDeployment(deploymentUrl);
   const defaultBot = typeof file.defaultBot === "string" && file.defaultBot.trim() ? file.defaultBot.trim() : undefined;
   return { deploymentUrl, siteUrl, ...(defaultBot ? { defaultBot } : {}) };

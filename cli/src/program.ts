@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import pkg from "../package.json" with { type: "json" };
+import { versionLine } from "./build";
 import { login, logout, openBrowser, signedInToken, whoami } from "./account";
 import { liveBackend } from "./backend";
 import {
@@ -41,7 +41,7 @@ export function createProgram(runtime: Runtime = defaultRuntime()): Command {
   const program = new Command()
     .name("puck")
     .description("Page your phone from an AI agent")
-    .version(pkg.version);
+    .version(versionLine);
   program.exitOverride();
 
   program

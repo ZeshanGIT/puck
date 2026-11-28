@@ -65,6 +65,33 @@ describe("config", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test("a release binary's built-in deployment is the last resort, never over env or the file", async () => {
+    const dir = await tempDir();
+    const prod = {
+      profile: "prod",
+      deploymentUrl: "https://happy-otter-123.convex.cloud",
+      siteUrl: "https://happy-otter-123.convex.site",
+      clerkFrontendApi: "in-lemming-9901.clerk.accounts.dev",
+    };
+    try {
+      expect(await loadConfig(dir, {}, prod)).toEqual({ deploymentUrl: prod.deploymentUrl, siteUrl: prod.siteUrl });
+      await expect(loadConfig(dir, {}, undefined)).rejects.toThrow("Set deploymentUrl");
+
+      const fromEnv = await loadConfig(dir, { PUCK_DEPLOYMENT_URL: "https://usable-mule-44.convex.cloud" }, prod);
+      expect(fromEnv).toEqual({
+        deploymentUrl: "https://usable-mule-44.convex.cloud",
+        siteUrl: "https://usable-mule-44.convex.site",
+      });
+
+      await writeConfig(dir);
+      const fromFile = await loadConfig(dir, {}, prod);
+      expect(fromFile.deploymentUrl).toBe("https://example.convex.cloud");
+      expect(fromFile.siteUrl).toBe("https://example.convex.site");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("hidden prompt", () => {
