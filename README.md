@@ -23,7 +23,65 @@ Every bot pairs with a six-digit code you approve on the phone, and has its own 
 
 ## Status
 
-A personal project in active development, used daily on one Pixel 7. Puck for Mac is available as a local development build. Both apps use the same development backend.
+A personal project in active development, used daily on one Pixel 7. Puck for Mac is available as a local development build and uses the development backend. Test releases of the Android app and the `puck` CLI use a separate production backend.
+
+## Try Puck (testers)
+
+> The first test release is not published yet. These steps apply once it appears on the [Releases page](https://github.com/ZeshanGIT/puck/releases).
+
+You need an Android phone (Android 7 or newer) and a Mac (Apple Silicon or Intel) or a Linux x64 machine for the CLI. Use the same Google account on both. While Puck is in testing, the owner has to add your Google account first, so send it to the owner before you start.
+
+### 1. Install the Android app
+
+1. On the phone, open the latest release on the [Releases page](https://github.com/ZeshanGIT/puck/releases) and download `puck-<version>.apk`.
+2. Open the download. Android asks you to allow installs from your browser: allow it, go back and tap **Install**. Play Protect may warn about an app from an unknown developer; choose **Install anyway**.
+3. Open Puck, tap **Continue with Google** and pick your account.
+4. Allow notifications, and allow full-screen alerts when Puck asks, so urgent pages can ring over the lock screen. Onboarding ends with a test page; answer it.
+
+To check the download, compare the APK's SHA-256 with the `SHA256SUMS` file in the same release (`shasum -a 256 puck-*.apk` on a Mac).
+
+### 2. Install the CLI
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ZeshanGIT/puck/main/install.sh | sh
+```
+
+The script picks the binary for your machine, checks it against the release's `SHA256SUMS` and installs it as `~/.local/bin/puck`. If that folder is not on your `PATH`, it prints the line to add. Set `PUCK_INSTALL_DIR` to install somewhere else. Check it with `puck --version`.
+
+To update, run the same command again. To uninstall, delete `~/.local/bin/puck` and `~/.config/puck/`.
+
+### 3. Sign in, pair a bot, send a first alert
+
+```sh
+puck login                      # opens your browser; sign in with the same Google account as the phone
+puck add testbot --no-webhook   # prints a six-digit code and a bot id such as testbot-12345
+```
+
+Your phone shows a pairing request with the same code. Check that the codes match and approve it. The CLI prints `approved`.
+
+Then page yourself and wait for the answer (use the bot id that `puck add` printed):
+
+```sh
+printf '%s\n' '{"question":"Ship it?","priority":"normal","selectionMode":"single","options":[{"id":"yes","label":"Yes"},{"id":"no","label":"Not yet"}]}' |
+  puck send --bot testbot-12345 --wait
+```
+
+The phone rings. Tap an option twice to answer, and the CLI prints your answer as JSON. Try `"priority":"urgent"` with the phone locked for the full-screen alert. `puck --help` lists the other commands; [CLI](#cli-cli) below has the details.
+
+`--no-webhook` keeps the first run simple: answers are read back with `--wait` or `puck answer`. A real agent pairs with a webhook so Puck posts each answer to it.
+
+## Testing and feedback
+
+Thanks for trying Puck. Useful things to try:
+
+- normal and urgent pages, with the phone unlocked, locked, and in Do Not Disturb;
+- several options (`"selectionMode":"multi"`), a typed reply, snoozing, and a page scheduled with `--at`;
+- leaving the phone idle for an hour or more, then paging it;
+- signing out and back in, and pairing a second bot.
+
+Report problems with the [bug report form](https://github.com/ZeshanGIT/puck/issues/new?template=bug_report.yml). Include the app version (Puck → Settings), `puck --version`, your phone model and Android version, and the steps that led to it. Never paste bot secrets, webhook URLs, auth headers or files from `~/.config/puck/`.
+
+What is known not to work yet: there is no in-app update notice (check the Releases page), and the Mac app is not part of the test.
 
 ## Layout
 
@@ -123,7 +181,7 @@ Options (after `--`):
 
 Safety: emulators are refused. A phone that is not authorized, or several phones without `--serial`, stop the script with a message. The phone's model must match. Install is `adb install -r` only: no uninstall, no data clear, no downgrade. If the signing key differs from the installed app, install fails and nothing is removed.
 
-Requirements: JDK 17 (`/usr/libexec/java_home -v 17` on macOS, or `JAVA_HOME`), the Android SDK (`ANDROID_HOME`, default `~/Library/Android/sdk` on macOS), Node 22.13 or newer, and `unzip`. The release is signed with the debug keystore and points at the dev Convex and Clerk instances, so it is not a store build.
+Requirements: JDK 17 (`/usr/libexec/java_home -v 17` on macOS, or `JAVA_HOME`), the Android SDK (`ANDROID_HOME`, default `~/Library/Android/sdk` on macOS), Node 22.13 or newer, and `unzip`. The release is signed with the debug keystore and points at the dev Convex and Clerk instances, so it is not a store build. Tester builds come from `bun run release:build` (see [Test releases](#test-releases-maintainers)).
 
 ### Run on a device or emulator (development build)
 
@@ -137,6 +195,55 @@ cd app
 The `start` and `android` scripts export `JAVA_HOME` and `ANDROID_HOME` before calling Expo. With the dev client installed, `~/.bun/bin/bun run start` runs Metro for JavaScript hot reload.
 
 Add native-compatible packages with `bunx expo install <package>` so versions match the Expo SDK. Metro resolves workspace packages such as `@puck/shared` automatically; no custom Metro config is needed.
+
+## Test releases (maintainers)
+
+Test releases are built by hand on a Mac and published to GitHub Releases. Two **build profiles** in `config/profiles.json` decide which backend a build talks to:
+
+| | `dev` | `prod` |
+| --- | --- | --- |
+| Convex | `usable-mule-44` | the production deployment |
+| Clerk | `in-lemming-9901.clerk.accounts.dev` | the same instance for now |
+| Who uses it | local and Pixel builds, `bun run dev` CLI | testers: the released APK and CLI binaries |
+
+The profile is chosen explicitly at build time, never by editing code:
+
+- **App:** `EXPO_PUBLIC_PUCK_PROFILE=prod` turns on production rules. A production bundle must set `EXPO_PUBLIC_CONVEX_URL`, `EXPO_PUBLIC_CONVEX_SITE_URL`, `EXPO_PUBLIC_CLERK_FRONTEND_API` and `EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID`, and must not point at the dev deployment; otherwise the app stops at launch instead of falling back to dev (`app/src/buildProfile.ts`). Without the variable a build is `dev`, as before, so `bun run release:install` and Metro are unchanged.
+- **CLI:** a release binary bakes in its profile's deployment and Clerk host (`cli/src/build.ts`). `PUCK_DEPLOYMENT_URL` and `~/.config/puck/config.json` still win over it, so a machine set up for dev stays on dev. `puck --version` prints the profile, such as `1.0.0+abc1234 (prod)`. A source run (`bun run dev`) has no built-in deployment.
+
+### Build
+
+```sh
+bun run release:build -- --profile prod --dry-run   # check inputs, print the plan
+bun run release:build -- --profile prod             # build everything into dist/release/<tag>/
+```
+
+The script needs a clean tree (committed changes only), then:
+
+1. runs `expo prebuild --clean` and `assembleRelease` with the profile's `EXPO_PUBLIC_*` values, for `arm64-v8a` and `armeabi-v7a` in one APK. `versionCode` is 1000 plus the commit count, and `versionName` is `<app.json version>+<short sha>`;
+2. checks the APK: package `in.puckit.app`, not debuggable, `targetSdkVersion` 36 or higher, both ABIs, the versions, the WorkManager keep rules, the profile's Convex and Clerk hosts inside the JavaScript bundle, and, for `prod`, a signature by the release key (never the debug key);
+3. compiles the CLI for `darwin-arm64`, `darwin-x64` and `linux-x64` with the profile baked in, and checks `--version`;
+4. writes `SHA256SUMS` and `notes.md`. Nothing is published.
+
+`--skip-app` and `--skip-cli` build one half. The Google web client ID comes from `EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID` or `app/.env.local`.
+
+**Signing.** A `prod` build requires the release keystore. `app/plugins/withReleaseSigning.js` makes Gradle read it from the environment at build time, so no path or password is written into `app/android/`. Without `PUCK_KEYSTORE_PATH`, release builds keep the debug key. `release:build` reads:
+
+- `PUCK_KEYSTORE_PATH`, default `~/.config/puck/release.keystore`;
+- `PUCK_KEYSTORE_PASSWORD_FILE`, default `~/.config/puck/release.keystore.pass` (one line, mode 600);
+- `PUCK_KEY_ALIAS`, default `puck`.
+
+The keystore never goes in a repo. Back it up in two places: losing it means testers can't update in place. A release-signed APK cannot install over a debug-signed one, so a phone moving between them has to uninstall first, which clears the app's data.
+
+### Publish
+
+After the commit is on `origin/main`, and only with the owner's go-ahead:
+
+```sh
+scripts/publish-release.sh v1.0.0-build.1180
+```
+
+It checks the build's commit is on `origin/main` and the checksums match, then creates the GitHub release, marked latest, with the APK, the CLI binaries and `SHA256SUMS`. `install.sh` downloads from the latest release.
 
 ## Backend (`backend/`)
 

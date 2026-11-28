@@ -1,0 +1,68 @@
+name: Bug report
+description: Something in the Puck app or the puck CLI did not work as expected.
+labels: ["bug", "tester"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing Puck. Please don't paste bot secrets, webhook URLs, auth headers or the contents of `~/.config/puck/`.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. puck send --bot ... (the alert JSON, with anything private removed)
+        2. Locked the phone
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      multiple: true
+      options:
+        - Android app
+        - puck CLI
+        - Sign-in
+        - Pairing a bot
+        - Notifications or full-screen alert
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone
+      description: Make, model and Android version.
+      placeholder: Samsung Galaxy S23, Android 15
+  - type: input
+    id: app_version
+    attributes:
+      label: App version
+      description: Shown in Puck → Settings (Settings → About also has the build number).
+      placeholder: 1.0.0+abc1234
+  - type: input
+    id: cli_version
+    attributes:
+      label: CLI version
+      description: The output of `puck --version`.
+      placeholder: 1.0.0+abc1234 (prod)
+  - type: input
+    id: mac
+    attributes:
+      label: Computer
+      description: macOS version and chip, if the CLI is involved.
+      placeholder: macOS 26.1, Apple M2
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots, logs, anything else
+      description: CLI output with `--json` helps. Drag screenshots or a screen recording here.
