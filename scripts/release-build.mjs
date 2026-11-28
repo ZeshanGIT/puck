@@ -379,16 +379,53 @@ function buildCli({ profile, version, outDir }) {
   return built;
 }
 
-function notes({ profile, version, apk, assets }) {
+/**
+ * The GitHub release notes. The first line names the build's commit; publish-release.sh reads it
+ * back, so keep its shape: "Puck X.Y.Z+<sha> (build N), <profile> backend."
+ */
+export function notes({ profile, version, apk, assets }) {
+  const repo = "https://github.com/ZeshanGIT/puck";
   const lines = [
     `Puck ${version.versionName} (build ${version.versionCode}), ${profile.name} backend.`,
     "",
-    "Install: see the README's \"Try Puck\" section. Report problems with the Bug report issue form.",
+    "A test build of Puck, a pager for AI agents: an agent sends an alert, your Android phone rings, and your answer goes back to the agent.",
+    "",
+    "## Install",
     "",
   ];
   if (apk) {
     lines.push(
-      `Android: \`${version.apkAsset}\` (package ${PACKAGE}, ${ABIS.join(" + ")}, targetSdk ${apk.targetSdk}).`,
+      `**Android** (Android 7 or newer): on the phone, download \`${version.apkAsset}\` below, open it and allow installs from your browser. Then open Puck and continue with Google.`,
+      "",
+    );
+  }
+  lines.push(
+    "**CLI** (macOS on Apple Silicon or Intel, Linux x64):",
+    "",
+    "```sh",
+    "curl -fsSL https://raw.githubusercontent.com/ZeshanGIT/puck/main/install.sh | sh",
+    "puck login",
+    "```",
+    "",
+    `First steps (pair a bot, send a first alert) are in the [README](${repo}#try-puck-testers). Use the same Google account on the phone and the CLI. Your bots and alerts are private to your account.`,
+    "",
+    "## Report a problem",
+    "",
+    `Use the [bug report form](${repo}/issues/new?template=bug_report.yml) with the app version (Puck → Settings), \`puck --version\`, your phone model and the steps.`,
+    "",
+    "## Known gaps",
+    "",
+    "- No in-app update notice yet: check this page for new builds. Updates install over the previous build and keep your data.",
+    "- Not on the Play Store, so Android and Play Protect warn about an unknown developer.",
+    "- Sign-in uses a development Clerk instance; its web sign-in page shows a \"development mode\" badge.",
+    "- The Mac app is not part of this test.",
+    "",
+    "## Verify",
+    "",
+  );
+  if (apk) {
+    lines.push(
+      `Android: package \`${PACKAGE}\`, ${ABIS.join(" + ")}, targetSdk ${apk.targetSdk}.`,
       `Signing certificate SHA-256: \`${colonDigest(apk.signerSha256)}\``,
       "",
     );

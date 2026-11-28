@@ -125,3 +125,23 @@ describe("tool output parsing", () => {
     expect(colonDigest("aa11bb")).toBe("AA:11:BB");
   });
 });
+
+describe("notes", () => {
+  test("first line keeps the shape publish-release.sh parses, and the install command is included", async () => {
+    const { notes } = await import("./release-build.mjs");
+    const version = versionInfo("1.0.0", 180, "abc1234");
+    const text = notes({
+      profile: { name: "prod" },
+      version,
+      apk: { targetSdk: 36, signerSha256: "b27d" },
+      assets: ["aa  puck-1.0.0-build.1180.apk"],
+    });
+    const first = text.split("\n")[0];
+    expect(first).toBe("Puck 1.0.0+abc1234 (build 1180), prod backend.");
+    expect(/^Puck [0-9.]*\+([0-9a-f]*) /.exec(first)?.[1]).toBe("abc1234");
+    expect(text).toContain("install.sh | sh");
+    expect(text).toContain("puck-1.0.0-build.1180.apk");
+    expect(text).toContain("B2:7D");
+    expect(text).toContain("## Known gaps");
+  });
+});
