@@ -1,8 +1,10 @@
 # Multi-user gap
 
-Status: design note, not started (2026-11-28). The backend was built for one person. Two Google accounts on one Convex deployment would see, and could answer, each other's alerts. Until this is fixed, each deployment has exactly one user: the owner on dev, and one tester on prod.
+Status: built in `bb314a0` and live on dev since 2026-11-28 (owner backfill run there). The "widen" and "migrate" steps are done. Still to do: "narrow" (make `alerts.userId` required and drop the derived-owner fallback for rows without it) once every deployment has been backfilled.
 
-## What leaks today
+Before this change the backend was built for one person, and two Google accounts on one Convex deployment would see, and could answer, each other's alerts. The sections below record what leaked and the plan that was followed.
+
+## What leaked
 Findings from a code read, not from a live test.
 
 - **Push fan-out:** `alerts.loadForPush` sends every alert to every client and to the legacy device (`alerts.ts`, the "single-user for now" comment). `alerts.loadDismissTargets` does the same for dismiss pushes.
